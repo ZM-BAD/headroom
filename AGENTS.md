@@ -41,13 +41,27 @@ npx wxt prepare        # Regenerate types in .wxt/ (auto-runs on postinstall)
 
 ## Spec-Driven Development
 
-This project follows **Spec-Driven Development**: all features and changes must have a spec before implementation.
+Specs are PRDs optimized for AI agents — more precise, less ambiguous, more actionable.
 
-- **No spec, no code.** Read `specs/README.md` for the full workflow.
-- Spec lifecycle: `draft/` → `active/` → `completed/`
-- Use templates in `specs/templates/` (feature, architecture, bugfix)
-- Before implementing any feature, check `specs/active/` for the corresponding spec
-- After implementation, append Implementation Notes to the spec and move to `completed/`
+**Pipeline: `requirements/` → `specs/xxx.md` → code**
+
+### Division of labor
+
+| Stage                        | Owner     | Action                                           |
+| ---------------------------- | --------- | ------------------------------------------------ |
+| `requirements/` (gitignored) | **Human** | Write product requirements, discussion, analysis |
+| `specs/xxx.md`               | **AI**    | Read requirements, generate spec from template   |
+| Spec review                  | **Human** | Review and commit to main (commit = approved)    |
+| Write code                   | **AI**    | Implement based on spec                          |
+
+### Rules
+
+- **No spec, no code.** Never implement without a committed spec in `specs/`.
+- **Specs are living documents.** Update in-place as understanding evolves.
+- When a new requirement appears in `requirements/`, offer to generate a corresponding spec.
+- Use `specs/000-spec-template.md` as the template for new specs.
+- After implementation, append Implementation Notes to the spec.
+- Read `specs/README.md` for the full workflow details.
 
 ## Adding New Entrypoints
 

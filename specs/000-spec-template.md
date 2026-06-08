@@ -1,9 +1,5 @@
 # {序号}: {Feature Name}
 
-## Status
-
-draft | active | completed
-
 ## Summary
 
 一句话描述这个功能要做什么。
@@ -14,26 +10,42 @@ draft | active | completed
 
 ## Requirements
 
-- [ ] 具体的功能需求 1
-- [ ] 具体的功能需求 2
+### P0 — 核心功能
+
+- [ ] 需求 1
+- [ ] 需求 2
+
+### P1 — 增强功能
+
+- [ ] 需求 3
 
 ## Design
 
+### Architecture
+
+涉及的组件和它们之间的关系。
+
 ### Entrypoints
 
-涉及哪些 entrypoint（popup/background/content/sidepanel 等）。
+| Entrypoint | 文件 | 职责 |
+| ---------- | ---- | ---- |
+|            |      |      |
 
 ### Data Flow
 
 数据流向：从哪获取，如何处理，展示在哪。
 
+### Data Model
+
+数据结构定义（如有）。
+
 ### UI
 
-描述 UI 交互（如有）。
+UI 交互描述（如有）。
 
-### API / Browser APIs
+### Browser APIs
 
-使用哪些 browser.\* API。
+使用的 `browser.*` API 列表。
 
 ## Implementation Plan
 
@@ -45,6 +57,10 @@ draft | active | completed
 
 - [ ] 验收条件 1
 - [ ] 验收条件 2
+
+## Open Questions
+
+- [ ] 待确认问题
 
 ## Implementation Notes
 

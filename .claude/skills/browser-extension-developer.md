@@ -65,3 +65,24 @@ headroom/
 - Content scripts: always specify `matches` in `defineContentScript` options
 - Background script: `main()` cannot be async in `defineBackground`
 - Popup/HTML entrypoints: use directory structure (`<name>/index.html` + `<name>/main.ts`)
+
+## Development Workflow
+
+This project uses Spec-Driven Development with a requirements-first pipeline:
+
+```
+requirements/ → specs/draft/ → specs/active/ → code → specs/completed/
+  Human writes    AI generates    Human reviews   AI codes   Archived
+```
+
+1. Human writes requirements in `requirements/` (free-form Markdown)
+2. AI reads requirements and generates spec in `specs/draft/` using templates
+3. Human reviews spec, moves to `specs/active/` when approved
+4. AI implements code based on active spec
+5. Human confirms, spec moves to `specs/completed/`
+
+**Rules:**
+
+- No spec in `specs/active/` = no code written
+- Never modify files in `requirements/` — human-only territory
+- Always use templates from `specs/templates/` when generating specs

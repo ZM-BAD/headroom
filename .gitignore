@@ -30,3 +30,6 @@ Thumbs.db
 
 # AI agent local config
 .claude/settings.local.json
+
+# Requirements — human discussion/drafts, not part of codebase
+requirements/
