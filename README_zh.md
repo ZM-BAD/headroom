@@ -39,6 +39,16 @@ Headroom 显示在浏览器的原生侧边栏中，实时可视化你的 context
 3. **在支持的 AI 聊天平台打开侧边栏** — Headroom 自动追踪你的对话 token 消耗
 4. **看着指示器** — 随着对话进行，Headroom 显示 context 还剩多少
 
+## 浏览器支持
+
+Headroom **仅支持 Manifest V3**（不支持 MV2），需要较新的浏览器版本：
+
+| 浏览器         | 最低版本 |
+| -------------- | -------- |
+| Google Chrome  | ≥ 149    |
+| Microsoft Edge | ≥ 149    |
+| Firefox        | ≥ 151    |
+
 ## 支持平台
 
 | 平台             | 状态           |

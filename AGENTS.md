@@ -4,7 +4,7 @@ Project instructions for AI coding agents (Claude Code, Cursor, Copilot, Windsur
 
 ## Project Overview
 
-Headroom is a browser extension built with [WXT](https://wxt.dev/) (next-gen web extension framework). Targets Manifest V3 for Chrome/Edge and MV2/MV3 for Firefox.
+Headroom is a browser extension built with [WXT](https://wxt.dev/) (next-gen web extension framework). **Manifest V3 only** — Chrome, Edge, and Firefox. MV2 is not supported (`manifestVersion: 3` is set in `wxt.config.ts`, overriding WXT's Firefox-default MV2).
 
 ## Commands
 
@@ -12,7 +12,7 @@ Headroom is a browser extension built with [WXT](https://wxt.dev/) (next-gen web
 npm run dev            # Dev mode with HMR (Chrome default)
 npm run dev:firefox    # Dev mode for Firefox
 npm run build          # Production build → .output/chrome-mv3/
-npm run build:firefox  # Production build → .output/firefox-mv2/
+npm run build:firefox  # Production build → .output/firefox-mv3/
 npm run zip            # Package .zip for distribution
 npm run lint           # ESLint check
 npm run lint:fix       # ESLint auto-fix

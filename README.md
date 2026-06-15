@@ -39,6 +39,16 @@ This is **not** a token cost calculator. AI models are getting cheaper by the mo
 3. **Open the side panel** on any supported AI chat platform — Headroom automatically tracks your conversation's token usage
 4. **Watch the indicator** — as your conversation grows, Headroom shows you how much context room remains
 
+## Browser Support
+
+Headroom is **Manifest V3 only** (MV2 is not supported) and requires a recent browser version:
+
+| Browser        | Minimum Version |
+| -------------- | --------------- |
+| Google Chrome  | ≥ 149           |
+| Microsoft Edge | ≥ 149           |
+| Firefox        | ≥ 151           |
+
 ## Supported Platforms
 
 | Platform         | Status                 |

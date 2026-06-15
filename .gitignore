@@ -31,5 +31,8 @@ Thumbs.db
 # AI agent local config
 .claude/settings.local.json
 
+# Playwright MCP — generated browser artifacts
+.playwright-mcp/
+
 # Requirements — human discussion/drafts, not part of codebase
 requirements/

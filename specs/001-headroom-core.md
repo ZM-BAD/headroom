@@ -49,6 +49,20 @@ draft
   - 配置 Upstash URL 和 API Token
 - [ ] **侧边栏开关**：点击扩展图标打开/关闭原生侧边栏
 
+## Browser Support
+
+Headroom **仅支持 Manifest V3**（不支持 MV2），需较新浏览器版本：
+
+| 浏览器         | 最低版本 |
+| -------------- | -------- |
+| Google Chrome  | ≥ 149    |
+| Microsoft Edge | ≥ 149    |
+| Firefox        | ≥ 151    |
+
+架构与实现均基于 MV3；Firefox 端通过 `sidebarAction` 提供原生侧边栏。
+
+> **决策：不兼容 Firefox MV2。** Chrome/Edge 已强制 MV3，后台必须按 service worker 语义编写（状态持久化到 `browser.storage.local`、唤醒后重建）；Firefox MV3 用 event page（`background.scripts`），更宽松、天然兼容，WXT 自动按目标浏览器生成分流 manifest。再支持 MV2 只会多一条后台生命周期路径和测试矩阵，不省任何代码——因为最严的 service worker 模型由 Chrome 锁定，无法靠 MV2 绕开。
+
 ## Design
 
 ### Architecture
