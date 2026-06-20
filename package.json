@@ -14,8 +14,10 @@
     "build:firefox": "wxt build -b firefox",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "eslint . --max-warnings 0",
+    "lint:fix": "eslint . --max-warnings 0 --fix",
+    "test": "vitest",
+    "test:run": "vitest run",
     "typecheck": "tsc --noEmit",
     "postinstall": "wxt prepare",
     "prepare": "husky"
@@ -28,11 +30,12 @@
     "prettier": "^3.8.3",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.60.1",
+    "vitest": "^4.1.9",
     "wxt": "^0.20.6"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
-      "eslint --fix",
+      "eslint --fix --max-warnings 0",
       "prettier --write"
     ],
     "*.{json,md,html,css}": [

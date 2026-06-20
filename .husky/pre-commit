@@ -1,1 +1,24 @@
+# Mirror the CI pipeline exactly so "passes locally ⇒ passes in CI".
+# Order matches .github/workflows/ci.yml; each step fails fast on the first
+# error. Total ~5s (lint 1.1s + typecheck 1.2s + test 0.8s + build 1s).
+#
+# lint-staged runs FIRST: it auto-fixes staged files, so the full-project lint
+# below checks the post-fix state — identical to what CI sees (CI doesn't fix,
+# but the committed code is already fixed).
+
+# 0. Per-file auto-fix on staged files (format + lint), --max-warnings 0.
 npx lint-staged
+
+# 1. Lint (full project, same as CI) — catches errors in non-staged files.
+npm run lint
+
+# 2. Type check (full project).
+npm run typecheck
+
+# 3. Unit tests.
+npm run test:run
+
+# 4. Build (Chrome + Firefox). esbuild does NOT type-check, so a green
+# typecheck doesn't imply a green build — this step catches that gap.
+npm run build
+npm run build:firefox
