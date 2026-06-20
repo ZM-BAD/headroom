@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Headroom</title>
+  </head>
+  <body>
+    <div id="app">
+      <!-- Main view -->
+      <div id="view-main" class="hd-view">
+        <header class="hd-header">
+          <div class="hd-brand">
+            <span class="hd-logo" aria-hidden="true">↥</span>
+            <div>
+              <h1 class="hd-title">Headroom</h1>
+              <p class="hd-subtitle" data-i18n="subtitle">
+                Context window monitor
+              </p>
+            </div>
+          </div>
+          <button
+            id="settings-btn"
+            class="hd-icon-btn"
+            type="button"
+            title="Settings"
+            aria-label="Settings"
+            data-i18n-title="openSettings"
+            data-i18n-aria-label="openSettings"
+          >
+            ⚙
+          </button>
+        </header>
+
+        <section class="hd-card hd-model-card">
+          <div
+            class="hd-model-name"
+            id="model-name"
+            data-i18n="detectingPlatform"
+          >
+            Detecting platform…
+          </div>
+          <div class="hd-model-meta">
+            <span class="hd-badge" id="context-limit">— context</span>
+          </div>
+        </section>
+
+        <section class="hd-card hd-usage">
+          <div class="hd-usage-top">
+            <span class="hd-percent" id="percent">0.0%</span>
+            <span class="hd-status">
+              <span class="hd-dot" id="status-dot" data-level="idle"></span>
+              <span id="status-text">Waiting for conversation…</span>
+            </span>
+          </div>
+          <div class="hd-bar" aria-hidden="true">
+            <div class="hd-bar-fill" id="bar-fill" data-level="idle"></div>
+          </div>
+          <div class="hd-usage-bottom">
+            <span id="token-used">0</span><span class="hd-sep">/</span
+            ><span id="token-limit">—</span
+            ><span class="hd-unit" data-i18n="tokensUnit">tokens</span>
+          </div>
+        </section>
+
+        <section class="hd-card hd-stats">
+          <div class="hd-stat">
+            <div class="hd-stat-label" data-i18n="round">Round</div>
+            <div class="hd-stat-value" id="round-count">0</div>
+          </div>
+          <div class="hd-stat">
+            <div class="hd-stat-label" data-i18n="lastRound">Last round</div>
+            <div class="hd-stat-value" id="last-round">—</div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Settings view -->
+      <div id="view-settings" class="hd-view" hidden>
+        <header class="hd-header hd-header--start">
+          <button
+            id="settings-back"
+            class="hd-icon-btn"
+            type="button"
+            aria-label="Back"
+            data-i18n-aria-label="back"
+          >
+            ‹
+          </button>
+          <h1 class="hd-title" data-i18n="settingsTitle">Settings</h1>
+        </header>
+
+        <section class="hd-card hd-settings">
+          <div class="hd-settings-row hd-settings-row--select">
+            <label class="hd-settings-label" for="lang-select">
+              <span aria-hidden="true">🌐</span
+              ><span data-i18n="languageLabel">Language</span>
+            </label>
+            <select id="lang-select" class="hd-select">
+              <option value="auto" data-i18n="langAuto">
+                Auto (follow browser)
+              </option>
+              <option value="en">English</option>
+              <option value="zh_CN">简体中文</option>
+            </select>
+          </div>
+          <div class="hd-divider" role="separator"></div>
+          <div class="hd-settings-title" data-i18n="thresholdsTitle">
+            Warning thresholds
+          </div>
+          <div class="hd-threshold-bar" id="thr-bar">
+            <input
+              class="hd-range-overlay"
+              type="range"
+              id="thr-yellow"
+              min="1"
+              max="99"
+              step="1"
+              value="50"
+              aria-label="Yellow threshold"
+              data-i18n-aria-label="yellowLabel"
+            />
+            <input
+              class="hd-range-overlay"
+              type="range"
+              id="thr-red"
+              min="1"
+              max="99"
+              step="1"
+              value="70"
+              aria-label="Red threshold"
+              data-i18n-aria-label="redLabel"
+            />
+          </div>
+          <div class="hd-threshold-legend">
+            <span class="hd-threshold-tag">
+              <span
+                class="hd-swatch hd-swatch--yellow"
+                aria-hidden="true"
+              ></span>
+              <output id="thr-yellow-val">50%</output>
+            </span>
+            <span class="hd-threshold-tag">
+              <span class="hd-swatch hd-swatch--red" aria-hidden="true"></span>
+              <output id="thr-red-val">70%</output>
+            </span>
+          </div>
+          <div class="hd-threshold-zones">
+            <span class="hd-zone-meaning">
+              <span
+                class="hd-swatch hd-swatch--green"
+                aria-hidden="true"
+              ></span>
+              <span data-i18n="legendGreen">Plenty of room</span>
+            </span>
+            <span class="hd-zone-meaning">
+              <span
+                class="hd-swatch hd-swatch--yellow"
+                aria-hidden="true"
+              ></span>
+              <span data-i18n="legendYellow">Getting tight</span>
+            </span>
+            <span class="hd-zone-meaning">
+              <span class="hd-swatch hd-swatch--red" aria-hidden="true"></span>
+              <span data-i18n="legendRed">Likely to forget</span>
+            </span>
+          </div>
+          <button
+            class="hd-settings-reset"
+            id="thr-reset"
+            type="button"
+            data-i18n="resetDefaults"
+          >
+            Reset to defaults
+          </button>
+
+          <div class="hd-divider" role="separator"></div>
+          <div class="hd-settings-title" data-i18n="upstashTitle">
+            Upstash sync
+          </div>
+          <div class="hd-settings-row hd-settings-row--field">
+            <label class="hd-settings-label" for="upstash-url">
+              <span data-i18n="upstashUrlLabel">REST URL</span>
+            </label>
+            <input
+              class="hd-input"
+              id="upstash-url"
+              type="url"
+              inputmode="url"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="https://xxx-xxxx.upstash.io"
+            />
+          </div>
+          <div class="hd-settings-row hd-settings-row--field">
+            <label class="hd-settings-label" for="upstash-token">
+              <span data-i18n="upstashTokenLabel">REST Token</span>
+            </label>
+            <div class="hd-token-field">
+              <input
+                class="hd-input"
+                id="upstash-token"
+                type="password"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="AxXX…"
+              />
+              <button
+                id="upstash-toggle"
+                class="hd-icon-btn hd-icon-btn--toggle"
+                type="button"
+                aria-label="Show token"
+                data-i18n-aria-label="showToken"
+              ></button>
+            </div>
+          </div>
+          <div class="hd-upstash-actions">
+            <button
+              id="upstash-test"
+              class="hd-btn hd-btn--secondary"
+              type="button"
+              data-i18n="testConnection"
+            >
+              Test connection
+            </button>
+            <button
+              id="upstash-clear"
+              class="hd-btn hd-btn--ghost"
+              type="button"
+              data-i18n="clearUpstash"
+            >
+              Clear
+            </button>
+          </div>
+          <span
+            id="upstash-status"
+            class="hd-upstash-status"
+            aria-live="polite"
+          ></span>
+          <p class="hd-hint" data-i18n="upstashHint">
+            Use the REST API credentials from the Upstash console — not the
+            Redis password.
+          </p>
+
+          <div class="hd-divider" role="separator"></div>
+          <button
+            id="settings-save"
+            class="hd-btn hd-btn--primary hd-btn--block"
+            type="button"
+            data-i18n="saveSettings"
+          >
+            Save settings
+          </button>
+        </section>
+      </div>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

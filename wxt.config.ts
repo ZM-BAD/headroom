@@ -13,7 +13,10 @@ export default defineConfig({
   },
   manifest: ({ browser }) => ({
     name: "Headroom",
-    description: "A browser extension built with WXT",
+    description: "__MSG_extDescription__",
+    // Manifest strings resolve from _locales/<locale>/messages.json; en is the
+    // fallback when the browser locale has no match.
+    default_locale: "en",
     // Persisted settings (warning thresholds, later Upstash creds) live in
     // local storage; the side panel + background both read/write them.
     permissions: ["storage", "webRequest"],

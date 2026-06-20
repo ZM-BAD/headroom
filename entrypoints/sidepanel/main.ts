@@ -1,0 +1,455 @@
+import "./style.css";
+import type { HeadroomMessage, UsageState } from "../../utils/messages";
+import {
+  DEFAULT_THRESHOLDS,
+  levelFromRatio,
+  pctToRatio,
+  type Level,
+  type Thresholds,
+} from "../../utils/thresholds";
+import {
+  DEFAULT_SETTINGS,
+  getSettings,
+  saveSettings,
+  STORAGE_KEY,
+  type Language,
+  type Settings,
+  type UpstashConfig,
+} from "../../utils/settings";
+import { platformDisplayName } from "../../adapters";
+
+/**
+ * Raw browser-locale lookup. WXT types `browser.i18n.getMessage` to accept
+ * only literal message names (it generates the union from messages.json);
+ * `t()` below needs a string-typed entry point, so alias it here.
+ */
+const getMessage = browser.i18n.getMessage as (messageName: string) => string;
+// WXT types getURL's arg as a generated PublicPath union; we fetch a locale
+// file by an arbitrary string, so alias it to `string`.
+const getURL = browser.runtime.getURL as (path: string) => string;
+
+const STATUS_KEYS: Record<Level, string> = {
+  idle: "statusIdle",
+  green: "statusGreen",
+  yellow: "statusYellow",
+  red: "statusRed",
+};
+
+const IDLE_STATE: UsageState = {
+  platformId: null,
+  contextLimit: null,
+  totalTokens: 0,
+  lastRoundTokens: null,
+  roundCount: 0,
+};
+
+const els = {
+  viewMain: document.querySelector<HTMLElement>("#view-main")!,
+  viewSettings: document.querySelector<HTMLElement>("#view-settings")!,
+  modelName: document.querySelector<HTMLElement>("#model-name")!,
+  contextLimit: document.querySelector<HTMLElement>("#context-limit")!,
+  percent: document.querySelector<HTMLElement>("#percent")!,
+  barFill: document.querySelector<HTMLElement>("#bar-fill")!,
+  tokenUsed: document.querySelector<HTMLElement>("#token-used")!,
+  tokenLimit: document.querySelector<HTMLElement>("#token-limit")!,
+  statusDot: document.querySelector<HTMLElement>("#status-dot")!,
+  statusText: document.querySelector<HTMLElement>("#status-text")!,
+  roundCount: document.querySelector<HTMLElement>("#round-count")!,
+  lastRound: document.querySelector<HTMLElement>("#last-round")!,
+  settingsBtn: document.querySelector<HTMLButtonElement>("#settings-btn")!,
+  settingsBack: document.querySelector<HTMLButtonElement>("#settings-back")!,
+  thrYellow: document.querySelector<HTMLInputElement>("#thr-yellow")!,
+  thrYellowVal: document.querySelector<HTMLOutputElement>("#thr-yellow-val")!,
+  thrRed: document.querySelector<HTMLInputElement>("#thr-red")!,
+  thrRedVal: document.querySelector<HTMLOutputElement>("#thr-red-val")!,
+  thrReset: document.querySelector<HTMLButtonElement>("#thr-reset")!,
+  thrBar: document.querySelector<HTMLElement>("#thr-bar")!,
+  langSelect: document.querySelector<HTMLSelectElement>("#lang-select")!,
+  upstashUrl: document.querySelector<HTMLInputElement>("#upstash-url")!,
+  upstashToken: document.querySelector<HTMLInputElement>("#upstash-token")!,
+  upstashToggle: document.querySelector<HTMLButtonElement>("#upstash-toggle")!,
+  upstashTest: document.querySelector<HTMLButtonElement>("#upstash-test")!,
+  upstashClear: document.querySelector<HTMLButtonElement>("#upstash-clear")!,
+  upstashStatus: document.querySelector<HTMLElement>("#upstash-status")!,
+  settingsSave: document.querySelector<HTMLButtonElement>("#settings-save")!,
+};
+
+// Authoritative in-memory working copies. Settings are explicit-save now:
+// every input mutates these copies (thresholds preview the main view live),
+// and the bottom "Save" button persists all of them as one write.
+let currentThresholds: Thresholds = { ...DEFAULT_THRESHOLDS };
+let currentState: UsageState = IDLE_STATE;
+let currentLanguage: Language = "auto";
+let currentUpstash: UpstashConfig = { url: "", token: "" };
+
+/** Loaded message tables for a manual locale override. "auto" uses browser i18n. */
+const localeTables: Partial<
+  Record<Exclude<Language, "auto">, Record<string, string>>
+> = {};
+
+async function loadLocaleTable(lang: Exclude<Language, "auto">): Promise<void> {
+  if (localeTables[lang]) return;
+  try {
+    const res = await fetch(getURL(`_locales/${lang}/messages.json`));
+    const raw = (await res.json()) as Record<string, { message: string }>;
+    localeTables[lang] = Object.fromEntries(
+      Object.entries(raw).map(([k, v]) => [k, v.message]),
+    );
+  } catch {
+    // Table load failed — `t()` falls back to browser i18n for this locale.
+  }
+}
+
+/** Override-aware translator: manual language → in-memory table; else browser locale. */
+function t(key: string): string {
+  if (currentLanguage !== "auto") {
+    const msg = localeTables[currentLanguage]?.[key];
+    if (msg != null) return msg;
+  }
+  return getMessage(key);
+}
+
+function statusText(level: Level): string {
+  return t(STATUS_KEYS[level]);
+}
+
+/** Localize every [data-i18n] element/attr from messages. */
+function applyI18n(root: ParentNode = document.body): void {
+  root.querySelectorAll<HTMLElement>("[data-i18n]").forEach((el) => {
+    el.textContent = t(el.dataset.i18n!);
+  });
+  root.querySelectorAll<HTMLElement>("[data-i18n-title]").forEach((el) => {
+    el.title = t(el.dataset.i18nTitle!);
+  });
+  root.querySelectorAll<HTMLElement>("[data-i18n-aria-label]").forEach((el) => {
+    el.setAttribute("aria-label", t(el.dataset.i18nAriaLabel!));
+  });
+}
+
+// ---------- main view rendering ----------
+
+/** Format a context limit: 1M+ → "1M context", else "NK context". */
+function formatContext(limit: number): string {
+  const suffix = t("contextSuffix");
+  if (limit >= 1_000_000) {
+    const m = limit / 1_000_000;
+    return `${Number.isInteger(m) ? m : m.toFixed(1)}M ${suffix}`;
+  }
+  return `${Math.round(limit / 1024)}K ${suffix}`;
+}
+
+function render(state: UsageState, th: Thresholds): void {
+  const limit = state.contextLimit ?? 0;
+  const used = state.totalTokens;
+  const ratio = limit > 0 ? Math.min(used / limit, 1) : 0;
+  const level: Level = limit > 0 ? levelFromRatio(ratio, th) : "idle";
+
+  els.modelName.textContent = state.platformId
+    ? platformDisplayName(state.platformId)
+    : t("detectingPlatform");
+  els.contextLimit.textContent =
+    limit > 0 ? formatContext(limit) : t("noContext");
+
+  els.percent.textContent = `${(ratio * 100).toFixed(1)}%`;
+  els.barFill.style.width = `${ratio * 100}%`;
+  els.barFill.dataset.level = level;
+
+  els.tokenUsed.textContent = used.toLocaleString();
+  els.tokenLimit.textContent = limit > 0 ? limit.toLocaleString() : "—";
+
+  els.statusDot.dataset.level = level;
+  els.statusText.textContent = statusText(level);
+
+  els.roundCount.textContent = String(state.roundCount);
+  els.lastRound.textContent =
+    state.lastRoundTokens != null
+      ? state.lastRoundTokens.toLocaleString()
+      : "—";
+}
+
+// ---------- view switching (main ↔ settings) ----------
+
+function showView(view: "main" | "settings"): void {
+  els.viewMain.hidden = view !== "main";
+  els.viewSettings.hidden = view !== "settings";
+}
+
+els.settingsBtn.addEventListener("click", () => showView("settings"));
+// Back discards unsaved working-copy edits (no confirm) — fine while there's
+// a single writer; revisit (dirty check) if a second writer ever appears.
+els.settingsBack.addEventListener("click", () => showView("main"));
+
+// ---------- thresholds ----------
+
+function applyThresholdsToSliders(th: Thresholds): void {
+  const y = Math.round(th.yellow * 100);
+  const r = Math.round(th.red * 100);
+  els.thrYellow.value = String(y);
+  els.thrRed.value = String(r);
+  els.thrYellowVal.value = `${y}%`;
+  els.thrRedVal.value = `${r}%`;
+  // Drive the 3-zone gradient so the colored bands line up under each thumb.
+  els.thrBar.style.setProperty("--thr-yellow", `${y}%`);
+  els.thrBar.style.setProperty("--thr-red", `${r}%`);
+}
+
+// Only the dragged thumb is clamped (keep yellow < red). The two thumbs share
+// one track; never rescale the other — just clamp the one being dragged.
+// Dragging updates the working copy + previews the main view; nothing
+// persists until the global "Save" button is pressed.
+function syncThresholdsFromInputs(dragged: "yellow" | "red"): void {
+  let y = Number(els.thrYellow.value);
+  let r = Number(els.thrRed.value);
+  if (dragged === "yellow" && y >= r) {
+    y = r - 1;
+    els.thrYellow.value = String(y);
+  } else if (dragged === "red" && r <= y) {
+    r = y + 1;
+    els.thrRed.value = String(r);
+  }
+  els.thrYellowVal.value = `${y}%`;
+  els.thrRedVal.value = `${r}%`;
+  els.thrBar.style.setProperty("--thr-yellow", `${y}%`);
+  els.thrBar.style.setProperty("--thr-red", `${r}%`);
+  currentThresholds = { yellow: pctToRatio(y), red: pctToRatio(r) };
+  render(currentState, currentThresholds);
+}
+
+els.thrYellow.addEventListener("input", () =>
+  syncThresholdsFromInputs("yellow"),
+);
+els.thrRed.addEventListener("input", () => syncThresholdsFromInputs("red"));
+
+els.thrReset.addEventListener("click", () => {
+  currentThresholds = { ...DEFAULT_SETTINGS.thresholds };
+  applyThresholdsToSliders(currentThresholds);
+  render(currentState, currentThresholds);
+});
+
+// ---------- language ----------
+
+// Switching the language just updates the working copy + re-localizes;
+// persisting happens on the global "Save".
+els.langSelect.addEventListener("change", () => {
+  currentLanguage = els.langSelect.value as Language;
+  applyI18n();
+  render(currentState, currentThresholds);
+});
+
+// ---------- upstash (BYOK REST API) ----------
+
+/** Read + normalize the Upstash fields straight from the inputs (testable pre-save). */
+function readUpstashFromInputs(): UpstashConfig {
+  return {
+    url: els.upstashUrl.value.trim().replace(/\/+$/, ""),
+    token: els.upstashToken.value,
+  };
+}
+
+function setUpstashStatus(
+  state: "ok" | "err" | "busy" | null,
+  text: string,
+): void {
+  els.upstashStatus.textContent = text;
+  if (state) els.upstashStatus.dataset.state = state;
+  else delete els.upstashStatus.dataset.state;
+}
+
+// Stroke-based eye / eye-off icons (currentColor) replace the 👁 emoji so the
+// toggle renders crisp and consistent across platforms instead of the bulky
+// OS emoji. Eye = token hidden (click to reveal); eye-off = token shown.
+const EYE_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF_SVG =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
+
+/** Sync the toggle's icon + aria-label to the token field's reveal state. */
+function renderTokenToggle(): void {
+  const shown = els.upstashToken.type === "text";
+  els.upstashToggle.innerHTML = shown ? EYE_OFF_SVG : EYE_SVG;
+  const key = shown ? "hideToken" : "showToken";
+  els.upstashToggle.dataset.i18nAriaLabel = key;
+  els.upstashToggle.setAttribute("aria-label", t(key));
+}
+
+/**
+ * Verify Upstash REST credentials with a PING. The Upstash REST API is
+ * CORS-permissive (the @upstash/redis SDK runs in browsers), so the side
+ * panel can fetch it directly with no host permission. Returns a localized
+ * verdict rather than throwing.
+ *
+ * Fallback if CORS ever blocks at runtime: move this fetch into the
+ * background service worker + add optional_host_permissions and request()
+ * on Save (the explicit-save button provides the user gesture).
+ */
+async function testUpstashConnection(
+  url: string,
+  token: string,
+): Promise<{ ok: boolean; message: string }> {
+  if (!url || !token) return { ok: false, message: t("upstashErrMissing") };
+  try {
+    const res = await fetch(`${url}/PING`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.status === 401 || res.status === 403) {
+      return { ok: false, message: t("upstashErrAuth") };
+    }
+    if (!res.ok) {
+      return { ok: false, message: `${t("upstashErrStatus")} (${res.status})` };
+    }
+    const data = (await res.json()) as { result?: unknown };
+    return data.result === "PONG"
+      ? { ok: true, message: t("upstashOk") }
+      : { ok: false, message: t("upstashErrUnexpected") };
+  } catch (err) {
+    return {
+      ok: false,
+      message: `${t("upstashErrNetwork")} (${(err as Error).message})`,
+    };
+  }
+}
+
+// Editing either field updates the working copy and clears any stale result.
+for (const input of [els.upstashUrl, els.upstashToken]) {
+  input.addEventListener("input", () => {
+    currentUpstash = readUpstashFromInputs();
+    setUpstashStatus(null, "");
+  });
+}
+
+// Show / hide the token. renderTokenToggle() also mirrors the choice into
+// data-i18n-aria-label so a later applyI18n() (e.g. language switch) keeps
+// the correct label + icon.
+els.upstashToggle.addEventListener("click", () => {
+  els.upstashToken.type =
+    els.upstashToken.type === "text" ? "password" : "text";
+  renderTokenToggle();
+});
+
+// Test uses the current input values (not yet saved) so the user can verify
+// before committing.
+els.upstashTest.addEventListener("click", () => {
+  void (async () => {
+    const cfg = readUpstashFromInputs();
+    els.upstashTest.disabled = true;
+    setUpstashStatus("busy", t("testingConnection"));
+    const { ok, message } = await testUpstashConnection(cfg.url, cfg.token);
+    setUpstashStatus(ok ? "ok" : "err", message);
+    els.upstashTest.disabled = false;
+  })();
+});
+
+// Clear wipes the URL + Token inputs and the working copy (re-masked). Like
+// the threshold reset, it is working-copy only — it persists on global Save.
+els.upstashClear.addEventListener("click", () => {
+  els.upstashUrl.value = "";
+  els.upstashToken.value = "";
+  els.upstashToken.type = "password";
+  currentUpstash = { url: "", token: "" };
+  setUpstashStatus(null, "");
+  renderTokenToggle();
+});
+
+// Paint the initial eye icon synchronously (token is password by default).
+renderTokenToggle();
+
+// ---------- save (whole settings page) ----------
+
+/** Brief "Saved ✓" flash on the save button to confirm the write landed. */
+function flashSaved(): void {
+  const btn = els.settingsSave;
+  btn.textContent = `${t("settingsSaved")} ✓`;
+  btn.classList.add("hd-btn--saved");
+  window.setTimeout(() => {
+    btn.textContent = t("saveSettings");
+    btn.classList.remove("hd-btn--saved");
+  }, 1200);
+}
+
+els.settingsSave.addEventListener("click", () => {
+  void (async () => {
+    currentUpstash = readUpstashFromInputs();
+    const settings: Settings = {
+      thresholds: currentThresholds,
+      language: currentLanguage,
+      upstash: currentUpstash,
+    };
+    await saveSettings(settings);
+    flashSaved();
+  })();
+});
+
+// ---------- init ----------
+
+// Instant first paint with defaults (browser locale), refined once settings load.
+applyI18n();
+render(currentState, currentThresholds);
+
+void (async () => {
+  const settings = await getSettings();
+  currentThresholds = settings.thresholds;
+  currentLanguage = settings.language;
+  currentUpstash = settings.upstash;
+  els.langSelect.value = currentLanguage;
+  els.upstashUrl.value = currentUpstash.url;
+  els.upstashToken.value = currentUpstash.token;
+  // Preload both tables so a manual override applies without a flash.
+  await Promise.all([loadLocaleTable("en"), loadLocaleTable("zh_CN")]);
+  applyI18n();
+  applyThresholdsToSliders(currentThresholds);
+  render(currentState, currentThresholds);
+})();
+
+// Phase 2+: live usage updates from the background.
+browser.runtime.onMessage.addListener((message: HeadroomMessage) => {
+  if (message.type === "STATE_UPDATE") {
+    currentState = message.state;
+    render(currentState, currentThresholds);
+  }
+});
+
+// Keep settings in sync if changed in another context (e.g. a future options page).
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  const next = (changes[STORAGE_KEY]?.newValue ?? undefined) as
+    | Partial<Settings>
+    | undefined;
+  if (!next) return;
+  if (next.thresholds) {
+    currentThresholds = {
+      yellow: next.thresholds.yellow ?? DEFAULT_THRESHOLDS.yellow,
+      red: next.thresholds.red ?? DEFAULT_THRESHOLDS.red,
+    };
+    applyThresholdsToSliders(currentThresholds);
+  }
+  if (next.language) {
+    currentLanguage = next.language;
+    els.langSelect.value = currentLanguage;
+    applyI18n();
+  }
+  if (next.upstash) {
+    currentUpstash = {
+      url: next.upstash.url ?? "",
+      token: next.upstash.token ?? "",
+    };
+    els.upstashUrl.value = currentUpstash.url;
+    els.upstashToken.value = currentUpstash.token;
+  }
+  render(currentState, currentThresholds);
+});
+
+// Ask the background for the current state when the panel opens.
+void (async () => {
+  try {
+    const state = (await browser.runtime.sendMessage({
+      type: "GET_STATE",
+    } satisfies HeadroomMessage)) as UsageState | undefined;
+    if (state) {
+      currentState = state;
+      render(currentState, currentThresholds);
+    }
+  } catch {
+    // Background service worker may be asleep; the idle render already shows.
+  }
+})();

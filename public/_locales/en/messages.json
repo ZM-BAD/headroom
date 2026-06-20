@@ -1,0 +1,49 @@
+{
+  "extDescription": {
+    "message": "Monitor your AI chat context-window usage in a native side panel."
+  },
+  "subtitle": { "message": "Context window monitor" },
+  "openSettings": { "message": "Settings" },
+  "detectingPlatform": { "message": "Detecting platform…" },
+  "noContext": { "message": "— context" },
+  "contextSuffix": { "message": "context" },
+  "tokensUnit": { "message": "tokens" },
+  "round": { "message": "Round" },
+  "lastRound": { "message": "Last round" },
+  "statusIdle": { "message": "Waiting for conversation…" },
+  "statusGreen": { "message": "Safe · plenty of room" },
+  "statusYellow": { "message": "Moderate · watch usage" },
+  "statusRed": { "message": "Tight · start a new chat" },
+  "settingsTitle": { "message": "Settings" },
+  "back": { "message": "Back" },
+  "thresholdsTitle": { "message": "Warning thresholds" },
+  "yellowLabel": { "message": "Yellow (moderate)" },
+  "redLabel": { "message": "Red (tight)" },
+  "legendGreen": { "message": "Plenty of room" },
+  "legendYellow": { "message": "Getting tight" },
+  "legendRed": { "message": "Likely to forget" },
+  "resetDefaults": { "message": "Reset to defaults" },
+  "languageLabel": { "message": "Language" },
+  "langAuto": { "message": "Auto (follow browser)" },
+  "upstashTitle": { "message": "Upstash sync" },
+  "upstashUrlLabel": { "message": "REST URL" },
+  "upstashTokenLabel": { "message": "REST Token" },
+  "showToken": { "message": "Show token" },
+  "hideToken": { "message": "Hide token" },
+  "upstashHint": {
+    "message": "Use the REST API credentials from the Upstash console — not the Redis password."
+  },
+  "testConnection": { "message": "Test connection" },
+  "clearUpstash": { "message": "Clear" },
+  "testingConnection": { "message": "Testing…" },
+  "saveSettings": { "message": "Save settings" },
+  "settingsSaved": { "message": "Saved" },
+  "upstashOk": { "message": "Connected ✓" },
+  "upstashErrMissing": { "message": "Enter both URL and token first." },
+  "upstashErrAuth": {
+    "message": "Unauthorized — check the token (REST token ≠ Redis password)."
+  },
+  "upstashErrUnexpected": { "message": "Connected, but unexpected response." },
+  "upstashErrStatus": { "message": "Request failed" },
+  "upstashErrNetwork": { "message": "Network error" }
+}

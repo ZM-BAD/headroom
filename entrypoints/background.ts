@@ -8,6 +8,7 @@ import { estimateTokens } from "../utils/tokens";
 import { appendRound } from "../utils/dialogue-record";
 import { dialogueKey, getDialogue, setDialogue } from "../utils/upstash";
 import { getSettings } from "../utils/settings";
+import { isSupportedPlatformUrl } from "../utils/match-host";
 
 /**
  * Shared background engine — generic over platform adapters.
@@ -88,6 +89,30 @@ async function broadcast(state: UsageState): Promise<void> {
 }
 
 export default defineBackground(() => {
+  void enableSidePanelOnActionClick();
+
+  // Gray out the toolbar action on non-platform tabs so Headroom is only
+  // clickable where it can actually do something. The action is enabled
+  // per-tab (content scripts already only run on platform pages, but the icon
+  // is global by default). We sync on tab activation + navigation; a full
+  // reload of a platform tab also re-fires PAGE_READY, but that carries no
+  // tabId, so the tab listeners are the source of truth for icon state.
+  browser.tabs.onActivated.addListener(
+    (info) => void syncActionStateForTab(info.tabId),
+  );
+  browser.tabs.onUpdated.addListener((tabId, change, tab) => {
+    // Only re-sync on navigations (URL change) — skip status/title/favicon
+    // churn. `tab.url` may be unavailable without tabs permission; fall back
+    // to recomputing from the tabId inside the helper.
+    if (change.url || change.status === "complete") {
+      void syncActionStateForTab(tabId, tab?.url ?? change.url);
+    }
+  });
+  // Best-effort initial sync for already-open tabs when the service worker
+  // (re)starts — covers install/enable/browser-restart without waiting for the
+  // user to switch tabs.
+  void syncActiveTab();
+
   // Step 1: capture each send's prompt + dialogueId as the pending slot.
   const onBeforeRequest: Parameters<
     typeof browser.webRequest.onBeforeRequest.addListener
@@ -223,3 +248,62 @@ export default defineBackground(() => {
     await broadcast(state);
   }
 });
+
+async function enableSidePanelOnActionClick(): Promise<void> {
+  if (!browser.sidePanel) return;
+  try {
+    await browser.sidePanel.setPanelBehavior({
+      openPanelOnActionClick: true,
+    });
+  } catch (error) {
+    console.error("[Headroom] failed to set side panel behavior:", error);
+  }
+}
+
+/**
+ * Enable (colored) the action on platform tabs, disable (grayed, unclickable)
+ * elsewhere. A disabled action doesn't open the side panel on click — exactly
+ * the "only works on AI-chat pages" UX.
+ *
+ * `action.disable`/`enable` take an optional tabId for per-tab state; Chrome &
+ * Edge auto-gray a disabled action icon. Firefox's `browser.action` supports
+ * the same API (sidebar_action is separate and stays clickable — acceptable,
+ * since Firefox users can still open the sidebar manually there).
+ */
+async function syncActionStateForTab(
+  tabId: number,
+  urlHint?: string,
+): Promise<void> {
+  // Resolve the URL: prefer the hint (from onUpdated), else query the tab.
+  // Querying needs no extra permission for the active tab's URL on navigation,
+  // but may return undefined for non-active tabs without `tabs` permission.
+  let url = urlHint;
+  if (!url) {
+    try {
+      const tab = await browser.tabs.get(tabId);
+      url = tab.url;
+    } catch {
+      return; // tab gone — nothing to sync
+    }
+  }
+  const supported = url ? isSupportedPlatformUrl(url) : false;
+  try {
+    if (supported) await browser.action.enable(tabId);
+    else await browser.action.disable(tabId);
+  } catch {
+    // Some contexts (Firefox without action, dev-build oddities) — non-fatal.
+  }
+}
+
+/** Sync the action state for whatever tab is currently active. */
+async function syncActiveTab(): Promise<void> {
+  try {
+    const [active] = await browser.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
+    if (active?.id) await syncActionStateForTab(active.id, active.url);
+  } catch {
+    // Non-fatal: the onActivated listener will catch up on the next switch.
+  }
+}

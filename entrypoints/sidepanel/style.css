@@ -1,0 +1,548 @@
+:root {
+  --bg: #ffffff;
+  --bg-card: #f8fafc;
+  --fg: #0f172a;
+  --fg-muted: #64748b;
+  --border: #e2e8f0;
+  --green: #22c55e;
+  --yellow: #eab308;
+  --red: #ef4444;
+  --idle: #94a3b8;
+  --accent: #6366f1;
+  --radius: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1020;
+    --bg-card: #131a2e;
+    --fg: #e6ebf5;
+    --fg-muted: #94a3b8;
+    --border: #232b45;
+    --accent: #818cf8;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+#app {
+  padding: 14px;
+}
+
+/* Views — only one is visible at a time (main ↔ settings). */
+.hd-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* `display: flex` above would override the [hidden] attribute, so re-assert. */
+.hd-view[hidden] {
+  display: none;
+}
+
+/* Header */
+.hd-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.hd-header--start {
+  justify-content: flex-start;
+  gap: 10px;
+}
+.hd-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.hd-logo {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+}
+.hd-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.hd-subtitle {
+  margin: 0;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+.hd-icon-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--fg-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.hd-icon-btn:hover {
+  color: var(--fg);
+}
+
+/* Cards */
+.hd-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.hd-model-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.hd-model-meta {
+  margin-top: 6px;
+}
+.hd-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg-muted);
+  font-size: 11px;
+}
+
+/* Usage */
+.hd-usage-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.hd-percent {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.hd-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.hd-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--idle);
+}
+.hd-dot[data-level="green"] {
+  background: var(--green);
+}
+.hd-dot[data-level="yellow"] {
+  background: var(--yellow);
+}
+.hd-dot[data-level="red"] {
+  background: var(--red);
+}
+
+.hd-bar {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.hd-bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: var(--idle);
+  transition:
+    width 0.3s ease,
+    background 0.3s ease;
+}
+.hd-bar-fill[data-level="green"] {
+  background: var(--green);
+}
+.hd-bar-fill[data-level="yellow"] {
+  background: var(--yellow);
+}
+.hd-bar-fill[data-level="red"] {
+  background: var(--red);
+}
+
+.hd-usage-bottom {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.hd-usage-bottom #token-used {
+  color: var(--fg);
+  font-weight: 600;
+}
+.hd-sep {
+  margin: 0 4px;
+}
+.hd-unit {
+  margin-left: 4px;
+}
+
+/* Stats */
+.hd-stats {
+  display: flex;
+  gap: 10px;
+}
+.hd-stat {
+  flex: 1;
+}
+.hd-stat-label {
+  font-size: 11px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.hd-stat-value {
+  margin-top: 2px;
+  font-size: 18px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Settings */
+.hd-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.hd-settings-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.hd-settings-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+.hd-settings-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--fg);
+  white-space: nowrap;
+}
+.hd-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+.hd-swatch--yellow {
+  background: var(--yellow);
+}
+.hd-swatch--red {
+  background: var(--red);
+}
+.hd-swatch--green {
+  background: var(--green);
+}
+/* Threshold control: one bar, two thumbs over a 3-zone gradient.
+   --thr-yellow / --thr-red (set inline as %) drive the gradient stops so the
+   green|yellow|red bands line up exactly under each thumb. */
+.hd-threshold-bar {
+  position: relative;
+  height: 24px;
+  display: flex;
+  align-items: center;
+}
+.hd-threshold-bar::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: linear-gradient(
+    to right,
+    var(--green) 0 var(--thr-yellow, 50%),
+    var(--yellow) var(--thr-yellow, 50%) var(--thr-red, 70%),
+    var(--red) var(--thr-red, 70%) 100%
+  );
+}
+/* Two native ranges overlaid on the bar. Track is transparent & ignores
+   pointer events; only each thumb catches drags, so the two inputs don't
+   block one another. Native gives keyboard/touch/a11y for free. */
+.hd-range-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: none;
+  -webkit-appearance: none;
+  appearance: none;
+  pointer-events: none;
+}
+.hd-range-overlay::-webkit-slider-runnable-track {
+  height: 24px;
+  background: none;
+  border: none;
+}
+.hd-range-overlay::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  margin-top: 4px; /* (24 - 16) / 2 → centers the thumb on the 10px track */
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  cursor: grab;
+}
+.hd-range-overlay:active::-webkit-slider-thumb {
+  cursor: grabbing;
+}
+.hd-range-overlay::-moz-range-track {
+  height: 24px;
+  background: none;
+  border: none;
+}
+.hd-range-overlay::-moz-range-thumb {
+  pointer-events: auto;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 2px solid var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  cursor: grab;
+}
+/* Legend: swatch + numeric %. Tabular numbers + fixed swatch → width is
+   identical across languages (this is what made the old sliders resize). */
+.hd-threshold-legend {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+.hd-threshold-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+/* What each color zone means (static help text — not the live values). */
+.hd-threshold-zones {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.hd-zone-meaning {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+.hd-settings-reset {
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fg-muted);
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.hd-settings-reset:hover {
+  color: var(--fg);
+}
+.hd-settings-row--select {
+  grid-template-columns: auto 1fr;
+}
+.hd-select {
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  cursor: pointer;
+}
+.hd-divider {
+  height: 1px;
+  background: var(--border);
+}
+
+/* Settings field rows (Upstash URL/Token/test): label + control, 2 cols. */
+.hd-settings-row--field {
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+}
+/* Upstash action row (test + clear side by side). */
+.hd-upstash-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.hd-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--fg-muted);
+}
+.hd-btn--ghost:hover {
+  color: var(--fg);
+  border-color: transparent;
+}
+
+/* Text inputs mirror the existing select styling for consistency. */
+.hd-input {
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  font-family: inherit;
+}
+.hd-input::placeholder {
+  color: var(--fg-muted);
+  opacity: 0.7;
+}
+.hd-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* Token field: input + show/hide toggle on the right. */
+.hd-token-field {
+  position: relative;
+  display: flex;
+}
+.hd-token-field .hd-input {
+  padding-right: 32px;
+}
+.hd-icon-btn--toggle {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  transform: translateY(-50%);
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+}
+.hd-icon-btn--toggle:hover {
+  color: var(--fg);
+}
+.hd-icon-btn--toggle svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+/* Buttons. */
+.hd-btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+.hd-btn:hover {
+  border-color: var(--accent);
+}
+.hd-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.hd-btn--secondary {
+  background: var(--bg);
+}
+.hd-btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.hd-btn--primary:hover {
+  filter: brightness(1.08);
+  border-color: var(--accent);
+}
+.hd-btn--block {
+  width: 100%;
+}
+
+/* Test-connection result text. */
+.hd-upstash-status {
+  font-size: 11px;
+  color: var(--fg-muted);
+  min-height: 1em;
+}
+.hd-upstash-status[data-state="ok"] {
+  color: var(--green);
+  font-weight: 600;
+}
+.hd-upstash-status[data-state="err"] {
+  color: var(--red);
+  font-weight: 600;
+}
+.hd-upstash-status[data-state="busy"] {
+  color: var(--fg-muted);
+}
+
+/* Small helper text under a setting. */
+.hd-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--fg-muted);
+}

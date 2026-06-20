@@ -1,0 +1,49 @@
+{
+  "extDescription": {
+    "message": "在原生侧边栏中监控 AI 聊天的上下文窗口用量。"
+  },
+  "subtitle": { "message": "上下文窗口监控" },
+  "openSettings": { "message": "设置" },
+  "detectingPlatform": { "message": "正在检测平台…" },
+  "noContext": { "message": "— 上下文" },
+  "contextSuffix": { "message": "上下文" },
+  "tokensUnit": { "message": "tokens" },
+  "round": { "message": "轮次" },
+  "lastRound": { "message": "上一轮" },
+  "statusIdle": { "message": "等待对话…" },
+  "statusGreen": { "message": "安全 · 空间充足" },
+  "statusYellow": { "message": "中度 · 注意用量" },
+  "statusRed": { "message": "紧张 · 建议开新对话" },
+  "settingsTitle": { "message": "设置" },
+  "back": { "message": "返回" },
+  "thresholdsTitle": { "message": "预警阈值" },
+  "yellowLabel": { "message": "变黄（中度）" },
+  "redLabel": { "message": "变红（紧张）" },
+  "legendGreen": { "message": "空间充裕" },
+  "legendYellow": { "message": "开始紧张" },
+  "legendRed": { "message": "易遗忘细节" },
+  "resetDefaults": { "message": "恢复默认" },
+  "languageLabel": { "message": "语言" },
+  "langAuto": { "message": "自动（跟随浏览器）" },
+  "upstashTitle": { "message": "Upstash 同步" },
+  "upstashUrlLabel": { "message": "REST URL" },
+  "upstashTokenLabel": { "message": "REST Token" },
+  "showToken": { "message": "显示 Token" },
+  "hideToken": { "message": "隐藏 Token" },
+  "upstashHint": {
+    "message": "请用 Upstash 控制台里的 REST API 凭证 —— 不是 Redis 密码。"
+  },
+  "testConnection": { "message": "测试连接" },
+  "clearUpstash": { "message": "清空" },
+  "testingConnection": { "message": "测试中…" },
+  "saveSettings": { "message": "保存设置" },
+  "settingsSaved": { "message": "已保存" },
+  "upstashOk": { "message": "连接成功 ✓" },
+  "upstashErrMissing": { "message": "请先填写 URL 和 Token。" },
+  "upstashErrAuth": {
+    "message": "未授权 —— 请检查 Token（REST Token ≠ Redis 密码）。"
+  },
+  "upstashErrUnexpected": { "message": "已连接，但返回结果异常。" },
+  "upstashErrStatus": { "message": "请求失败" },
+  "upstashErrNetwork": { "message": "网络错误" }
+}
