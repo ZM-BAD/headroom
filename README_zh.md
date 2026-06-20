@@ -2,6 +2,8 @@
 
 > 知道你的 AI 什么时候快要"忘事"了。
 
+[English](./README.md) | **简体中文**
+
 **Headroom** 是一个浏览器扩展，在 AI 聊天对话中实时显示 context window 剩余空间——在你的 AI 开始悄悄遗忘重要细节之前提醒你。
 
 ## 问题
@@ -74,7 +76,7 @@ npm run dev:firefox    # Firefox 开发模式
 npm run build          # 生产构建
 ```
 
-详见 [CLAUDE.md](./CLAUDE.md) 获取完整开发指南和架构详情。
+详见 [AGENTS.md](./AGENTS.md) 获取完整开发指南和架构详情。
 
 ## 许可证
 

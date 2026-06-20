@@ -2,11 +2,13 @@
 
 ## Status
 
-draft
+implemented (runtime verification pending — see Acceptance Criteria)
 
 ## Summary
 
-在 AI 聊天平台（首期 DeepSeek）的浏览器原生侧边栏中，实时展示当前对话的 token 累计消耗占 context window limit 的百分比，并提供三级颜色预警（绿/橙/红），帮助专业用户在 AI 遗忘上下文前主动开新对话。
+在 AI 聊天平台的浏览器原生侧边栏中，实时展示当前对话的 token 累计消耗占 context window limit 的百分比，并提供三级颜色预警（绿/橙/红），帮助专业用户在 AI 遗忘上下文前主动开新对话。
+
+支持 7 家平台：DeepSeek、ChatGPT、Gemini、Kimi、Qwen、通义千问、豆包。
 
 ## Motivation
 
@@ -23,35 +25,33 @@ draft
 
 ### 目标用户
 
-日常使用 AI 聊天网页版的专业人士（开发者、研究者、写作者、分析师）。他们不仅用 Claude Code/Codex/Hermes，也花大量时间在 DeepSeek、ChatGPT、Gemini 等网页端进行深度对话。
+日常使用 AI 聊天网页版的专业人士（开发者、研究者、写作者、分析师）。
 
 ## Requirements
 
 ### P0 — 核心功能
 
-- [ ] **实时 Token 统计**：统计当前对话的累计 token 数（当前轮次 + 历史累计）
-- [ ] **Context Window 占比可视化**：以进度条 + 百分比形式展示已用 token 占当前模型 context window limit 的比例
-- [ ] **三级颜色预警**：
-  - 🟢 绿色：占比 < 阈值（默认 50%）
-  - 🟠 橙色：占比 ≥ 橙色阈值（默认 50%）且 < 红色阈值（默认 70%）
-  - 🔴 红色：占比 ≥ 红色阈值（默认 70%）
-- [ ] **模型自动识别**：检测当前 AI 聊天使用的模型（如 DeepSeek-V3、DeepSeek-R1），自动匹配对应的 context window limit
-- [ ] **BYOK Upstash 云端同步**：每轮问答结束后，将对话 metadata 写入用户自有的 Upstash KV 存储（用户自行申请免费实例、配置 API Key）
-- [ ] **DeepSeek 平台适配**：首期支持 chat.deepseek.com 页面的对话数据采集
+- [x] **实时 Token 统计**：统计当前对话的累计 token 数（当前轮次 + 历史累计）
+- [x] **Context Window 占比可视化**：进度条 + 百分比
+- [x] **三级颜色预警**（阈值可在设置面板自定义）：
+  - 🟢 绿色（安全）：占比 < 黄色阈值（默认 50%）
+  - 🟡 黄色（中度）：黄色阈值 ≤ 占比 < 红色阈值（默认 50% / 70%）
+  - 🔴 红色（紧张）：占比 ≥ 红色阈值（默认 70%）
+- [x] **平台识别 + context 匹配**：识别当前平台并匹配 context window limit
+- [x] **BYOK Upstash 云端同步**：每轮问答结束后，将对话 metadata 写入用户自有的 Upstash KV 存储。无 Upstash 时本地 tally 兜底。
+- [x] **多平台适配**：7 家平台（见下表）
 
 ### P1 — 增强功能
 
-- [ ] **对话轮次计数**：显示当前对话的问答轮次数
-- [ ] **URL 作用域控制**：仅在匹配 URL 上激活，非匹配页面扩展图标灰化、sidepanel 不响应
-- [ ] **用户设置面板**：
-  - 自定义三级预警阈值（绿/橙/红）
-  - 覆盖模型的 context window size
-  - 配置 Upstash URL 和 API Token
-- [ ] **侧边栏开关**：点击扩展图标打开/关闭原生侧边栏
+- [x] **对话轮次计数**
+- [x] **URL 作用域控制**：非匹配页面扩展图标灰化（`action.disable`）、sidepanel 不响应
+- [x] **用户设置面板**：预警阈值（双滑块）、Upstash 配置（测试连接/显式保存/清空）、语言切换（中/英/跟随浏览器）
+- [ ] **context window 覆盖**：用户自定义某平台的 context limit。v1 使用各 adapter 的固定默认值，此项待后续。
+- [x] **侧边栏开关**：点击扩展图标打开/关闭原生侧边栏
 
 ## Browser Support
 
-Headroom **仅支持 Manifest V3**（不支持 MV2），需较新浏览器版本：
+**仅支持 Manifest V3**（不支持 MV2），需较新浏览器版本：
 
 | 浏览器         | 最低版本 |
 | -------------- | -------- |
@@ -59,9 +59,7 @@ Headroom **仅支持 Manifest V3**（不支持 MV2），需较新浏览器版本
 | Microsoft Edge | ≥ 149    |
 | Firefox        | ≥ 151    |
 
-架构与实现均基于 MV3；Firefox 端通过 `sidebarAction` 提供原生侧边栏。
-
-> **决策：不兼容 Firefox MV2。** Chrome/Edge 已强制 MV3，后台必须按 service worker 语义编写（状态持久化到 `browser.storage.local`、唤醒后重建）；Firefox MV3 用 event page（`background.scripts`），更宽松、天然兼容，WXT 自动按目标浏览器生成分流 manifest。再支持 MV2 只会多一条后台生命周期路径和测试矩阵，不省任何代码——因为最严的 service worker 模型由 Chrome 锁定，无法靠 MV2 绕开。
+> **决策：不兼容 Firefox MV2。** Chrome/Edge 已强制 MV3，后台必须按 service worker 语义编写（状态持久化到 `browser.storage.local`、唤醒后重建）；Firefox MV3 用 event page，更宽松。再支持 MV2 只会多一条后台生命周期路径和测试矩阵，不省任何代码——最严的 service worker 模型由 Chrome 锁定，无法靠 MV2 绕开。
 
 ## Design
 
@@ -74,14 +72,13 @@ Headroom **仅支持 Manifest V3**（不支持 MV2），需较新浏览器版本
 │  ┌──────────────┐  ┌──────────────┐  ┌────────────┐ │
 │  │  Side Panel   │  │  Background  │  │  Content   │ │
 │  │  (UI 展示)    │  │  Service     │  │  Script    │ │
-│  │               │  │  Worker      │  │  (DeepSeek)│ │
+│  │               │  │  Worker      │  │ (所有平台) │ │
 │  │  - 进度条     │◄─►│              │◄─►│            │ │
-│  │  - 占比 %     │  │  - token 计算│  │  - DOM 解析│ │
-│  │  - 预警颜色   │  │  - 预警判断  │  │  - 网络拦截│ │
-│  │  - 轮次数     │  │  - Upstash   │  │  - 模型检测│ │
-│  │  - 设置面板   │  │    同步      │  │  - 轮次检测│ │
+│  │  - 占比 %     │  │  - token 估算│  │  - DOM 抓取│ │
+│  │  - 预警颜色   │  │  - 预警判断  │  │  - 轮次检测│ │
+│  │  - 轮次数     │  │  - Upstash   │  │            │ │
+│  │  - 设置面板   │  │    同步      │  │            │ │
 │  └──────────────┘  └──────┬───────┘  └────────────┘ │
-│                           │                          │
 └───────────────────────────┼──────────────────────────┘
                             │
                      ┌──────▼───────┐
@@ -90,187 +87,96 @@ Headroom **仅支持 Manifest V3**（不支持 MV2），需较新浏览器版本
                      └──────────────┘
 ```
 
-### Entrypoints
-
-| Entrypoint     | 文件                                           | 职责                                                                                             |
-| -------------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Side Panel     | `entrypoints/sidepanel/index.html` + `main.ts` | 原生侧边栏 UI 展示：进度条、占比、预警颜色、轮次数、设置面板                                     |
-| Content Script | `entrypoints/deepseek.content.ts`              | DeepSeek 页面数据采集：DOM 解析/网络拦截获取对话内容、检测模型、检测轮次完成                     |
-| Background     | `entrypoints/background.ts`                    | 消息桥接（sidepanel ↔ content script）、token 计算（js-tiktoken）、预警等级判断、Upstash KV 读写 |
+三个 entrypoint：`entrypoints/sidepanel/`（UI）、`entrypoints/background.ts`（引擎，含 webRequest 拦截 + action 灰化）、`entrypoints/platform.content.ts`（**单一** content script，按 adapter matchPattern 注入，覆盖所有平台）。
 
 ### Data Flow
 
 ```
-1. 用户在 DeepSeek 页面进行问答
-2. Content Script 检测到新一轮问答完成
-   → 提取对话文本 + 当前模型信息 + conversation_id
-   → 发送消息到 Background
-
-3. Background Service Worker 收到消息
-   → 使用 js-tiktoken 计算 token 数
-   → 从 Upstash KV 读取该对话的历史累计 token
-   → 计算新累计：历史 + 当前轮次
-   → 判断预警等级（对比阈值）
-   → 写入 Upstash KV：更新对话 metadata
-   → 发送更新消息到 Side Panel
-
-4. Side Panel 收到更新消息
-   → 更新进度条、占比百分比、预警颜色、轮次数
+1. 用户在平台页面发消息
+2. webRequest 拦截发送请求 → 解析 prompt + dialogueId
+3. Content Script 检测 AI 回复完成 → 抓取回复文本 → 发到 Background
+4. Background 配对 prompt + answer，估算 token，累计（Upstash 或本地）
+   → 计算预警等级 → 广播到 Side Panel
+5. Side Panel 更新进度条/占比/颜色/轮次
 ```
 
-### Data Model (Upstash KV)
+### Data Model
 
-**Key 设计：** 扁平 key + 前缀，适合 Redis KV 操作
+**存储分层**：Upstash KV 是云端主存储（跨会话持久），`browser.storage.local` 是兜底（无 Upstash 时作为唯一 tally 来源）。
 
 ```
-# 对话数据 — 每个对话一个 key
-headroom:conv:{platform}:{conversation_id}
-
-# 用户设置 — 单个 key
-headroom:settings
+headroom:conv:{platform}:{dialogueId}   # 对话累计（Upstash）
+headroom:settings                        # 用户设置（仅 local）
+headroom:active-state                    # 当前活动对话状态镜像（仅 local）
 ```
 
-**对话 metadata 结构：**
+> 对话记录的 `rounds[]` 按上限滚动裁剪，但 `totalTokens`/`roundCount` 始终是真实累计值（裁剪数组 ≠ 丢失累计）——这是最易出 bug 的地方，有不变式测试守护。具体结构见 `utils/dialogue-record.ts`。
 
-```json
-{
-  "model": "deepseek-v3",
-  "context_window_limit": 131072,
-  "total_tokens": 49750,
-  "round_count": 12,
-  "last_round_tokens": 1520,
-  "created_at": "2026-06-09T08:00:00Z",
-  "updated_at": "2026-06-09T10:30:00Z"
-}
-```
-
-**用户设置结构：**
-
-```json
-{
-  "thresholds": { "green": 0.5, "orange": 0.7, "red": 1.0 },
-  "model_overrides": {
-    "deepseek-chat": 65536,
-    "gpt-4o": 131072
-  },
-  "upstash_url": "https://xxx.upstash.io",
-  "upstash_token": "AxXX...xxx"
-}
-```
+> `upstash` 凭证是 **REST API 对**（`UPSTASH_REDIS_REST_URL` + `_TOKEN`），不是 Redis 密码；浏览器扩展只能走 HTTPS REST。具体结构见 `utils/settings.ts`。
 
 ### UI (Side Panel)
 
+主视图 + 设置视图切换（⚙️ 进入设置）：
+
 ```
-┌─────────────────────────┐
-│  Headroom            ⚙️  │  ← 标题 + 设置按钮
-│                         │
-│  DeepSeek-V3            │  ← 当前模型
-│  Context: 128K          │  ← Context window limit
-│                         │
-│  ████████████░░░░░░░░░  │  ← 进度条（带颜色）
-│  49,750 / 131,072       │  ← token 数
-│  38.0%                  │  ← 占比百分比
-│                         │
-│  🟢 Plenty of room      │  ← 预警状态文字
-│                         │
-│  Round: 12              │  ← 对话轮次
-│  Last round: 1,520      │  ← 上一轮 token
-│                         │
-│  ─────── Settings ──────│  ← 设置区域（可折叠）
-│  Warning Thresholds:    │
-│  🟢 < 50%  🟠 50%  🔴 70%│
-│  Upstash: ✓ Connected   │
+┌─── 主视图 ──────────────┐    ┌─── 设置视图 ───────────────┐
+│  Headroom            ⚙️  │    │  ← 返回                     │
+│  DeepSeek               │    │  预警阈值 🟡50% 🔴70%        │
+│  Context: 1M            │    │  语言 [自动 ▾]               │
+│  ██░░░░░░  5.0%         │    │  Upstash URL/Token/测试/清空 │
+│  🟢 空间充足             │    │  [保存设置]                  │
+│  Round: 12  Last: 1,520 │    └─────────────────────────────┘
 └─────────────────────────┘
 ```
 
+第一行显示**平台名**（v1 不检测具体模型，用 adapter 固定 contextLimit）。
+
 ### Browser APIs
 
-| API                                           | 用途                                             |
-| --------------------------------------------- | ------------------------------------------------ |
-| `browser.sidePanel` / `browser.sidebarAction` | 原生侧边栏（WXT 自动适配）                       |
-| `browser.runtime.sendMessage` / `onMessage`   | Sidepanel ↔ Background ↔ Content Script 消息通信 |
-| `browser.storage.local`                       | 本地缓存（Upstash 数据的本地镜像，离线可用）     |
-| `browser.action.setIcon`                      | 非匹配页面图标灰化                               |
-| `browser.tabs.onUpdated`                      | 监听 tab URL 变化，判断是否在匹配页面            |
+| API                                           | 用途                                              |
+| --------------------------------------------- | ------------------------------------------------- |
+| `browser.sidePanel` / `browser.sidebarAction` | 原生侧边栏（WXT 自动适配）                        |
+| `browser.runtime.sendMessage` / `onMessage`   | Sidepanel ↔ Background ↔ Content Script 消息通信  |
+| `browser.storage.local`                       | 设置 + 活动状态 + 无 Upstash 时的本地 tally       |
+| `browser.action.enable` / `disable(tabId)`    | 非匹配页面禁用 action（Chrome 自动置灰 + 不可点） |
+| `browser.tabs.onActivated` / `onUpdated`      | 同步 action enable/disable                        |
+| `browser.webRequest.onBeforeRequest`          | 读取发送请求体，提取 prompt + dialogueId          |
 
 ### Platform Adapter Pattern
 
-平台无关架构，每个 AI 聊天平台一个适配器：
+每个平台一个 `PlatformAdapter`（`adapters/<platform>.ts`），封装：webRequest 匹配 URL、请求体解析（prompt + dialogueId）、context window limit、DOM 选择器。background 是平台无关引擎；新增平台 = 加一个 adapter + 注册 + host_permissions。
 
-```typescript
-// utils/platform-adapter.ts
-interface PlatformAdapter {
-  platformId: string; // "deepseek" | "chatgpt" | "gemini" | ...
-  matchPatterns: string[]; // ["*://chat.deepseek.com/*"]
-  detectModel(): string; // 从页面检测当前模型
-  getConversationId(): string; // 从页面提取对话 ID
-  getConversationText(): string; // 获取当前对话文本
-  getRoundCount(): number; // 获取对话轮次
-  isResponseComplete(): boolean; // 检测 AI 回复是否完成
-}
-```
+各平台 context window 默认值（v1 固定使用，覆盖功能待后续）：
 
-### 内置模型配置表
+| 平台     | 页面 host         | API host          | Context (默认) | 请求体解析                                |
+| -------- | ----------------- | ----------------- | -------------- | ----------------------------------------- |
+| DeepSeek | chat.deepseek.com | chat.deepseek.com | 1,000,000      | ✅ prompt + `chat_session_id`             |
+| ChatGPT  | chatgpt.com       | chatgpt.com       | 128,000        | ✅ `content.parts[0]` + `conversation_id` |
+| Gemini   | gemini.google.com | —（纯 DOM）       | 1,000,000      | ❌ `f.req` 不可解析 → 全走 DOM            |
+| Kimi     | www.kimi.com      | www.kimi.com      | 200,000        | ✅ prompt（id 在 URL path）               |
+| Qwen     | chat.qwen.ai      | chat.qwen.ai      | 131,072        | ✅ prompt + `chat_id`（URL query）        |
+| 通义千问 | www.qianwen.com   | chat2.qianwen.com | 131,072        | ✅ `messages[0].content` + `session_id`   |
+| 豆包     | www.doubao.com    | www.doubao.com    | 256,000        | ✅ prompt（`content` 是字符串化 JSON）    |
 
-| 模型              | Context Window (tokens) |
-| ----------------- | ----------------------- |
-| deepseek-v3       | 131,072 (128K)          |
-| deepseek-r1       | 131,072 (128K)          |
-| deepseek-chat     | 65,536 (64K)            |
-| deepseek-reasoner | 131,072 (128K)          |
-
-用户可通过设置覆盖。
-
-## Implementation Plan
-
-### Phase 1: 基础骨架
-
-1. 创建 sidepanel entrypoint（`entrypoints/sidepanel/index.html` + `main.ts`）
-2. 创建 background entrypoint（`entrypoints/background.ts`）
-3. 创建 DeepSeek content script（`entrypoints/deepseek.content.ts`）
-4. 搭建消息通信桥（sidepanel ↔ background ↔ content script）
-5. 配置 URL 匹配规则和图标灰化逻辑
-
-### Phase 2: 数据采集 + Token 计算
-
-6. 实现平台适配器接口（`PlatformAdapter`）
-7. 调试 DeepSeek 页面，确定数据采集策略（DOM 解析 vs 网络拦截）
-8. 实现模型自动检测
-9. 集成 js-tiktoken，实现 token 计算
-10. 实现对话轮次检测和 conversation_id 提取
-
-### Phase 3: Upstash 集成
-
-11. 设计 Upstash KV 读写工具函数
-12. 实现每轮问答结束后的数据同步
-13. 实现侧边栏打开时的数据加载
-14. 实现 BYOK 配置（用户填写 Upstash URL + Token）
-
-### Phase 4: UI + 预警
-
-15. 实现进度条 + 占比百分比 UI
-16. 实现三级颜色预警逻辑
-17. 实现设置面板（阈值调整、模型覆盖、Upstash 配置）
-18. 实现本地缓存（browser.storage.local 作为 Upstash 的本地镜像）
+> 7 家 DOM 选择器 + API host/path 全部经 Playwright 登录实测确认（2026-06）。
 
 ## Acceptance Criteria
 
-- [ ] 在 DeepSeek 页面点击扩展图标，原生侧边栏打开，显示 Headroom UI
+> 以下代码层面已实现，checkbox 标记**运行时验证**状态（均待真实浏览器测试）。
+
+- [ ] 在平台页面点击扩展图标，原生侧边栏打开，显示 Headroom UI
 - [ ] 进行一轮问答后，侧边栏实时更新 token 数和占比
-- [ ] 占比超过 50% 时进度条变橙色，超过 70% 时变红色
+- [ ] 占比超过阈值时进度条变色（黄/红）
 - [ ] 阈值可在设置面板中自定义
-- [ ] 自动检测当前使用的模型并显示对应的 context window limit
-- [ ] 每轮问答结束后数据成功写入用户配置的 Upstash KV
-- [ ] 非匹配页面点击扩展图标不打开侧边栏，图标灰化
-- [ ] 在 Chrome、Edge、Firefox 三浏览器均可正常运行
+- [ ] 显示当前平台的 context window limit
+- [ ] 每轮问答后数据写入用户配置的 Upstash KV
+- [ ] 非匹配页面图标灰化且点击不打开侧边栏
+- [ ] Chrome、Edge、Firefox 三浏览器均可正常运行
 
 ## Open Questions
 
-- [ ] DeepSeek 页面的数据采集策略：DOM 解析 vs 网络拦截 vs 混合方案？需要在 Phase 2 实际调试后确定
-- [ ] DeepSeek 页面中 conversation_id 的获取方式？需调试确认
-- [ ] DeepSeek 页面中模型切换的检测方式？需调试确认
-- [ ] js-tiktoken 词表文件的大小和处理方式（可能需要仅打包 cl100k_base 词表）
-
-## Implementation Notes
-
-> 实现完成后填写：偏差、技术决策、踩坑记录。
+- [x] 数据采集：**混合**——webRequest 读请求体拿 prompt + dialogueId，DOM 抓 AI 回复文本。响应流不读（MV3 拿不到响应体；真实 token 需 `debugger` API，留作精度升级）。
+- [x] Token 计算：**估算**（CJK≈1 token/字，其余≈4 字/token），不打包 js-tiktoken（词表太重且各模型编码不同）。
+- [x] DOM 选择器 + API host/path：7 家全部经 Playwright 实测确认。
+- [ ] context window 覆盖：待后续实现。
+- [ ] 运行时验收：Acceptance Criteria 8 条均待真实浏览器验证。

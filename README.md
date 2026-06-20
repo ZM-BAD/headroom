@@ -2,6 +2,8 @@
 
 > Know when your AI is about to forget.
 
+**English** | [简体中文](./README_zh.md)
+
 **Headroom** is a browser extension that shows you how much context window you have left in AI chat conversations — before your AI silently starts losing important details.
 
 ## The Problem
@@ -74,7 +76,7 @@ npm run dev:firefox    # Dev mode for Firefox
 npm run build          # Production build
 ```
 
-See [CLAUDE.md](./CLAUDE.md) for full development guidelines and architecture details.
+See [AGENTS.md](./AGENTS.md) for full development guidelines and architecture details.
 
 ## License
 

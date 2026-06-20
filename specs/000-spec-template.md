@@ -61,7 +61,3 @@ UI 交互描述（如有）。
 ## Open Questions
 
 - [ ] 待确认问题
-
-## Implementation Notes
-
-> 实现完成后填写：偏差、技术决策、踩坑记录。
