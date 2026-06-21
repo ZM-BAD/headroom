@@ -6,7 +6,8 @@ import type {
 import type { PlatformAdapter } from "../utils/platform-adapter";
 import { ADAPTERS } from "../adapters";
 import { estimateTokens } from "../utils/tokens";
-import { appendRound } from "../utils/dialogue-record";
+import { upsertRound } from "../utils/dialogue-record";
+import { tallyLocalRound, type LastRound } from "../utils/tally";
 import { dialogueKey, getDialogue, setDialogue } from "../utils/upstash";
 import { getSettings, type Settings } from "../utils/settings";
 import { adapterForUrl, isSupportedPlatformUrl } from "../utils/match-host";
@@ -29,6 +30,12 @@ import { adapterForUrl, isSupportedPlatformUrl } from "../utils/match-host";
 
 const ACTIVE_STATE_KEY = "headroom:active-state";
 const PENDING_KEY = "headroom:pending";
+/**
+ * Last round seen (platformId + roundId + tokens). Lets the local-tally
+ * fallback de-dupe a round that re-emits as it streams — mirroring the upsert
+ * the Upstash path does, so the gauge doesn't over-count even without Upstash.
+ */
+const LAST_ROUND_KEY = "headroom:last-round";
 
 const IDLE_STATE: UsageState = {
   platformId: null,
@@ -36,6 +43,7 @@ const IDLE_STATE: UsageState = {
   totalTokens: 0,
   lastRoundTokens: null,
   roundCount: 0,
+  dialogueId: null,
 };
 
 /** webRequest URL filter built from every adapter's completion match-pattern. */
@@ -83,6 +91,15 @@ async function takePending(): Promise<PendingPrompt | null> {
   return p ?? null;
 }
 
+async function getLastRound(): Promise<LastRound | null> {
+  const raw = await browser.storage.local.get(LAST_ROUND_KEY);
+  return (raw[LAST_ROUND_KEY] as LastRound | undefined) ?? null;
+}
+
+async function setLastRound(r: LastRound): Promise<void> {
+  await browser.storage.local.set({ [LAST_ROUND_KEY]: r });
+}
+
 async function broadcast(state: UsageState): Promise<void> {
   await browser.runtime
     .sendMessage({ type: "STATE_UPDATE", state } satisfies HeadroomMessage)
@@ -114,20 +131,32 @@ function effectiveLimit(settings: Settings, adapter: PlatformAdapter): number {
  */
 async function applyPlatformToActiveState(
   adapter: PlatformAdapter,
+  urlDialogueId: string | null = null,
 ): Promise<UsageState> {
   const settings = await getSettings();
   const contextLimit = effectiveLimit(settings, adapter);
   const prev = await loadActiveState();
-  const switched = prev.platformId !== adapter.platformId;
+  // Reset the tally when the platform OR the conversation (dialogueId) changes.
+  // Starting / switching a chat within the same platform is an SPA route change
+  // (no PAGE_READY), so without the dialogueId check the gauge would keep the
+  // prior conversation's tally — the "new chat doesn't reset to 0" bug.
+  const switched =
+    prev.platformId !== adapter.platformId || prev.dialogueId !== urlDialogueId;
   const state: UsageState = switched
     ? {
         platformId: adapter.platformId,
         contextLimit,
+        dialogueId: urlDialogueId,
         totalTokens: 0,
         lastRoundTokens: null,
         roundCount: 0,
       }
-    : { ...prev, platformId: adapter.platformId, contextLimit };
+    : {
+        ...prev,
+        platformId: adapter.platformId,
+        contextLimit,
+        dialogueId: urlDialogueId,
+      };
   await saveActiveState(state);
   await broadcast(state);
   return state;
@@ -151,9 +180,13 @@ async function syncActiveStateToActiveTab(): Promise<UsageState> {
     // Tab query failed (rare) — fall back to the stored state.
   }
   const adapter = url ? adapterForUrl(url) : undefined;
-  return adapter
-    ? await applyPlatformToActiveState(adapter)
-    : await loadActiveState();
+  if (adapter && url) {
+    return await applyPlatformToActiveState(
+      adapter,
+      adapter.dialogueIdFromUrl?.(url) ?? null,
+    );
+  }
+  return await loadActiveState();
 }
 
 export default defineBackground(() => {
@@ -166,7 +199,10 @@ export default defineBackground(() => {
   // reload of a platform tab also re-fires PAGE_READY, but that carries no
   // tabId, so the tab listeners are the source of truth for icon state.
   browser.tabs.onActivated.addListener((info) => {
-    void applyPanelScope(info.tabId, { windowId: info.windowId });
+    void applyPanelScope(info.tabId, {
+      windowId: info.windowId,
+      isActive: true,
+    });
     // Keep the stored active state (+ any open panel) in step with the tab the
     // user just switched to, so the model name + context length follow the
     // active tab. onActivated is always the active tab → safe to sync here.
@@ -180,7 +216,15 @@ export default defineBackground(() => {
       void applyPanelScope(tabId, {
         urlHint: tab?.url ?? change.url,
         windowId: tab?.windowId,
+        isActive: tab?.active === true,
       });
+    }
+    // An SPA route change on the ACTIVE tab (start new chat / switch history
+    // chat / navigate within the platform) changes its URL without reloading →
+    // PAGE_READY won't re-fire, so re-derive the dialogue id here and reset the
+    // gauge when the conversation changes.
+    if (change.url && tab?.active) {
+      void syncActiveStateToActiveTab();
     }
   });
   // Best-effort initial sync for already-open tabs when the service worker
@@ -240,7 +284,10 @@ export default defineBackground(() => {
         const adapter = ADAPTERS.find(
           (a) => a.platformId === message.platformId,
         );
-        if (adapter) await applyPlatformToActiveState(adapter);
+        if (adapter) {
+          const dialogueId = adapter.dialogueIdFromUrl?.(message.url) ?? null;
+          await applyPlatformToActiveState(adapter, dialogueId);
+        }
         return;
       }
       case "GET_STATE":
@@ -267,6 +314,11 @@ export default defineBackground(() => {
     const adapter = ADAPTERS.find((a) => a.platformId === m.platformId);
     if (!adapter) return;
 
+    // The conversation the gauge is currently displaying (tracked from the tab
+    // URL by the sync paths). handleRound only updates the tally — it must NOT
+    // change which conversation is shown, so it preserves prev.dialogueId.
+    const prev = await loadActiveState();
+
     const answerTokens = estimateTokens(m.answerText);
     const pending = await takePending();
     // Prefer the exact request-body prompt; fall back to the DOM-scraped one
@@ -288,7 +340,8 @@ export default defineBackground(() => {
       try {
         const key = dialogueKey(m.platformId, dialogueId);
         const prev = await getDialogue(creds, key);
-        const next = appendRound(prev, m.platformId, dialogueId, contextLimit, {
+        const next = upsertRound(prev, m.platformId, dialogueId, contextLimit, {
+          n: m.roundId,
           promptTokens,
           answerTokens,
           ts: Date.now(),
@@ -307,16 +360,44 @@ export default defineBackground(() => {
       // (Gemini's unparseable body, or the first message of a new chat), when
       // Upstash isn't configured, or when an Upstash op failed. Without this a
       // no-dialogueId round would reset the gauge to just that round (H1).
-      const prev = await loadActiveState();
-      if (prev.platformId === m.platformId) {
-        totalTokens = prev.totalTokens + lastRoundTokens;
-        roundCount = prev.roundCount + 1;
-      }
+      const last = await getLastRound();
+      // round.dialogueId is the URL-tracked ACTIVE conversation (prev.dialogueId),
+      // NOT the request-body id — so two chats' round 1 (same roundId, different
+      // conversation) don't dedup against each other (the C1 cross-conversation
+      // mis-count).
+      const tallied = tallyLocalRound(prev, last, {
+        platformId: m.platformId,
+        dialogueId: prev.dialogueId,
+        roundId: m.roundId,
+        tokens: lastRoundTokens,
+      });
+      totalTokens = tallied.totalTokens;
+      roundCount = tallied.roundCount;
+      await setLastRound({
+        platformId: m.platformId,
+        dialogueId: prev.dialogueId,
+        roundId: m.roundId,
+        tokens: lastRoundTokens,
+      });
     }
 
+    // Re-read before writing: if the active conversation changed while this
+    // round was being processed (user started/switched a chat during the awaits
+    // above), DON'T clobber the new state with this round's tally — it belongs
+    // to a conversation the user already left. Guards the read-modify-write race
+    // on storage.local (H1); the round is still persisted in Upstash if that
+    // path ran, just not painted onto a gauge that's moved on.
+    const current = await loadActiveState();
+    if (
+      current.platformId !== m.platformId ||
+      current.dialogueId !== prev.dialogueId
+    ) {
+      return;
+    }
     const state: UsageState = {
       platformId: m.platformId,
       contextLimit,
+      dialogueId: prev.dialogueId,
       totalTokens,
       lastRoundTokens,
       roundCount,
@@ -366,7 +447,7 @@ async function enableSidePanelOnActionClick(): Promise<void> {
  */
 async function applyPanelScope(
   tabId: number,
-  opts: { urlHint?: string; windowId?: number } = {},
+  opts: { urlHint?: string; windowId?: number; isActive?: boolean } = {},
 ): Promise<void> {
   let url = opts.urlHint;
   if (!url) {
@@ -387,8 +468,15 @@ async function applyPanelScope(
 
   // Chrome/Edge only. Firefox has no browser.sidePanel (uses sidebar_action,
   // which is global and can't be scoped — acceptable per the playbook). Force-
-  // close the global panel when landing on a non-platform tab.
-  if (browser.sidePanel && !supported && opts.windowId != null) {
+  // close the global panel ONLY for the active tab — onUpdated also fires for
+  // background tabs (e.g. a Bilibili tab finishing its load while you're on
+  // DeepSeek), and closing on those would dismiss the panel you're looking at.
+  if (
+    browser.sidePanel &&
+    !supported &&
+    opts.windowId != null &&
+    opts.isActive
+  ) {
     const close = (
       browser.sidePanel as {
         close?: (o: { windowId: number }) => Promise<void>;
@@ -417,6 +505,7 @@ async function syncActiveTab(): Promise<void> {
       await applyPanelScope(active.id, {
         urlHint: active.url,
         windowId: active.windowId,
+        isActive: true,
       });
     }
   } catch {

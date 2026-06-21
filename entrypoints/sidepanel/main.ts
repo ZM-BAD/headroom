@@ -42,6 +42,7 @@ const IDLE_STATE: UsageState = {
   totalTokens: 0,
   lastRoundTokens: null,
   roundCount: 0,
+  dialogueId: null,
 };
 
 const els = {

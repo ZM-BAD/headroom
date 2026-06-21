@@ -32,6 +32,14 @@ export const qianwenAdapter: PlatformAdapter = {
   },
   // Live-confirmed (2026-06): the `-question`/`-answer` prefix is stable even
   // though the trailing hash (`-oonUAN`) rotates per build.
+  // 通义千问 chat URLs: https://www.qianwen.com/chat/<id> (home = "/").
+  dialogueIdFromUrl(url) {
+    try {
+      return new URL(url).pathname.match(/\/chat\/([^/?#]+)/)?.[1] ?? null;
+    } catch {
+      return null;
+    }
+  },
   answerSelector: "[class*='message-select-wrapper-answer'] .qk-markdown",
   userSelector:
     "[class*='message-select-wrapper-question'] .question-text-card",

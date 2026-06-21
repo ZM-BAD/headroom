@@ -17,6 +17,14 @@ export const geminiAdapter: PlatformAdapter = {
   parseRequest() {
     return { prompt: null, dialogueId: null };
   },
+  // Gemini chat URLs: https://gemini.google.com/app/<id> (home = "/app", no id).
+  dialogueIdFromUrl(url) {
+    try {
+      return new URL(url).pathname.match(/\/app\/([^/?#]+)/)?.[1] ?? null;
+    } catch {
+      return null;
+    }
+  },
   answerSelector: "model-response .markdown",
   userSelector: "user-query",
   conversationSelector: "chat-window",

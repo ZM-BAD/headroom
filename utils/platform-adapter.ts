@@ -36,6 +36,14 @@ export interface PlatformAdapter {
    * throw — return nulls on a bad/unparseable shape.
    */
   parseRequest(body: unknown, url: string): ParsedRequest;
+  /**
+   * Extract the dialogue id from a platform chat URL (pathname regex). The
+   * background uses it to detect when the user starts / switches a conversation
+   * WITHIN the same platform (an SPA route change — no page reload, so PAGE_READY
+   * doesn't re-fire) so the gauge can reset instead of showing the prior
+   * conversation's tally. Returns null on the home / new-chat URL.
+   */
+  dialogueIdFromUrl?(url: string): string | null;
   /** DOM selector for a single AI/assistant message (content-script side). */
   answerSelector: string;
   /** DOM selector for a single user message (optional; DOM prompt fallback). */

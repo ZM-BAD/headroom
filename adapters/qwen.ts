@@ -29,6 +29,14 @@ export const qwenAdapter: PlatformAdapter = {
     const m = url.match(/[?&]chat_id=([^&#]+)/);
     return { prompt, dialogueId: m ? decodeURIComponent(m[1]) : null };
   },
+  // Qwen chat URLs: https://chat.qwen.ai/c/<id> (home = "/").
+  dialogueIdFromUrl(url) {
+    try {
+      return new URL(url).pathname.match(/\/c\/([^/?#]+)/)?.[1] ?? null;
+    } catch {
+      return null;
+    }
+  },
   answerSelector: ".qwen-chat-message-assistant .qwen-markdown",
   userSelector: ".qwen-chat-message-user",
   conversationSelector: ".chat-messages, main",

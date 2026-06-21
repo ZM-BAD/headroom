@@ -25,6 +25,14 @@ export const chatgptAdapter: PlatformAdapter = {
         typeof b?.conversation_id === "string" ? b.conversation_id : null,
     };
   },
+  // ChatGPT chat URLs: https://chatgpt.com/c/<id> (home = "/").
+  dialogueIdFromUrl(url) {
+    try {
+      return new URL(url).pathname.match(/\/c\/([^/?#]+)/)?.[1] ?? null;
+    } catch {
+      return null;
+    }
+  },
   answerSelector: '[data-message-author-role="assistant"] .markdown',
   userSelector: '[data-message-author-role="user"]',
   conversationSelector: "main",

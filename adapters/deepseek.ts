@@ -28,6 +28,16 @@ export const deepseekAdapter: PlatformAdapter = {
         typeof b?.chat_session_id === "string" ? b.chat_session_id : null,
     };
   },
+  // DeepSeek chat URLs: https://chat.deepseek.com/a/chat/s/<id> (home = "/").
+  dialogueIdFromUrl(url) {
+    try {
+      return (
+        new URL(url).pathname.match(/\/a\/chat\/s\/([^/?#]+)/)?.[1] ?? null
+      );
+    } catch {
+      return null;
+    }
+  },
   answerSelector: ".ds-assistant-message-main-content",
   conversationSelector: 'div[class*="message-list"], main',
 };

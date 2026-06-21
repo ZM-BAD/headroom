@@ -29,6 +29,14 @@ export const kimiAdapter: PlatformAdapter = {
     const dialogueId = typeof b?.chat_id === "string" ? b.chat_id : null;
     return { prompt, dialogueId };
   },
+  // Kimi chat URLs: https://www.kimi.com/chat/<id> (home = "/?chat_enter_method=…").
+  dialogueIdFromUrl(url) {
+    try {
+      return new URL(url).pathname.match(/\/chat\/([^/?#]+)/)?.[1] ?? null;
+    } catch {
+      return null;
+    }
+  },
   answerSelector: '.chat-content-item-assistant [class*="markdown"]',
   userSelector: ".chat-content-item-user",
   conversationSelector: "[role='main'], main",

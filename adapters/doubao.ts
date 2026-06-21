@@ -44,6 +44,14 @@ export const doubaoAdapter: PlatformAdapter = {
           : null,
     };
   },
+  // 豆包 chat URLs: https://www.doubao.com/chat/<id> (home = "/chat/", no id).
+  dialogueIdFromUrl(url) {
+    try {
+      return new URL(url).pathname.match(/\/chat\/([^/?#]+)/)?.[1] ?? null;
+    } catch {
+      return null;
+    }
+  },
   answerSelector: ".md-box-root",
   userSelector: "[class*='whitespace-pre-wrap']",
   conversationSelector: "[class*='message-list'], main",

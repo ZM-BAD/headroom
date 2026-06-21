@@ -27,12 +27,13 @@ export default defineContentScript({
       .catch(() => {
         // Background service worker may be asleep on first load; ignore.
       });
-    watchRounds(adapter, (answerText, promptText) => {
+    watchRounds(adapter, (roundId, answerText, promptText) => {
       browser.runtime
         .sendMessage({
           type: "ROUND_COMPLETE",
           platformId: adapter.platformId,
           dialogueId: null,
+          roundId,
           answerText,
           ...(promptText ? { promptText } : {}),
         } satisfies HeadroomMessage)
