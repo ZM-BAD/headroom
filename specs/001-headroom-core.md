@@ -46,7 +46,7 @@ implemented (runtime verification pending — see Acceptance Criteria)
 - [x] **对话轮次计数**
 - [x] **URL 作用域控制**：非匹配页面扩展图标灰化（`action.disable`）、sidepanel 不响应
 - [x] **用户设置面板**：预警阈值（双滑块）、Upstash 配置（测试连接/显式保存/清空）、语言切换（中/英/跟随浏览器）
-- [ ] **context window 覆盖**：用户自定义某平台的 context limit。v1 使用各 adapter 的固定默认值，此项待后续。
+- [x] **context window 覆盖**：用户可在设置面板按平台自定义 context limit；默认值取各 adapter 的 `contextLimit`（自动检测），缺省时回退到 adapter 默认。
 - [x] **侧边栏开关**：点击扩展图标打开/关闭原生侧边栏
 
 ## Browser Support
@@ -146,17 +146,17 @@ headroom:active-state                    # 当前活动对话状态镜像（仅 
 
 每个平台一个 `PlatformAdapter`（`adapters/<platform>.ts`），封装：webRequest 匹配 URL、请求体解析（prompt + dialogueId）、context window limit、DOM 选择器。background 是平台无关引擎；新增平台 = 加一个 adapter + 注册 + host_permissions。
 
-各平台 context window 默认值（v1 固定使用，覆盖功能待后续）：
+各平台 context window 默认值（取各 adapter 的 `contextLimit`；用户可在设置面板按平台覆盖）：
 
-| 平台     | 页面 host         | API host          | Context (默认) | 请求体解析                                |
-| -------- | ----------------- | ----------------- | -------------- | ----------------------------------------- |
-| DeepSeek | chat.deepseek.com | chat.deepseek.com | 1,000,000      | ✅ prompt + `chat_session_id`             |
-| ChatGPT  | chatgpt.com       | chatgpt.com       | 128,000        | ✅ `content.parts[0]` + `conversation_id` |
-| Gemini   | gemini.google.com | —（纯 DOM）       | 1,000,000      | ❌ `f.req` 不可解析 → 全走 DOM            |
-| Kimi     | www.kimi.com      | www.kimi.com      | 200,000        | ✅ prompt（id 在 URL path）               |
-| Qwen     | chat.qwen.ai      | chat.qwen.ai      | 131,072        | ✅ prompt + `chat_id`（URL query）        |
-| 通义千问 | www.qianwen.com   | chat2.qianwen.com | 131,072        | ✅ `messages[0].content` + `session_id`   |
-| 豆包     | www.doubao.com    | www.doubao.com    | 256,000        | ✅ prompt（`content` 是字符串化 JSON）    |
+| 平台     | 页面 host         | API host          | Context (默认) | 请求体解析                                                 |
+| -------- | ----------------- | ----------------- | -------------- | ---------------------------------------------------------- |
+| DeepSeek | chat.deepseek.com | chat.deepseek.com | 1,000,000      | ✅ prompt + `chat_session_id`                              |
+| ChatGPT  | chatgpt.com       | chatgpt.com       | 128,000        | ✅ `content.parts[0]` + `conversation_id`                  |
+| Gemini   | gemini.google.com | —（纯 DOM）       | 1,000,000      | ❌ `f.req` 不可解析 → 全走 DOM                             |
+| Kimi     | www.kimi.com      | www.kimi.com      | 200,000        | ✅ `blocks[0].text.content` + `chat_id`（新会话首条无 id） |
+| Qwen     | chat.qwen.ai      | chat.qwen.ai      | 131,072        | ✅ prompt + `chat_id`（URL query）                         |
+| 通义千问 | www.qianwen.com   | chat2.qianwen.com | 131,072        | ✅ `messages[0].content` + `session_id`                    |
+| 豆包     | www.doubao.com    | www.doubao.com    | 256,000        | ✅ prompt（`content` 是字符串化 JSON）                     |
 
 > 7 家 DOM 选择器 + API host/path 全部经 Playwright 登录实测确认（2026-06）。
 
@@ -178,5 +178,5 @@ headroom:active-state                    # 当前活动对话状态镜像（仅 
 - [x] 数据采集：**混合**——webRequest 读请求体拿 prompt + dialogueId，DOM 抓 AI 回复文本。响应流不读（MV3 拿不到响应体；真实 token 需 `debugger` API，留作精度升级）。
 - [x] Token 计算：**估算**（CJK≈1 token/字，其余≈4 字/token），不打包 js-tiktoken（词表太重且各模型编码不同）。
 - [x] DOM 选择器 + API host/path：7 家全部经 Playwright 实测确认。
-- [ ] context window 覆盖：待后续实现。
+- [x] context window 覆盖：设置面板按平台可覆盖默认 context limit（默认值来自 adapter，已实现，待运行时验证）。
 - [ ] 运行时验收：Acceptance Criteria 8 条均待真实浏览器验证。

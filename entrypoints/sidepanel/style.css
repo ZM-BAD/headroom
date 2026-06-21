@@ -460,6 +460,27 @@ body {
 .hd-token-field .hd-input {
   padding-right: 32px;
 }
+
+/* Per-platform context-limit overrides: compact, right-aligned number inputs. */
+.hd-context-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hd-context-list .hd-settings-row--field {
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+}
+.hd-context-list .hd-input {
+  width: auto;
+  min-width: 4.5rem;
+  text-align: right;
+}
+.hd-context-unit {
+  font-size: 11px;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
 .hd-icon-btn--toggle {
   position: absolute;
   top: 50%;

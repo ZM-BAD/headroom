@@ -3,12 +3,13 @@ import type {
   RoundCompleteMessage,
   UsageState,
 } from "../utils/messages";
+import type { PlatformAdapter } from "../utils/platform-adapter";
 import { ADAPTERS } from "../adapters";
 import { estimateTokens } from "../utils/tokens";
 import { appendRound } from "../utils/dialogue-record";
 import { dialogueKey, getDialogue, setDialogue } from "../utils/upstash";
-import { getSettings } from "../utils/settings";
-import { isSupportedPlatformUrl } from "../utils/match-host";
+import { getSettings, type Settings } from "../utils/settings";
+import { adapterForUrl, isSupportedPlatformUrl } from "../utils/match-host";
 
 /**
  * Shared background engine — generic over platform adapters.
@@ -41,8 +42,10 @@ const IDLE_STATE: UsageState = {
 const URL_FILTER = ADAPTERS.map((a) => a.completionUrl);
 
 /**
- * Dispatch by request host (unique per platform). Avoids per-path matching so
- * variable path segments work (e.g. Kimi's `/api/chat/{id}/completion/stream`).
+ * Dispatch by request host (unique per platform). Host-based dispatch survives
+ * path migrations: Kimi, e.g., moved its send from /api/chat/{id}/completion/
+ * stream to /apiv2/...ChatService/Chat, and only each adapter's completionUrl
+ * filter needs to track the exact path.
  */
 function adapterForRequest(url: string) {
   let host: string;
@@ -88,6 +91,71 @@ async function broadcast(state: UsageState): Promise<void> {
     });
 }
 
+/**
+ * The context limit to use for a platform: the user's override (when it's a
+ * valid positive number from settings) over the adapter's auto-detected default.
+ */
+function effectiveLimit(settings: Settings, adapter: PlatformAdapter): number {
+  const override = settings.contextLimits[adapter.platformId];
+  return typeof override === "number" &&
+    Number.isFinite(override) &&
+    override > 0
+    ? override
+    : adapter.contextLimit;
+}
+
+/**
+ * Set the active state's platform + context limit to `adapter` — resetting the
+ * running tally when the platform changes (don't mix one platform's tokens into
+ * another's gauge) — then persist, broadcast to any open panel, and return it.
+ * Shared by PAGE_READY (page load), GET_STATE (panel open), and tab activation,
+ * so the panel always reflects the current tab's platform. The context limit
+ * honors any user override from settings.
+ */
+async function applyPlatformToActiveState(
+  adapter: PlatformAdapter,
+): Promise<UsageState> {
+  const settings = await getSettings();
+  const contextLimit = effectiveLimit(settings, adapter);
+  const prev = await loadActiveState();
+  const switched = prev.platformId !== adapter.platformId;
+  const state: UsageState = switched
+    ? {
+        platformId: adapter.platformId,
+        contextLimit,
+        totalTokens: 0,
+        lastRoundTokens: null,
+        roundCount: 0,
+      }
+    : { ...prev, platformId: adapter.platformId, contextLimit };
+  await saveActiveState(state);
+  await broadcast(state);
+  return state;
+}
+
+/**
+ * Sync the active state to the currently-active tab's platform and return it,
+ * so the side panel always reflects the tab the user is on (model name +
+ * context length). Returns the stored state unchanged when the active tab isn't
+ * a supported platform.
+ */
+async function syncActiveStateToActiveTab(): Promise<UsageState> {
+  let url: string | undefined;
+  try {
+    const [active] = await browser.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
+    url = active?.url;
+  } catch {
+    // Tab query failed (rare) — fall back to the stored state.
+  }
+  const adapter = url ? adapterForUrl(url) : undefined;
+  return adapter
+    ? await applyPlatformToActiveState(adapter)
+    : await loadActiveState();
+}
+
 export default defineBackground(() => {
   void enableSidePanelOnActionClick();
 
@@ -97,15 +165,22 @@ export default defineBackground(() => {
   // is global by default). We sync on tab activation + navigation; a full
   // reload of a platform tab also re-fires PAGE_READY, but that carries no
   // tabId, so the tab listeners are the source of truth for icon state.
-  browser.tabs.onActivated.addListener(
-    (info) => void syncActionStateForTab(info.tabId),
-  );
+  browser.tabs.onActivated.addListener((info) => {
+    void applyPanelScope(info.tabId, { windowId: info.windowId });
+    // Keep the stored active state (+ any open panel) in step with the tab the
+    // user just switched to, so the model name + context length follow the
+    // active tab. onActivated is always the active tab → safe to sync here.
+    void syncActiveStateToActiveTab();
+  });
   browser.tabs.onUpdated.addListener((tabId, change, tab) => {
-    // Only re-sync on navigations (URL change) — skip status/title/favicon
-    // churn. `tab.url` may be unavailable without tabs permission; fall back
-    // to recomputing from the tabId inside the helper.
+    // Re-scope on navigations (URL change) + load-complete; skip title/favicon
+    // churn. `tab.url` is readable for the 7 platform hosts (host_permissions)
+    // and undefined elsewhere — applyPanelScope re-derives from it.
     if (change.url || change.status === "complete") {
-      void syncActionStateForTab(tabId, tab?.url ?? change.url);
+      void applyPanelScope(tabId, {
+        urlHint: tab?.url ?? change.url,
+        windowId: tab?.windowId,
+      });
     }
   });
   // Best-effort initial sync for already-open tabs when the service worker
@@ -129,7 +204,21 @@ export default defineBackground(() => {
     try {
       parsed = adapter.parseRequest(JSON.parse(body), details.url);
     } catch {
-      return; // not JSON / unexpected shape — ignore
+      // Not clean JSON: some platforms transport-frame the body — Kimi's
+      // Connect-RPC envelope prefixes flag/length bytes before the `{`, so the
+      // direct parse above throws even on a valid send. Retry on the outermost
+      // {...} slice; bail if that's unparseable too.
+      const start = body.indexOf("{");
+      const end = body.lastIndexOf("}");
+      if (start < 0 || end <= start) return;
+      try {
+        parsed = adapter.parseRequest(
+          JSON.parse(body.slice(start, end + 1)),
+          details.url,
+        );
+      } catch {
+        return; // genuinely foreign shape — ignore
+      }
     }
     void setPending({
       platformId: adapter.platformId,
@@ -151,31 +240,13 @@ export default defineBackground(() => {
         const adapter = ADAPTERS.find(
           (a) => a.platformId === message.platformId,
         );
-        if (adapter) {
-          const prev = await loadActiveState();
-          // Reset totals when switching platform — otherwise the previous
-          // platform's accumulated tokens leak into this one's gauge (H2).
-          const switched = prev.platformId !== adapter.platformId;
-          const state: UsageState = switched
-            ? {
-                platformId: adapter.platformId,
-                contextLimit: adapter.contextLimit,
-                totalTokens: 0,
-                lastRoundTokens: null,
-                roundCount: 0,
-              }
-            : {
-                ...prev,
-                platformId: adapter.platformId,
-                contextLimit: adapter.contextLimit,
-              };
-          await saveActiveState(state);
-          await broadcast(state);
-        }
+        if (adapter) await applyPlatformToActiveState(adapter);
         return;
       }
       case "GET_STATE":
-        return await loadActiveState();
+        // Derive the platform from the active tab so opening the panel always
+        // shows the current model + context length, even before any round fires.
+        return await syncActiveStateToActiveTab();
       case "ROUND_COMPLETE":
         await handleRound(message);
         return;
@@ -185,7 +256,13 @@ export default defineBackground(() => {
     }
   });
 
-  /** Steps 2–3: pair the answer with the pending prompt and record the round. */
+  /**
+   * Steps 2–3: pair the answer with the pending prompt and record the round.
+   * Panel-independent: runs on every ROUND_COMPLETE whether or not the side
+   * panel is open, so the tally in storage.local + Upstash accumulates even
+   * with the panel closed — opening it later just GET_STATEs the accumulated
+   * value.
+   */
   async function handleRound(m: RoundCompleteMessage): Promise<void> {
     const adapter = ADAPTERS.find((a) => a.platformId === m.platformId);
     if (!adapter) return;
@@ -204,18 +281,18 @@ export default defineBackground(() => {
 
     // Prefer the per-dialogue Upstash record when we have a dialogueId + creds.
     let recorded = false;
-    const creds = (await getSettings()).upstash;
+    const settings = await getSettings();
+    const creds = settings.upstash;
+    const contextLimit = effectiveLimit(settings, adapter);
     if (dialogueId && creds.url && creds.token) {
       try {
         const key = dialogueKey(m.platformId, dialogueId);
         const prev = await getDialogue(creds, key);
-        const next = appendRound(
-          prev,
-          m.platformId,
-          dialogueId,
-          adapter.contextLimit,
-          { promptTokens, answerTokens, ts: Date.now() },
-        );
+        const next = appendRound(prev, m.platformId, dialogueId, contextLimit, {
+          promptTokens,
+          answerTokens,
+          ts: Date.now(),
+        });
         await setDialogue(creds, key, next);
         totalTokens = next.totalTokens;
         roundCount = next.roundCount;
@@ -239,7 +316,7 @@ export default defineBackground(() => {
 
     const state: UsageState = {
       platformId: m.platformId,
-      contextLimit: adapter.contextLimit,
+      contextLimit,
       totalTokens,
       lastRoundTokens,
       roundCount,
@@ -261,37 +338,71 @@ async function enableSidePanelOnActionClick(): Promise<void> {
 }
 
 /**
- * Enable (colored) the action on platform tabs, disable (grayed, unclickable)
- * elsewhere. A disabled action doesn't open the side panel on click — exactly
- * the "only works on AI-chat pages" UX.
+ * Scope Headroom's toolbar action AND side panel to platform tabs only.
  *
- * `action.disable`/`enable` take an optional tabId for per-tab state; Chrome &
- * Edge auto-gray a disabled action icon. Firefox's `browser.action` supports
- * the same API (sidebar_action is separate and stays clickable — acceptable,
- * since Firefox users can still open the sidebar manually there).
+ * The side panel is kept PURELY GLOBAL: we never call per-tab setOptions. The
+ * manifest side_panel default (enabled + sidepanel.html) already makes the
+ * panel openable on click as a GLOBAL panel. This is deliberate —
+ * sidePanel.close({ windowId }) ONLY closes a GLOBAL panel, so if we made
+ * platform panels tab-specific (via setOptions), the auto-close below would
+ * silently no-op (that was the previous bug: Kimi's panel was tab-specific, so
+ * close({windowId}) couldn't dismiss it on switch to Bilibili).
+ *
+ * On a platform tab: action enabled (colored, clickable); the global panel is
+ * openable. On a non-platform tab: action disabled (grayed) AND the global
+ * panel is force-closed via close({ windowId }) — Chrome 141+, we target ≥149.
+ * Trade-off: the panel does NOT auto-reopen when returning to a platform tab
+ * (auto-open is blocked by Chrome's user-gesture rule on sidePanel.open); the
+ * user clicks the icon again. Also, with no per-tab setOptions the panel stays
+ * in Chrome's side-panel dropdown on non-platform sites — accepted, since the
+ * action icon is disabled there and it auto-closes on switch.
+ *
+ * Counting is NOT gated by any of this — the content script + handleRound run
+ * on every platform page whether or not the panel is open (see handleRound).
+ *
+ * Platform detection needs NO `tabs` permission: `Tab.url` is populated for
+ * any tab whose URL matches a host_permission (all 7 platforms are listed) and
+ * is undefined for everything else (Bilibili, etc.) — read as "not supported".
  */
-async function syncActionStateForTab(
+async function applyPanelScope(
   tabId: number,
-  urlHint?: string,
+  opts: { urlHint?: string; windowId?: number } = {},
 ): Promise<void> {
-  // Resolve the URL: prefer the hint (from onUpdated), else query the tab.
-  // Querying needs no extra permission for the active tab's URL on navigation,
-  // but may return undefined for non-active tabs without `tabs` permission.
-  let url = urlHint;
+  let url = opts.urlHint;
   if (!url) {
     try {
-      const tab = await browser.tabs.get(tabId);
-      url = tab.url;
+      url = (await browser.tabs.get(tabId)).url;
     } catch {
-      return; // tab gone — nothing to sync
+      return; // tab gone — nothing to scope
     }
   }
   const supported = url ? isSupportedPlatformUrl(url) : false;
+
   try {
     if (supported) await browser.action.enable(tabId);
     else await browser.action.disable(tabId);
   } catch {
-    // Some contexts (Firefox without action, dev-build oddities) — non-fatal.
+    // Some contexts (Firefox without action, dev oddities) — non-fatal.
+  }
+
+  // Chrome/Edge only. Firefox has no browser.sidePanel (uses sidebar_action,
+  // which is global and can't be scoped — acceptable per the playbook). Force-
+  // close the global panel when landing on a non-platform tab.
+  if (browser.sidePanel && !supported && opts.windowId != null) {
+    const close = (
+      browser.sidePanel as {
+        close?: (o: { windowId: number }) => Promise<void>;
+      }
+    ).close;
+    if (close) {
+      try {
+        await close({ windowId: opts.windowId });
+      } catch (e) {
+        console.warn("[Headroom] sidePanel.close failed:", e);
+      }
+    } else {
+      console.warn("[Headroom] sidePanel.close unavailable (Chrome <141?)");
+    }
   }
 }
 
@@ -302,7 +413,12 @@ async function syncActiveTab(): Promise<void> {
       active: true,
       currentWindow: true,
     });
-    if (active?.id) await syncActionStateForTab(active.id, active.url);
+    if (active?.id) {
+      await applyPanelScope(active.id, {
+        urlHint: active.url,
+        windowId: active.windowId,
+      });
+    }
   } catch {
     // Non-fatal: the onActivated listener will catch up on the next switch.
   }

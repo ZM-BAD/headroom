@@ -20,9 +20,10 @@ export interface PlatformAdapter {
   /** Host the send-request goes to (also used for host-based dispatch), e.g. "chat.deepseek.com". */
   host: string;
   /**
-   * webRequest match-pattern for the send request (full URL, `*` allowed for a
-   * variable path segment, e.g. Kimi's conversation id): e.g.
-   * "*://chat.deepseek.com/api/v0/chat/completion".
+   * webRequest match-pattern for the send request (full URL; `*` allowed for a
+   * variable path segment or a trailing glob), e.g.
+   * "*://chat.deepseek.com/api/v0/chat/completion" or
+   * "*://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat".
    */
   completionUrl: string;
   /** Content-script match pattern, e.g. "*://chat.deepseek.com/*". */

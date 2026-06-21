@@ -12,11 +12,12 @@ import {
   getSettings,
   saveSettings,
   STORAGE_KEY,
+  type ContextLimits,
   type Language,
   type Settings,
   type UpstashConfig,
 } from "../../utils/settings";
-import { platformDisplayName } from "../../adapters";
+import { ADAPTERS, platformDisplayName } from "../../adapters";
 
 /**
  * Raw browser-locale lookup. WXT types `browser.i18n.getMessage` to accept
@@ -72,6 +73,7 @@ const els = {
   upstashClear: document.querySelector<HTMLButtonElement>("#upstash-clear")!,
   upstashStatus: document.querySelector<HTMLElement>("#upstash-status")!,
   settingsSave: document.querySelector<HTMLButtonElement>("#settings-save")!,
+  ctxReset: document.querySelector<HTMLButtonElement>("#ctx-reset")!,
 };
 
 // Authoritative in-memory working copies. Settings are explicit-save now:
@@ -81,6 +83,7 @@ let currentThresholds: Thresholds = { ...DEFAULT_THRESHOLDS };
 let currentState: UsageState = IDLE_STATE;
 let currentLanguage: Language = "auto";
 let currentUpstash: UpstashConfig = { url: "", token: "" };
+let currentContextLimits: ContextLimits = { ...DEFAULT_SETTINGS.contextLimits };
 
 /** Loaded message tables for a manual locale override. "auto" uses browser i18n. */
 const localeTables: Partial<
@@ -135,7 +138,7 @@ function formatContext(limit: number): string {
     const m = limit / 1_000_000;
     return `${Number.isInteger(m) ? m : m.toFixed(1)}M ${suffix}`;
   }
-  return `${Math.round(limit / 1024)}K ${suffix}`;
+  return `${Math.round(limit / 1000)}K ${suffix}`;
 }
 
 function render(state: UsageState, th: Thresholds): void {
@@ -234,6 +237,68 @@ els.langSelect.addEventListener("change", () => {
   currentLanguage = els.langSelect.value as Language;
   applyI18n();
   render(currentState, currentThresholds);
+});
+
+// ---------- context limits (per-platform override of the auto-detected limit) ----------
+
+const ctxInputs: Record<string, HTMLInputElement> = {};
+
+// Context limits are authored in K tokens (the unit shown beside each input);
+// the stored value is raw tokens, so convert on display and on edit.
+const toKilo = (tokens: number): number => Math.round(tokens / 1000);
+const fromKilo = (k: number): number => Math.round(k * 1000);
+
+/**
+ * Render one number-input row per adapter, seeded from currentContextLimits.
+ * Defaults come from each adapter's contextLimit; the user overrides here.
+ */
+function buildContextLimitRows(): void {
+  const list = document.querySelector<HTMLElement>("#context-limits-list");
+  if (!list) return;
+  list.innerHTML = "";
+  for (const a of ADAPTERS) {
+    const id = `ctx-${a.platformId}`;
+    const row = document.createElement("div");
+    row.className = "hd-settings-row hd-settings-row--field";
+    const label = document.createElement("label");
+    label.className = "hd-settings-label";
+    label.htmlFor = id;
+    label.textContent = a.displayName;
+    const input = document.createElement("input");
+    input.className = "hd-input hd-input--num";
+    input.id = id;
+    input.type = "number";
+    input.min = "1";
+    input.step = "1";
+    input.inputMode = "numeric";
+    input.value = String(
+      toKilo(currentContextLimits[a.platformId] ?? a.contextLimit),
+    );
+    input.addEventListener("input", () => {
+      const n = Number(input.value);
+      // Only commit valid positives — a half-typed value can't zero the gauge;
+      // invalid input is simply not saved.
+      if (Number.isFinite(n) && n > 0)
+        currentContextLimits[a.platformId] = fromKilo(n);
+    });
+    const unit = document.createElement("span");
+    unit.className = "hd-context-unit";
+    unit.textContent = "K tokens";
+    row.append(label, input, unit);
+    list.append(row);
+    ctxInputs[a.platformId] = input;
+  }
+}
+
+els.ctxReset.addEventListener("click", () => {
+  currentContextLimits = { ...DEFAULT_SETTINGS.contextLimits };
+  for (const a of ADAPTERS) {
+    const inp = ctxInputs[a.platformId];
+    if (inp)
+      inp.value = String(
+        toKilo(currentContextLimits[a.platformId] ?? a.contextLimit),
+      );
+  }
 });
 
 // ---------- upstash (BYOK REST API) ----------
@@ -374,9 +439,22 @@ els.settingsSave.addEventListener("click", () => {
       thresholds: currentThresholds,
       language: currentLanguage,
       upstash: currentUpstash,
+      contextLimits: currentContextLimits,
     };
     await saveSettings(settings);
     flashSaved();
+    // Refresh the main view so the gauge re-scales to the (possibly new) limit.
+    try {
+      const state = (await browser.runtime.sendMessage({
+        type: "GET_STATE",
+      } satisfies HeadroomMessage)) as UsageState | undefined;
+      if (state) {
+        currentState = state;
+        render(currentState, currentThresholds);
+      }
+    } catch {
+      // Background asleep — the next PAGE_READY/round will refresh.
+    }
   })();
 });
 
@@ -391,9 +469,11 @@ void (async () => {
   currentThresholds = settings.thresholds;
   currentLanguage = settings.language;
   currentUpstash = settings.upstash;
+  currentContextLimits = settings.contextLimits;
   els.langSelect.value = currentLanguage;
   els.upstashUrl.value = currentUpstash.url;
   els.upstashToken.value = currentUpstash.token;
+  buildContextLimitRows();
   // Preload both tables so a manual override applies without a flash.
   await Promise.all([loadLocaleTable("en"), loadLocaleTable("zh_CN")]);
   applyI18n();
@@ -435,6 +515,19 @@ browser.storage.onChanged.addListener((changes, area) => {
     };
     els.upstashUrl.value = currentUpstash.url;
     els.upstashToken.value = currentUpstash.token;
+  }
+  if (next.contextLimits) {
+    currentContextLimits = {
+      ...DEFAULT_SETTINGS.contextLimits,
+      ...next.contextLimits,
+    };
+    for (const a of ADAPTERS) {
+      const inp = ctxInputs[a.platformId];
+      if (inp)
+        inp.value = String(
+          toKilo(currentContextLimits[a.platformId] ?? a.contextLimit),
+        );
+    }
   }
   render(currentState, currentThresholds);
 });

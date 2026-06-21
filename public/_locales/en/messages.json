@@ -23,6 +23,11 @@
   "legendYellow": { "message": "Getting tight" },
   "legendRed": { "message": "Likely to forget" },
   "resetDefaults": { "message": "Reset to defaults" },
+  "contextLimitsTitle": { "message": "Context window limits" },
+  "contextLimitsHint": {
+    "message": "Auto-detected per platform — override any value to match your plan."
+  },
+  "resetContextLimits": { "message": "Reset to defaults" },
   "languageLabel": { "message": "Language" },
   "langAuto": { "message": "Auto (follow browser)" },
   "upstashTitle": { "message": "Upstash sync" },

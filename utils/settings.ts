@@ -1,3 +1,4 @@
+import { ADAPTERS } from "../adapters";
 import { DEFAULT_THRESHOLDS, type Thresholds } from "./thresholds";
 
 /** Storage key follows the spec's settings-key scheme. */
@@ -17,22 +18,50 @@ export interface UpstashConfig {
   token: string;
 }
 
+/**
+ * Per-platform context-window limits in tokens, keyed by platformId. Defaults
+ * are auto-detected from each adapter's built-in `contextLimit` (the "built-in
+ * dictionary"); the user can override any entry in the settings panel to match
+ * their actual model/plan.
+ */
+export type ContextLimits = Record<string, number>;
+
 export interface Settings {
   thresholds: Thresholds;
   language: Language;
   upstash: UpstashConfig;
+  contextLimits: ContextLimits;
+}
+
+/** The auto-detected defaults — one entry per adapter, straight from its contextLimit. */
+export function defaultContextLimits(): ContextLimits {
+  return Object.fromEntries(
+    ADAPTERS.map((a) => [a.platformId, a.contextLimit]),
+  );
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   thresholds: { ...DEFAULT_THRESHOLDS },
   language: "auto",
   upstash: { url: "", token: "" },
+  contextLimits: defaultContextLimits(),
 };
 
 /** Read settings from local storage, falling back to defaults per field. */
 export async function getSettings(): Promise<Settings> {
   const raw = await browser.storage.local.get(STORAGE_KEY);
   const stored = raw[STORAGE_KEY] as Partial<Settings> | undefined;
+  // Start from auto-detected defaults, then overlay any valid stored overrides
+  // (ignore corrupt / non-positive values so a bad write can't zero the gauge).
+  const contextLimits = defaultContextLimits();
+  const storedLimits = stored?.contextLimits;
+  if (storedLimits && typeof storedLimits === "object") {
+    for (const [id, val] of Object.entries(storedLimits)) {
+      if (typeof val === "number" && Number.isFinite(val) && val > 0) {
+        contextLimits[id] = val;
+      }
+    }
+  }
   return {
     thresholds: {
       yellow: stored?.thresholds?.yellow ?? DEFAULT_THRESHOLDS.yellow,
@@ -43,6 +72,7 @@ export async function getSettings(): Promise<Settings> {
       url: stored?.upstash?.url ?? "",
       token: stored?.upstash?.token ?? "",
     },
+    contextLimits,
   };
 }
 

@@ -115,25 +115,47 @@ describe("parseRequest — Gemini (body unparseable → always null/null)", () =
   });
 });
 
-describe("parseRequest — Kimi (body: messages[].content; dialogueId in URL path)", () => {
+describe("parseRequest — Kimi (Connect-RPC: message.blocks[].text.content; chat_id in body)", () => {
   const a = byId("kimi");
-  const url = "https://www.kimi.com/api/chat/conv-456/completion/stream";
-  it("extracts string content as prompt + path segment as dialogueId", () => {
-    expect(a.parseRequest({ messages: [{ content: "hi" }] }, url)).toEqual({
-      prompt: "hi",
-      dialogueId: "conv-456",
+  // Live-confirmed 2026-06: Kimi moved off /api/chat/{id}/completion/stream to a
+  // gRPC-gateway RPC POST /apiv2/kimi.gateway.chat.v1.ChatService/Chat with a
+  // Connect-JSON body. chat_id is in the body for existing chats and ABSENT on
+  // the first send of a brand-new chat (server assigns it). Prompt is in
+  // message.blocks[0].text.content.
+  it("extracts prompt + chat_id from an existing-chat send", () => {
+    const body = {
+      chat_id: "19ee868c-5412-84f7-8000-094483545d5c",
+      scenario: "SCENARIO_K2D5",
+      message: {
+        role: "user",
+        blocks: [{ message_id: "", text: { content: "2" } }],
+        scenario: "SCENARIO_K2D5",
+      },
+      options: { thinking: false, enable_plugin: false },
+    };
+    expect(a.parseRequest(body, "")).toEqual({
+      prompt: "2",
+      dialogueId: "19ee868c-5412-84f7-8000-094483545d5c",
     });
   });
-  it("returns null prompt when content is not a string", () => {
-    expect(a.parseRequest({ messages: [{ content: { x: 1 } }] }, url)).toEqual({
-      prompt: null,
-      dialogueId: "conv-456",
-    });
-  });
-  it("returns null dialogueId when URL doesn't match the chat path pattern", () => {
-    expect(a.parseRequest({ messages: [{ content: "hi" }] }, "")).toEqual({
+  it("returns null dialogueId on the first send of a new chat (chat_id assigned server-side)", () => {
+    const body = {
+      scenario: "SCENARIO_K2D5",
+      message: { blocks: [{ text: { content: "hi" } }] },
+    };
+    expect(a.parseRequest(body, "")).toEqual({
       prompt: "hi",
       dialogueId: null,
+    });
+  });
+  it("returns null prompt when the text content is not a string", () => {
+    const body = {
+      chat_id: "c-1",
+      message: { blocks: [{ text: { content: { x: 1 } } }] },
+    };
+    expect(a.parseRequest(body, "")).toEqual({
+      prompt: null,
+      dialogueId: "c-1",
     });
   });
 });
