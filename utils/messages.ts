@@ -2,6 +2,8 @@
  * Shared message protocol: content scripts ↔ background ↔ side panel.
  */
 
+import type { RoundRecord } from "./dialogue-record";
+
 /** Content script announces a supported page is open (for panel scoping). */
 export interface PageReadyMessage {
   type: "PAGE_READY";
@@ -60,7 +62,11 @@ export interface UsageState {
   /**
    * The dialogue the gauge is currently displaying (derived from the active
    * tab's URL). Tracked so starting / switching a conversation WITHIN the same
-   * platform resets the tally — it's NOT rendered by the panel.
+   * platform resets the tally; also shown in the panel as the conversation id.
    */
   dialogueId: string | null;
+  /** Conversation title (page <title>) — shown so the user knows which chat the stats belong to. */
+  title: string | null;
+  /** Recent rounds (trimmed) for the per-round input/output breakdown in the panel. */
+  rounds: RoundRecord[];
 }

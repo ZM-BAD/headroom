@@ -10,6 +10,8 @@ const state = (over: Partial<UsageState> = {}): UsageState => ({
   lastRoundTokens: null,
   roundCount: 0,
   dialogueId: null,
+  title: null,
+  rounds: [],
   ...over,
 });
 

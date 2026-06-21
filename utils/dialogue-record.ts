@@ -19,6 +19,8 @@ export interface DialogueRecord {
   platform: string;
   dialogueId: string;
   contextLimit: number;
+  /** Conversation title (the page <title>) — ties the record to the chat in view. */
+  title: string;
   /** sum of every round's total. */
   totalTokens: number;
   roundCount: number;
@@ -30,11 +32,13 @@ export function emptyDialogue(
   platform: string,
   dialogueId: string,
   contextLimit: number,
+  title = "",
 ): DialogueRecord {
   return {
     platform,
     dialogueId,
     contextLimit,
+    title,
     totalTokens: 0,
     roundCount: 0,
     rounds: [],
@@ -56,40 +60,59 @@ export function emptyDialogue(
  * hardcoding a copy that drifts. */
 export const MAX_RETAINED_ROUNDS = 200;
 
+/**
+ * Upsert a round (keyed by `n`) into a rounds array — REPLACE if `n` exists,
+ * append otherwise. Returns a NEW array (pure). Shared by `upsertRound` (the
+ * Upstash record) and the active-state's trimmed display rounds, so both use
+ * identical replace-vs-append semantics.
+ */
+export function upsertRoundInto(
+  rounds: RoundRecord[],
+  round: Pick<RoundRecord, "n" | "promptTokens" | "answerTokens" | "ts">,
+): RoundRecord[] {
+  const total = round.promptTokens + round.answerTokens;
+  const idx = rounds.findIndex((r) => r.n === round.n);
+  if (idx >= 0) {
+    const copy = rounds.slice();
+    copy[idx] = { ...round, total };
+    return copy;
+  }
+  return [...rounds, { ...round, total }];
+}
+
 export function upsertRound(
   record: DialogueRecord | null,
   platform: string,
   dialogueId: string,
   contextLimit: number,
   round: Pick<RoundRecord, "n" | "promptTokens" | "answerTokens" | "ts">,
+  title?: string,
 ): DialogueRecord {
-  const base = record ?? emptyDialogue(platform, dialogueId, contextLimit);
+  const base =
+    record ?? emptyDialogue(platform, dialogueId, contextLimit, title);
   const total = round.promptTokens + round.answerTokens;
   const idx = base.rounds.findIndex((r) => r.n === round.n);
-  let rounds: RoundRecord[];
-  let totalTokens: number;
-  if (idx >= 0) {
-    // Replace the existing round: subtract its old total, add the new one. Keeps
-    // the running-sum invariant intact (totalTokens is the true lifetime sum even
-    // when older rounds are trimmed out of the retained array).
-    const old = base.rounds[idx];
-    rounds = base.rounds.slice();
-    rounds[idx] = { ...round, total };
-    totalTokens = base.totalTokens - old.total + total;
-  } else {
-    rounds = [...base.rounds, { ...round, total }];
-    totalTokens = base.totalTokens + total;
-  }
+  // Replace the existing round: subtract its old total, add the new one. Keeps
+  // the running-sum invariant intact (totalTokens is the true lifetime sum even
+  // when older rounds are trimmed out of the retained array).
+  const totalTokens =
+    idx >= 0
+      ? base.totalTokens - base.rounds[idx].total + total
+      : base.totalTokens + total;
+  const rounds = upsertRoundInto(base.rounds, round).slice(
+    -MAX_RETAINED_ROUNDS,
+  );
   return {
     ...base,
     platform,
     dialogueId,
     contextLimit,
+    title: title ?? base.title,
     // True round count = the highest round number seen (monotonic in `n`),
     // independent of how many rounds are retained.
     roundCount: Math.max(base.roundCount, round.n),
     totalTokens,
-    rounds: rounds.slice(-MAX_RETAINED_ROUNDS),
+    rounds,
     updatedAt: Date.now(),
   };
 }

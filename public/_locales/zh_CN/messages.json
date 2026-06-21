@@ -26,6 +26,7 @@
   "contextLimitsTitle": { "message": "上下文长度" },
   "contextLimitsHint": { "message": "按平台自动检测，可按需手动覆盖。" },
   "resetContextLimits": { "message": "恢复默认" },
+  "roundsTitle": { "message": "对话轮次" },
   "languageLabel": { "message": "语言" },
   "langAuto": { "message": "自动（跟随浏览器）" },
   "upstashTitle": { "message": "Upstash 同步" },

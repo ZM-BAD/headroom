@@ -6,7 +6,7 @@ import type {
 import type { PlatformAdapter } from "../utils/platform-adapter";
 import { ADAPTERS } from "../adapters";
 import { estimateTokens } from "../utils/tokens";
-import { upsertRound } from "../utils/dialogue-record";
+import { upsertRound, upsertRoundInto } from "../utils/dialogue-record";
 import { tallyLocalRound, type LastRound } from "../utils/tally";
 import { dialogueKey, getDialogue, setDialogue } from "../utils/upstash";
 import { getSettings, type Settings } from "../utils/settings";
@@ -44,7 +44,12 @@ const IDLE_STATE: UsageState = {
   lastRoundTokens: null,
   roundCount: 0,
   dialogueId: null,
+  title: null,
+  rounds: [],
 };
+
+/** Cap on rounds retained in the active-state's display list (the Upstash record keeps MAX_RETAINED_ROUNDS). */
+const DISPLAY_ROUNDS = 50;
 
 /** webRequest URL filter built from every adapter's completion match-pattern. */
 const URL_FILTER = ADAPTERS.map((a) => a.completionUrl);
@@ -132,6 +137,7 @@ function effectiveLimit(settings: Settings, adapter: PlatformAdapter): number {
 async function applyPlatformToActiveState(
   adapter: PlatformAdapter,
   urlDialogueId: string | null = null,
+  title?: string | null,
 ): Promise<UsageState> {
   const settings = await getSettings();
   const contextLimit = effectiveLimit(settings, adapter);
@@ -144,18 +150,24 @@ async function applyPlatformToActiveState(
     prev.platformId !== adapter.platformId || prev.dialogueId !== urlDialogueId;
   const state: UsageState = switched
     ? {
+        // Fresh conversation: zero the tally + rounds; adopt the new title (the
+        // active tab's <title>), or null if the caller didn't pass one.
         platformId: adapter.platformId,
         contextLimit,
         dialogueId: urlDialogueId,
+        title: title ?? null,
         totalTokens: 0,
         lastRoundTokens: null,
         roundCount: 0,
+        rounds: [],
       }
     : {
+        // Same conversation: keep its tally + rounds; refresh title if given.
         ...prev,
         platformId: adapter.platformId,
         contextLimit,
         dialogueId: urlDialogueId,
+        title: title ?? prev.title,
       };
   await saveActiveState(state);
   await broadcast(state);
@@ -170,12 +182,14 @@ async function applyPlatformToActiveState(
  */
 async function syncActiveStateToActiveTab(): Promise<UsageState> {
   let url: string | undefined;
+  let title: string | null | undefined;
   try {
     const [active] = await browser.tabs.query({
       active: true,
       currentWindow: true,
     });
     url = active?.url;
+    title = active?.title;
   } catch {
     // Tab query failed (rare) — fall back to the stored state.
   }
@@ -184,6 +198,7 @@ async function syncActiveStateToActiveTab(): Promise<UsageState> {
     return await applyPlatformToActiveState(
       adapter,
       adapter.dialogueIdFromUrl?.(url) ?? null,
+      title,
     );
   }
   return await loadActiveState();
@@ -222,8 +237,9 @@ export default defineBackground(() => {
     // An SPA route change on the ACTIVE tab (start new chat / switch history
     // chat / navigate within the platform) changes its URL without reloading →
     // PAGE_READY won't re-fire, so re-derive the dialogue id here and reset the
-    // gauge when the conversation changes.
-    if (change.url && tab?.active) {
+    // gauge when the conversation changes. Also re-sync on a title change: a
+    // chat's <title> resolves only after the first exchange, after the URL is set.
+    if ((change.url || change.title) && tab?.active) {
       void syncActiveStateToActiveTab();
     }
   });
@@ -315,8 +331,8 @@ export default defineBackground(() => {
     if (!adapter) return;
 
     // The conversation the gauge is currently displaying (tracked from the tab
-    // URL by the sync paths). handleRound only updates the tally — it must NOT
-    // change which conversation is shown, so it preserves prev.dialogueId.
+    // URL by the sync paths). handleRound only updates the tally — it preserves
+    // prev.dialogueId/title so it never changes which conversation is shown.
     const prev = await loadActiveState();
 
     const answerTokens = estimateTokens(m.answerText);
@@ -328,65 +344,42 @@ export default defineBackground(() => {
     const promptTokens = estimateTokens(prompt);
     const lastRoundTokens = promptTokens + answerTokens;
 
-    let totalTokens = lastRoundTokens;
-    let roundCount = 1;
-
-    // Prefer the per-dialogue Upstash record when we have a dialogueId + creds.
-    let recorded = false;
+    // One round record, reused by the active-state list and the Upstash upsert.
+    const round = {
+      n: m.roundId,
+      promptTokens,
+      answerTokens,
+      ts: Date.now(),
+    };
     const settings = await getSettings();
     const creds = settings.upstash;
     const contextLimit = effectiveLimit(settings, adapter);
-    if (dialogueId && creds.url && creds.token) {
-      try {
-        const key = dialogueKey(m.platformId, dialogueId);
-        const prev = await getDialogue(creds, key);
-        const next = upsertRound(prev, m.platformId, dialogueId, contextLimit, {
-          n: m.roundId,
-          promptTokens,
-          answerTokens,
-          ts: Date.now(),
-        });
-        await setDialogue(creds, key, next);
-        totalTokens = next.totalTokens;
-        roundCount = next.roundCount;
-        recorded = true;
-      } catch (err) {
-        // Upstash read/write failed — fall through to a local tally.
-        console.warn("[Headroom] Upstash sync failed, using local tally:", err);
-      }
-    }
-    if (!recorded) {
-      // Local running tally by platform. Used when dialogueId is unknown
-      // (Gemini's unparseable body, or the first message of a new chat), when
-      // Upstash isn't configured, or when an Upstash op failed. Without this a
-      // no-dialogueId round would reset the gauge to just that round (H1).
-      const last = await getLastRound();
-      // round.dialogueId is the URL-tracked ACTIVE conversation (prev.dialogueId),
-      // NOT the request-body id — so two chats' round 1 (same roundId, different
-      // conversation) don't dedup against each other (the C1 cross-conversation
-      // mis-count).
-      const tallied = tallyLocalRound(prev, last, {
-        platformId: m.platformId,
-        dialogueId: prev.dialogueId,
-        roundId: m.roundId,
-        tokens: lastRoundTokens,
-      });
-      totalTokens = tallied.totalTokens;
-      roundCount = tallied.roundCount;
-      await setLastRound({
-        platformId: m.platformId,
-        dialogueId: prev.dialogueId,
-        roundId: m.roundId,
-        tokens: lastRoundTokens,
-      });
-    }
 
-    // Re-read before writing: if the active conversation changed while this
-    // round was being processed (user started/switched a chat during the awaits
-    // above), DON'T clobber the new state with this round's tally — it belongs
-    // to a conversation the user already left. Guards the read-modify-write race
-    // on storage.local (H1); the round is still persisted in Upstash if that
-    // path ran, just not painted onto a gauge that's moved on.
+    // INSTANT: compute the local tally (pure, sub-ms; handles streaming re-emit
+    // dedup) and broadcast it to the panel BEFORE any Upstash network call — so
+    // the gauge reflects this round immediately, not after the Upstash round-trip
+    // (which used to make the panel look like it "needed a refresh").
+    const last = await getLastRound();
+    // round.dialogueId is the URL-tracked ACTIVE conversation (prev.dialogueId),
+    // NOT the request-body id — so two chats' round 1 (same roundId, different
+    // conversation) don't dedup against each other (the C1 cross-conversation
+    // mis-count).
+    const tallied = tallyLocalRound(prev, last, {
+      platformId: m.platformId,
+      dialogueId: prev.dialogueId,
+      roundId: m.roundId,
+      tokens: lastRoundTokens,
+    });
+    await setLastRound({
+      platformId: m.platformId,
+      dialogueId: prev.dialogueId,
+      roundId: m.roundId,
+      tokens: lastRoundTokens,
+    });
+
+    // H1 race guard: if the active conversation changed during the awaits above,
+    // don't paint this round onto a gauge that's moved on. (The round is still
+    // persisted to Upstash below if that path runs.)
     const current = await loadActiveState();
     if (
       current.platformId !== m.platformId ||
@@ -394,16 +387,60 @@ export default defineBackground(() => {
     ) {
       return;
     }
+
     const state: UsageState = {
+      ...prev,
       platformId: m.platformId,
       contextLimit,
-      dialogueId: prev.dialogueId,
-      totalTokens,
+      totalTokens: tallied.totalTokens,
       lastRoundTokens,
-      roundCount,
+      roundCount: tallied.roundCount,
+      rounds: upsertRoundInto(prev.rounds, round).slice(-DISPLAY_ROUNDS),
     };
     await saveActiveState(state);
-    await broadcast(state);
+    await broadcast(state); // ← panel updates INSTANTLY, here
+
+    // BACKGROUND: persist to Upstash (best-effort, AFTER the panel already has
+    // the round). Single-device: the durable totals match what we just showed;
+    // multi-device: the record may carry OTHER devices' rounds — if its totals
+    // differ, correct the gauge (only if the user is still on this conversation).
+    if (dialogueId && creds.url && creds.token) {
+      try {
+        const key = dialogueKey(m.platformId, dialogueId);
+        const rec = await getDialogue(creds, key);
+        const next = upsertRound(
+          rec,
+          m.platformId,
+          dialogueId,
+          contextLimit,
+          round,
+          prev.title ?? undefined,
+        );
+        await setDialogue(creds, key, next);
+        if (
+          next.totalTokens !== state.totalTokens ||
+          next.roundCount !== state.roundCount
+        ) {
+          const now = await loadActiveState();
+          if (
+            now.platformId === m.platformId &&
+            now.dialogueId === prev.dialogueId
+          ) {
+            const corrected: UsageState = {
+              ...state,
+              totalTokens: next.totalTokens,
+              roundCount: next.roundCount,
+            };
+            await saveActiveState(corrected);
+            await broadcast(corrected);
+          }
+        }
+      } catch (err) {
+        // Upstash read/write failed — the optimistic local tally already shown is
+        // correct for this device, so just log and move on.
+        console.warn("[Headroom] Upstash sync failed, using local tally:", err);
+      }
+    }
   }
 });
 

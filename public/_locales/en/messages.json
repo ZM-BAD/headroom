@@ -28,6 +28,7 @@
     "message": "Auto-detected per platform — override any value to match your plan."
   },
   "resetContextLimits": { "message": "Reset to defaults" },
+  "roundsTitle": { "message": "Rounds" },
   "languageLabel": { "message": "Language" },
   "langAuto": { "message": "Auto (follow browser)" },
   "upstashTitle": { "message": "Upstash sync" },

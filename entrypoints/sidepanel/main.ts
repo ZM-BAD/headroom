@@ -43,6 +43,8 @@ const IDLE_STATE: UsageState = {
   lastRoundTokens: null,
   roundCount: 0,
   dialogueId: null,
+  title: null,
+  rounds: [],
 };
 
 const els = {
@@ -75,6 +77,9 @@ const els = {
   upstashStatus: document.querySelector<HTMLElement>("#upstash-status")!,
   settingsSave: document.querySelector<HTMLButtonElement>("#settings-save")!,
   ctxReset: document.querySelector<HTMLButtonElement>("#ctx-reset")!,
+  convTitle: document.querySelector<HTMLElement>("#conv-title")!,
+  convId: document.querySelector<HTMLElement>("#conv-id")!,
+  roundsList: document.querySelector<HTMLElement>("#rounds-list")!,
 };
 
 // Authoritative in-memory working copies. Settings are explicit-save now:
@@ -154,6 +159,11 @@ function render(state: UsageState, th: Thresholds): void {
   els.contextLimit.textContent =
     limit > 0 ? formatContext(limit) : t("noContext");
 
+  els.convTitle.textContent = state.title ?? "—";
+  els.convTitle.title = state.title ?? "";
+  els.convId.textContent = state.dialogueId ?? "—";
+  els.convId.title = state.dialogueId ?? "";
+
   els.percent.textContent = `${(ratio * 100).toFixed(1)}%`;
   els.barFill.style.width = `${ratio * 100}%`;
   els.barFill.dataset.level = level;
@@ -169,6 +179,28 @@ function render(state: UsageState, th: Thresholds): void {
     state.lastRoundTokens != null
       ? state.lastRoundTokens.toLocaleString()
       : "—";
+  renderRounds(state.rounds);
+}
+
+/** Render the per-round input/output breakdown (↑prompt / ↓answer tokens). */
+function renderRounds(rounds: UsageState["rounds"]): void {
+  const list = els.roundsList;
+  list.replaceChildren();
+  for (const r of rounds) {
+    const row = document.createElement("div");
+    row.className = "hd-round-row";
+    const n = document.createElement("span");
+    n.className = "hd-round-n";
+    n.textContent = `#${r.n}`;
+    const pin = document.createElement("span");
+    pin.className = "hd-round-in";
+    pin.textContent = `↑${r.promptTokens}`;
+    const pout = document.createElement("span");
+    pout.className = "hd-round-out";
+    pout.textContent = `↓${r.answerTokens}`;
+    row.append(n, pin, pout);
+    list.append(row);
+  }
 }
 
 // ---------- view switching (main ↔ settings) ----------

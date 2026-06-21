@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   upsertRound,
+  upsertRoundInto,
   emptyDialogue,
   MAX_RETAINED_ROUNDS,
   type DialogueRecord,
@@ -152,5 +153,36 @@ describe("upsertRound — purity", () => {
     const snapshot = JSON.parse(JSON.stringify(base)) as DialogueRecord;
     upsertRound(base, "p", "d", 100_000, round(2, 5, 5));
     expect(base).toEqual(snapshot); // input untouched
+  });
+});
+
+describe("upsertRoundInto — array-level replace/append (record + panel)", () => {
+  const r = (n: number, promptTokens: number, answerTokens: number) => ({
+    n,
+    promptTokens,
+    answerTokens,
+    ts: 1,
+  });
+  it("appends a new round n", () => {
+    const out = upsertRoundInto(
+      [{ n: 1, promptTokens: 10, answerTokens: 20, total: 30, ts: 1 }],
+      r(2, 5, 5),
+    );
+    expect(out).toHaveLength(2);
+    expect(out[1]).toMatchObject({ n: 2, total: 10 });
+  });
+  it("replaces an existing round n (streaming re-emit)", () => {
+    const out = upsertRoundInto(
+      [{ n: 1, promptTokens: 10, answerTokens: 20, total: 30, ts: 1 }],
+      r(1, 100, 100),
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ n: 1, promptTokens: 100, total: 200 });
+  });
+  it("does not mutate the input array", () => {
+    const base = [{ n: 1, promptTokens: 1, answerTokens: 1, total: 2, ts: 1 }];
+    const snap = JSON.parse(JSON.stringify(base));
+    upsertRoundInto(base, r(1, 9, 9));
+    expect(base).toEqual(snap);
   });
 });

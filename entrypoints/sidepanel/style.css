@@ -481,6 +481,67 @@ body {
   color: var(--fg-muted);
   white-space: nowrap;
 }
+
+/* Conversation identity + per-round breakdown, and panel scroll. */
+html,
+body {
+  height: 100%;
+}
+#app {
+  height: 100%;
+  overflow-y: auto;
+}
+.hd-identity {
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.hd-conv-title {
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hd-conv-id {
+  color: var(--fg-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hd-rounds {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hd-rounds-head {
+  font-size: 11px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.hd-rounds-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.hd-round-row {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.hd-round-n {
+  color: var(--fg-muted);
+  min-width: 2rem;
+}
+.hd-round-in {
+  color: var(--accent);
+}
+.hd-round-out {
+  color: var(--fg);
+}
 .hd-icon-btn--toggle {
   position: absolute;
   top: 50%;
