@@ -1,0 +1,5 @@
+# Validate the commit message against commitlint.config.js (Conventional
+# Commits + 50/72, per AGENTS.md → "Commit Messages"). Mirrors the CI
+# "Lint commit messages" step. Fails the commit on a non-conforming message.
+# (--no-verify bypasses locally; CI is the backstop.)
+npx commitlint --edit "$1"

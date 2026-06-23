@@ -19,6 +19,15 @@ jobs:
 
       - run: npm ci
 
+      - name: Lint commit messages
+        run: |
+          if [ -n "$GITHUB_BASE_REF" ]; then
+            git fetch --depth=1 origin "$GITHUB_BASE_REF"
+            npx commitlint --from "origin/$GITHUB_BASE_REF" --to HEAD
+          else
+            npx commitlint --last
+          fi
+
       - name: Lint
         run: npm run lint
 

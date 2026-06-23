@@ -10,6 +10,9 @@ export default tseslint.config(
       '.wxt/**',
       'node_modules/**',
       'dist/**',
+      // Debug/dev-only scripts that hit external services with real creds —
+      // not shipped code; kept out of lint to avoid noise.
+      'scripts/**',
     ],
   },
   {
