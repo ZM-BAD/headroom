@@ -31,6 +31,26 @@ npx wxt prepare        # Regenerate types in .wxt/ (auto-runs on postinstall)
 - **Auto-imports**: `defineBackground`, `defineContentScript`, `defineConfig`, `browser` etc. are auto-imported by WXT. Do not add explicit import statements for these.
 - **Cross-browser API**: Use `browser.*` (WXT wrapper) instead of `chrome.*` directly.
 
+### Upstash (Redis) data model — the cloud storage layer
+
+Upstash Redis (user-owned, BYOK) is the **cross-device merge point + cloud persistence**; `browser.storage.local` is the acceleration cache the live gauge reads from. The **token truth is the platform's conversation-history text** — tokens are always _estimated_ from that text by the 001 engine, never trusted from the platform; Upstash only persists the resulting counts. The transport layer is spec [002](specs/002-upstash-data-layer.md); the reconciliation that reads/writes these records (open = full recompute, union-merge by round-n, delete sync, zombie cleanup) is spec [003](specs/003-cross-device-sync.md). The extension reaches Upstash only over the HTTPS **REST API** — the browser can't speak native Redis.
+
+**REST contract** (`utils/upstash.ts`): one HTTPS POST per command.
+`POST {UPSTASH_REDIS_REST_URL}/` · header `Authorization: Bearer {UPSTASH_REDIS_REST_TOKEN}` · body = JSON command array (`["GET",key]` / `["SET",key,val]` / `["DEL",key]`) → `{ "result": <string|null> }`. 8s `AbortController` timeout — a wedged Upstash must not hang the SW. Empty creds ⇒ every op silently no-ops (Upstash is optional; the gauge works off local state).
+
+**Free-tier budget** ([pricing](https://upstash.com/pricing/redis)): 256 MB storage, **500K commands/month** (account-level, not per-key). Each round costs 2 commands (GET + SET in the read-modify-write), a delete costs 1 (DEL), a settings save costs 1. 500K/month ≈ 250K rounds/month — well beyond a single user. Storage is a non-issue: a `DialogueRecord` stores **only token counts** per round (no prompt/answer text — see `utils/dialogue-record.ts`), so a 50-round conversation is ~4 KB; 256 MB ≈ 65K conversations. **Architectural implication**: 003's zombie-cleanup / open-reconcile can burst commands after a long offline period (there is **no outbox** — missed rounds are simply re-reconciled on next open), but the total stays within budget because they are real user activity that would have been counted anyway. If a user ever exceeds the free tier, Upstash bills ~$0.20/100K extra commands — that's the user's account, not Headroom's concern.
+
+**Key scheme — only two value types live on Redis:**
+
+- `headroom:conv:{platform}:{dialogueId}` → `DialogueRecord` JSON (shape in `utils/dialogue-record.ts`; carries `updatedAt`).
+- `headroom:settings` → `{ thresholds, language, contextLimits, updatedAt }`. **Credentials are NEVER written here** — you can't read Redis without them, so storing them is both pointless and a leak. Local `Settings` keeps the full object (creds included); the cloud keeps only this stripped shape (`utils/cloud-settings.ts`).
+
+**Client layering — keep it this way:** generic primitives `kvGet` / `kvSet` / `kvDel` (shape-agnostic transport) under one typed wrapper per domain value (`getDialogue`/`setDialogue`/`delDialogue`, `getCloudSettings`/`setCloudSettings`/`delCloudSettings`). A new Redis value type = a new thin wrapper over the kv primitives, **not** a fourth fetch path.
+
+**Credentials stay local.** The extension reads them from local `Settings.upstash`; the debug probe reads `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` from `.env` (gitignored).
+
+**Verify after any change here:** `node scripts/probe-upstash.mjs` — reads `.env`, runs GET/SET/DEL × (conv + settings) against the **live** instance on throwaway `headroom:_probe:*` keys (self-cleans in `finally`), and asserts no credentials leak into the stored settings JSON. Not part of `npm test`.
+
 ## Key Files
 
 - `wxt.config.ts` — WXT config + manifest overrides
@@ -40,6 +60,76 @@ npx wxt prepare        # Regenerate types in .wxt/ (auto-runs on postinstall)
 - `.husky/pre-commit` — lint-staged (ESLint + Prettier on staged files)
 - `.wxt/` — generated types, do not edit manually
 - `.output/` — build output, gitignored
+
+## Commit Messages
+
+AI 和人都按这一节写 commit。格式 = **Conventional Commits + 经典 50/72**。文档负责"为什么 + 怎么写";**格式的硬保证靠 commit-msg 钩子的 commitlint 机械校验**(见末尾),不靠 AI 自觉。
+
+### 格式模板
+
+```
+<type>(<scope>): <subject>      ← 主题:一行,祈使语气,≤50 字符(硬限 72),无句号
+                                 ← 空行(git 靠它区分主题/正文)
+<body>                          ← 正文(非平凡才写):每行 ≤72;只写 WHY + 地雷
+                                 ← 空行
+<footer>                        ← BREAKING CHANGE: / Co-Authored-By:
+```
+
+### 主题行
+
+- **祈使语气**:用 `add` / `fix` / `remove`,**不用** `added` / `fixes` / `adding`。自检句:**"If applied, this commit will \_\_\_"** 读得通就对(例:"…will **add** the DEL command" → `feat(upstash): add DEL command`)。
+- **长度**:目标 ≤50 字符,绝对 ≤72。(AI 数字符不准没关系,精神 = 一行写完、尽量短;scope 挤就省 scope。)
+- 句末**无句号**。
+- **type**(必选,小写):`feat`(新功能)/ `fix`(修 bug)/ `docs`(文档)/ `refactor`(重构,不改行为)/ `perf`(性能)/ `test` / `build` / `ci` / `chore`(杂务·脚手架)/ `style`(纯格式)。
+- **scope**(可选):受影响模块,如 `upstash` / `sidepanel` / `background`。
+
+### 正文(非平凡改动才写)
+
+- 主题与正文间**一个空行**;每行 ≤72 字符换行。
+- **只写两样:WHY(动机、为什么这么改)+ 地雷(非显然的坑、踩过的雷、与旧行为的对比)。**
+- **禁止复述 diff** —— diff 已是 WHAT,message 再讲一遍是纯噪音。
+
+### Footer
+
+- 破坏性改动:`BREAKING CHANGE: <说明>`,或主题 type 后加 `!`(如 `feat(api)!: …`)。
+- **`Co-Authored-By: Claude <noreply@anthropic.com>` 必加**(凡 AI 参与的 commit)。
+
+### 好 / 坏对照
+
+✅ 好(正文是 WHY + 地雷,无一字复述 diff):
+
+```
+fix(background): count round on ROUND_COMPLETE, not on send
+
+The service worker can be evicted between the send request and the
+AI reply finishing; counting on send mis-counts when the SW restarts
+mid-round. Move the increment to ROUND_COMPLETE so it survives
+eviction.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+❌ 坏(过去式 + 复述 WHAT + 零 WHY + 无 type/scope/署名):
+
+```
+fix: fixed the bug
+
+This change updates the code to fix the round counting issue by
+changing where we increment the counter. Now it works correctly.
+```
+
+### squash 策略
+
+开发期 churn(我刚引入的 bug、格式化、删冗余、lint)→ squash 进功能 commit。但**地雷的教训必须活下来**:留这个 commit,或把教训搬进代码注释 / 本文件 playbook。
+
+### 格式硬保证(已装)
+
+`commitlint.config.js`(`@commitlint/config-conventional` + header/body ≤72)在两处机械校验,主题不合规范直接拒:
+
+- 本地:`.husky/commit-msg` 钩子(commit 时校验;`--no-verify` 可绕过)。
+- CI:`ci.yml` 的 "Lint commit messages" 步骤(PR 校验 base→HEAD,push 校验 HEAD)。
+
+注:这会在**每个** commit(含开发期中间提交)上强制 Conventional 格式 —— 与你的 squash 习惯兼容(中间提交也写成 `fix: x`,squash 时合并即可;AI 写这类消息近乎零成本)。
 
 ## Spec-Driven Development
 

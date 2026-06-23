@@ -24,7 +24,7 @@ Headroom 显示在浏览器的原生侧边栏中，实时可视化你的 context
 - 🟠 **橙色** — 开始占满了，注意一下
 - 🔴 **红色** — 快满了，考虑开新对话
 
-阈值可以自定义。扩展会自动检测你正在使用的模型，计算正确的 context window 上限。
+阈值可以自定义。扩展会自动识别你所在的 AI 平台，匹配对应的 context window 上限（可按平台覆盖）。
 
 ## 面向谁
 
@@ -38,8 +38,13 @@ Headroom 显示在浏览器的原生侧边栏中，实时可视化你的 context
 
 1. **安装扩展** — Chrome、Edge 或 Firefox
 2. **使用你自己的 Upstash KV** — 注册免费 [Upstash](https://upstash.com/) 账号，创建一个 Redis KV 实例，把 API key 填入扩展设置。你的数据存在你自己的私有存储中。
-3. **在支持的 AI 聊天平台打开侧边栏** — Headroom 自动追踪你的对话 token 消耗
+3. **在支持的 AI 聊天平台打开侧边栏** — Headroom 从平台拉取该对话的完整历史，估算你的 token 消耗
 4. **看着指示器** — 随着对话进行，Headroom 显示 context 还剩多少
+5. **跨设备接续** — 记录同步到你自己的 Upstash KV，你在别的设备（或手机移动端）聊的轮次，下次在任一装了 Headroom 的设备上打开该对话时都会被计入。
+
+### Upstash 是免费的吗？
+
+对任何合理的个人使用都免费。Upstash 免费层（[定价](https://upstash.com/pricing/redis)）包含 **256 MB 存储**和**每月 50 万次命令**。每轮问答约消耗 2 次命令（一次读 + 一次写），50 万/月约可支撑 25 万轮——远超单用户实际产生量。Headroom 每轮只存 token 计数（不存对话文本），存储完全不构成瓶颈（50 轮对话约 4 KB，256 MB 可存约 6.5 万个对话）。
 
 ## 浏览器支持
 
@@ -53,18 +58,23 @@ Headroom **仅支持 Manifest V3**（不支持 MV2），需要较新的浏览器
 
 ## 支持平台
 
-| 平台             | 状态           |
-| ---------------- | -------------- |
-| DeepSeek         | 🚧 开发中 (v1) |
-| 更多平台即将支持 | —              |
+| 平台     | 发送请求  | Context（默认） |
+| -------- | --------- | --------------- |
+| DeepSeek | ✅ 已确认 | 1,000,000       |
+| ChatGPT  | ✅ 已确认 | 128,000         |
+| Gemini   | ✅ 已确认 | 1,000,000       |
+| Kimi     | ✅ 已确认 | 200,000         |
+| Qwen     | ✅ 已确认 | 131,072         |
+| 通义千问 | ✅ 已确认 | 131,072         |
+| 豆包     | ✅ 已确认 | 256,000         |
 
-采用平台无关架构设计——添加新的 AI 聊天平台只需编写一个新的内容适配器。
+7 家平台的发送请求解析、删除请求解析、DOM 选择器均经真机实测确认（2026-06）。采用平台无关的适配器架构——新增 AI 聊天平台只需编写一个新适配器。
 
 ## 技术栈
 
 - **[WXT](https://wxt.dev/)** — 下一代 Web 扩展框架 (Manifest V3)
 - **原生 Side Panel API** — 浏览器原生侧边栏 (Chrome `sidePanel`、Firefox `sidebarAction`)
-- **js-tiktoken** — 客户端 token 计算
+- **启发式 token 估算** — 按「平台 × 文字脚本」系数矩阵（v1：中文 + 英文）；不打包重型 tokenizer（保持扩展轻量、模型无关）
 - **Upstash Redis KV** — 用户自有云存储（BYOK 模式）
 
 ## 开发
@@ -78,6 +88,16 @@ npm run build          # 生产构建
 
 详见 [AGENTS.md](./AGENTS.md) 获取完整开发指南和架构详情。
 
+## 隐私
+
+Headroom 读取你的对话文本仅用于计算 token——它**只存储计数**，绝不存储文本本身，数据存在你的设备和**你自己的** Upstash KV（如已配置）。Headroom 没有自建服务器，没有第三方追踪。详见 [PRIVACY.md](./PRIVACY.md)。
+
 ## 许可证
 
-MIT
+Copyright 2026 周铭 (ZM-BAD)。
+
+基于 **Apache License, Version 2.0** 授权 — 详见 [LICENSE](./LICENSE)。你可以在以下地址获取协议副本：
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+除非适用法律要求或书面同意，否则依据本协议分发的软件均按"原样"分发。

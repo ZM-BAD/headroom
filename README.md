@@ -24,7 +24,7 @@ Headroom sits in your browser's native side panel and gives you a real-time, vis
 - 🟠 **Orange** — Starting to fill up, be mindful
 - 🔴 **Red** — Almost full, consider starting a new conversation
 
-Thresholds are customizable, and the extension auto-detects which model you're using to calculate the correct context window limit.
+Thresholds are customizable, and the extension auto-detects which AI platform you're on to match the correct context window limit (you can override it per platform).
 
 ## Who Is This For
 
@@ -38,8 +38,13 @@ This is **not** a token cost calculator. AI models are getting cheaper by the mo
 
 1. **Install the extension** in Chrome, Edge, or Firefox
 2. **Bring your own Upstash KV** — create a free [Upstash](https://upstash.com/) account, provision a Redis KV instance, and paste your API key into the extension settings. Your data stays in your own private storage.
-3. **Open the side panel** on any supported AI chat platform — Headroom automatically tracks your conversation's token usage
+3. **Open the side panel** on any supported AI chat platform — Headroom pulls the conversation's full history from the platform and estimates your token usage
 4. **Watch the indicator** — as your conversation grows, Headroom shows you how much context room remains
+5. **Picks up across devices** — because records sync to your own Upstash KV, rounds you chatted on another device (or on mobile) are counted the next time you open that conversation on any device with Headroom installed.
+
+### Is Upstash free?
+
+Yes for any realistic personal use. Upstash's free tier ([pricing](https://upstash.com/pricing/redis)) includes **256 MB storage** and **500,000 commands/month**. Each chat round costs ~2 commands (one read + one write), so 500K/month covers roughly 250,000 rounds — far beyond what a single user generates. Headroom stores only token counts per round (no conversation text), so storage is a non-issue (~4 KB per 50-round conversation ≈ 65,000 conversations in 256 MB).
 
 ## Browser Support
 
@@ -53,18 +58,25 @@ Headroom is **Manifest V3 only** (MV2 is not supported) and requires a recent br
 
 ## Supported Platforms
 
-| Platform         | Status                 |
-| ---------------- | ---------------------- |
-| DeepSeek         | 🚧 In Development (v1) |
-| More coming soon | —                      |
+| Platform      | Send request | Context (default) |
+| ------------- | ------------ | ----------------- |
+| DeepSeek      | ✅ confirmed | 1,000,000         |
+| ChatGPT       | ✅ confirmed | 128,000           |
+| Gemini        | ✅ confirmed | 1,000,000         |
+| Kimi          | ✅ confirmed | 200,000           |
+| Qwen          | ✅ confirmed | 131,072           |
+| 通义千问      | ✅ confirmed | 131,072           |
+| 豆包 (Doubao) | ✅ confirmed | 256,000           |
 
-Built with a platform-agnostic architecture — adding new AI chat platforms is a matter of writing a new content adapter.
+Send-request parsing, delete-request parsing, and DOM selectors for all seven
+platforms were captured live (2026-06). Built with a platform-agnostic adapter
+architecture — adding a new AI chat platform is a matter of writing one adapter.
 
 ## Tech Stack
 
 - **[WXT](https://wxt.dev/)** — Next-gen web extension framework (Manifest V3)
 - **Native Side Panel API** — Browser-native sidebar (Chrome `sidePanel`, Firefox `sidebarAction`)
-- **js-tiktoken** — Client-side token calculation
+- **Heuristic token estimation** — a per-platform × per-script coefficient matrix (v1: Chinese + English); no heavy tokenizer bundled (keeps the extension light and model-agnostic)
 - **Upstash Redis KV** — User-owned cloud storage (BYOK model)
 
 ## Development
@@ -78,6 +90,21 @@ npm run build          # Production build
 
 See [AGENTS.md](./AGENTS.md) for full development guidelines and architecture details.
 
+## Privacy
+
+Headroom reads your conversation text only to count tokens — it stores **only
+the counts**, never the text itself, locally and in **your own** Upstash KV (if
+configured). There is no Headroom-operated server and no third-party tracking.
+Full details: [PRIVACY.md](./PRIVACY.md).
+
 ## License
 
-MIT
+Copyright 2026 周铭 (ZM-BAD).
+
+Licensed under the **Apache License, Version 2.0** — see [LICENSE](./LICENSE).
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed
+under the License is distributed on an "AS IS" BASIS.
