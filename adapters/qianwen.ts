@@ -19,20 +19,26 @@ export const qianwenAdapter: PlatformAdapter = {
   completionUrl: "*://chat2.qianwen.com/api/v2/chat*",
   matchPattern: "*://www.qianwen.com/*",
   contextLimit: 131_072, // ~128K; overridable
-  parseRequest(body) {
-    const b = body as {
-      messages?: Array<{ content?: unknown }>;
-      session_id?: unknown;
-    } | null;
-    const content = b?.messages?.[0]?.content;
-    return {
-      prompt: typeof content === "string" ? content : null,
-      dialogueId: typeof b?.session_id === "string" ? b.session_id : null,
-    };
-  },
   // Live-confirmed (2026-06): the `-question`/`-answer` prefix is stable even
   // though the trailing hash (`-oonUAN`) rotates per build.
-  // 通义千问 chat URLs: https://www.qianwen.com/chat/<id> (home = "/").
+  // Delete endpoint: CONFIRMED live (2026-06). The delete API rides a
+  // DIFFERENT host than send: chat2-api.qianwen.com (send → chat2.qianwen.com).
+  // deleteHost declares it so the delete-listener can dispatch. Body is the
+  // batch shape {"session_ids":["<id>"]} (array even for a single delete).
+  deleteHost: "chat2-api.qianwen.com",
+  deleteUrl: "*://chat2-api.qianwen.com/api/v1/session/delete/batch*",
+  parseDelete(rawBody) {
+    try {
+      const b = JSON.parse(rawBody) as { session_ids?: unknown } | null;
+      // Batch endpoint: take the first id (we only delete one local record per
+      // request; the web app sends a 1-element array for a single-chat delete).
+      if (!Array.isArray(b?.session_ids)) return null;
+      const first = b!.session_ids[0];
+      return typeof first === "string" ? first : null;
+    } catch {
+      return null;
+    }
+  },
   dialogueIdFromUrl(url) {
     try {
       return new URL(url).pathname.match(/\/chat\/([^/?#]+)/)?.[1] ?? null;

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   upsertRound,
   upsertRoundInto,
+  projectUsage,
   emptyDialogue,
   MAX_RETAINED_ROUNDS,
   type DialogueRecord,
@@ -36,7 +37,7 @@ describe("upsertRound — first round", () => {
       1_000_000,
       round(1, 100, 50),
     );
-    expect(rec.platform).toBe("deepseek");
+    expect(rec.platformId).toBe("deepseek");
     expect(rec.dialogueId).toBe("d1");
     expect(rec.contextLimit).toBe(1_000_000);
     expect(rec.roundCount).toBe(1);
@@ -184,5 +185,69 @@ describe("upsertRoundInto — array-level replace/append (record + panel)", () =
     const snap = JSON.parse(JSON.stringify(base));
     upsertRoundInto(base, r(1, 9, 9));
     expect(base).toEqual(snap);
+  });
+});
+
+/**
+ * projectUsage is the gauge's read of a DialogueRecord (spec 001 → "仪表盘从
+ * DialogueRecord 投影"). It must surface the record's TRUE totals — never
+ * re-derive them from the retained rounds array (which is trimmed) — and the
+ * last round's total for the "Last:" readout.
+ */
+describe("projectUsage — gauge projection from a record", () => {
+  it("returns zeros + null last round for a null record (new/unseen conversation)", () => {
+    const proj = projectUsage(null);
+    expect(proj.totalTokens).toBe(0);
+    expect(proj.roundCount).toBe(0);
+    expect(proj.lastRoundTokens).toBeNull();
+    expect(proj.rounds).toEqual([]);
+  });
+
+  it("returns zeros for an empty record (no rounds yet)", () => {
+    const proj = projectUsage(emptyDialogue("p", "d", 100_000));
+    expect(proj.totalTokens).toBe(0);
+    expect(proj.roundCount).toBe(0);
+    expect(proj.lastRoundTokens).toBeNull();
+    expect(proj.rounds).toEqual([]);
+  });
+
+  it("projects totalTokens, roundCount, and the last round's total", () => {
+    const rec = upsertRound(null, "p", "d", 100_000, {
+      n: 1,
+      promptTokens: 10,
+      answerTokens: 20,
+      ts: 1,
+    });
+    const r2 = upsertRound(rec, "p", "d", 100_000, {
+      n: 2,
+      promptTokens: 30,
+      answerTokens: 40,
+      ts: 2,
+    });
+    const proj = projectUsage(r2);
+    expect(proj.totalTokens).toBe(100); // (10+20)+(30+40)
+    expect(proj.roundCount).toBe(2);
+    expect(proj.lastRoundTokens).toBe(70); // round 2 total
+  });
+
+  it("reads totalTokens/roundCount from the record — NOT the trimmed array sum", () => {
+    // A long conversation: 500 real rounds of 2 tokens each = 1000 lifetime
+    // tokens, but only the last 2 rounds are retained in the array.
+    const trimmed: DialogueRecord = {
+      platformId: "p",
+      dialogueId: "d",
+      contextLimit: 100_000,
+      totalTokens: 1000, // true lifetime sum
+      roundCount: 500, // true round count
+      rounds: [
+        { n: 499, promptTokens: 1, answerTokens: 1, total: 2, ts: 499 },
+        { n: 500, promptTokens: 1, answerTokens: 1, total: 2, ts: 500 },
+      ], // array sum would be only 4 — WRONG for the gauge
+      updatedAt: 1,
+    };
+    const proj = projectUsage(trimmed);
+    expect(proj.totalTokens).toBe(1000); // NOT 4
+    expect(proj.roundCount).toBe(500); // NOT 2
+    expect(proj.lastRoundTokens).toBe(2); // last retained round's total
   });
 });

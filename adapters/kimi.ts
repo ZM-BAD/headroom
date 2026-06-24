@@ -19,17 +19,18 @@ export const kimiAdapter: PlatformAdapter = {
   completionUrl: "*://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat",
   matchPattern: "*://www.kimi.com/*",
   contextLimit: 200_000, // approximate (Moonshot long-context); overridable
-  parseRequest(body) {
-    const b = body as {
-      chat_id?: unknown;
-      message?: { blocks?: Array<{ text?: { content?: unknown } }> };
-    } | null;
-    const content = b?.message?.blocks?.[0]?.text?.content;
-    const prompt = typeof content === "string" ? content : null;
-    const dialogueId = typeof b?.chat_id === "string" ? b.chat_id : null;
-    return { prompt, dialogueId };
+  // Delete endpoint: CONFIRMED live (2026-06). Same gRPC-Gateway style as
+  // send: POST /apiv2/kimi.chat.v1.ChatService/DeleteChat, body {"chat_id":"<id>"}
+  // (singular — the dialogue id field is the same name as in the send body).
+  deleteUrl: "*://www.kimi.com/apiv2/kimi.chat.v1.ChatService/DeleteChat",
+  parseDelete(rawBody) {
+    try {
+      const b = JSON.parse(rawBody) as { chat_id?: unknown } | null;
+      return typeof b?.chat_id === "string" ? b.chat_id : null;
+    } catch {
+      return null;
+    }
   },
-  // Kimi chat URLs: https://www.kimi.com/chat/<id> (home = "/?chat_enter_method=…").
   dialogueIdFromUrl(url) {
     try {
       return new URL(url).pathname.match(/\/chat\/([^/?#]+)/)?.[1] ?? null;

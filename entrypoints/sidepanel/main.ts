@@ -15,9 +15,10 @@ import {
   type ContextLimits,
   type Language,
   type Settings,
-  type UpstashConfig,
 } from "../../utils/settings";
 import { ADAPTERS, platformDisplayName } from "../../adapters";
+import { setCloudSettings, toCloudSettings } from "../../utils/cloud-settings";
+import type { UpstashCreds } from "../../utils/upstash";
 
 /**
  * Raw browser-locale lookup. WXT types `browser.i18n.getMessage` to accept
@@ -42,8 +43,6 @@ const IDLE_STATE: UsageState = {
   totalTokens: 0,
   lastRoundTokens: null,
   roundCount: 0,
-  dialogueId: null,
-  title: null,
   rounds: [],
 };
 
@@ -77,8 +76,6 @@ const els = {
   upstashStatus: document.querySelector<HTMLElement>("#upstash-status")!,
   settingsSave: document.querySelector<HTMLButtonElement>("#settings-save")!,
   ctxReset: document.querySelector<HTMLButtonElement>("#ctx-reset")!,
-  convTitle: document.querySelector<HTMLElement>("#conv-title")!,
-  convId: document.querySelector<HTMLElement>("#conv-id")!,
   roundsList: document.querySelector<HTMLElement>("#rounds-list")!,
 };
 
@@ -88,7 +85,7 @@ const els = {
 let currentThresholds: Thresholds = { ...DEFAULT_THRESHOLDS };
 let currentState: UsageState = IDLE_STATE;
 let currentLanguage: Language = "auto";
-let currentUpstash: UpstashConfig = { url: "", token: "" };
+let currentUpstash: UpstashCreds = { url: "", token: "" };
 let currentContextLimits: ContextLimits = { ...DEFAULT_SETTINGS.contextLimits };
 
 /** Loaded message tables for a manual locale override. "auto" uses browser i18n. */
@@ -158,11 +155,6 @@ function render(state: UsageState, th: Thresholds): void {
     : t("detectingPlatform");
   els.contextLimit.textContent =
     limit > 0 ? formatContext(limit) : t("noContext");
-
-  els.convTitle.textContent = state.title ?? "—";
-  els.convTitle.title = state.title ?? "";
-  els.convId.textContent = state.dialogueId ?? "—";
-  els.convId.title = state.dialogueId ?? "";
 
   els.percent.textContent = `${(ratio * 100).toFixed(1)}%`;
   els.barFill.style.width = `${ratio * 100}%`;
@@ -337,7 +329,7 @@ els.ctxReset.addEventListener("click", () => {
 // ---------- upstash (BYOK REST API) ----------
 
 /** Read + normalize the Upstash fields straight from the inputs (testable pre-save). */
-function readUpstashFromInputs(): UpstashConfig {
+function readUpstashFromInputs(): UpstashCreds {
   return {
     url: els.upstashUrl.value.trim().replace(/\/+$/, ""),
     token: els.upstashToken.value,
@@ -385,6 +377,9 @@ async function testUpstashConnection(
   token: string,
 ): Promise<{ ok: boolean; message: string }> {
   if (!url || !token) return { ok: false, message: t("upstashErrMissing") };
+  if (!url.startsWith("https://")) {
+    return { ok: false, message: t("upstashErrNotHttps") };
+  }
   try {
     const res = await fetch(`${url}/PING`, {
       method: "POST",
@@ -468,6 +463,13 @@ function flashSaved(): void {
 els.settingsSave.addEventListener("click", () => {
   void (async () => {
     currentUpstash = readUpstashFromInputs();
+    // Refuse to persist a non-https Upstash URL — the REST token must never go
+    // over http. Empty URL is fine (Upstash is optional). Mirrors the C-layer
+    // guard in upstash.ts; this gives the user a visible reason.
+    if (currentUpstash.url && !currentUpstash.url.startsWith("https://")) {
+      setUpstashStatus("err", t("upstashErrNotHttps"));
+      return;
+    }
     const settings: Settings = {
       thresholds: currentThresholds,
       language: currentLanguage,
@@ -476,6 +478,20 @@ els.settingsSave.addEventListener("click", () => {
     };
     await saveSettings(settings);
     flashSaved();
+    // Push a credentials-stripped snapshot to Upstash so settings follow the
+    // user across devices. Best-effort, AFTER the local write + UI flash so a
+    // slow Upstash never blocks the "Saved ✓" feedback. Offline buffering is a
+    // 003 concern; here a failure just logs.
+    if (settings.upstash.url && settings.upstash.token) {
+      try {
+        await setCloudSettings(
+          settings.upstash,
+          toCloudSettings(settings, Date.now()),
+        );
+      } catch (err) {
+        console.warn("[Headroom] settings cloud sync skipped:", err);
+      }
+    }
     // Refresh the main view so the gauge re-scales to the (possibly new) limit.
     try {
       const state = (await browser.runtime.sendMessage({

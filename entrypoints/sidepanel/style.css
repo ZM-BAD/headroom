@@ -491,25 +491,6 @@ body {
   height: 100%;
   overflow-y: auto;
 }
-.hd-identity {
-  margin-top: 8px;
-  font-size: 11px;
-  line-height: 1.4;
-}
-.hd-conv-title {
-  color: var(--fg);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.hd-conv-id {
-  color: var(--fg-muted);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .hd-rounds {
   display: flex;
   flex-direction: column;

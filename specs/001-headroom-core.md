@@ -47,7 +47,7 @@ Headroom 选估算。v1 做中文（CJK）+ 英文（Latin）两种脚本；更�
 - [ ] **平台识别 + context 匹配**：domain → platform，匹配该平台 context window limit；用户可在设置按平台覆盖（默认值取 adapter `contextLimit`）
 - [ ] **token 估算引擎**：text → token，按「文字脚本 × 平台」系数；v1 脚本 = 中文（CJK）+ 英文（Latin）
 - [ ] **适配器架构**：完整契约（见 Design），DeepSeek 全实现；接口为新增平台预留
-- [ ] **增量轮次捕获**：webRequest 拦发送请求取 prompt + 对话 id；content script 抓 AI 回复文本 → 配对 → 估算 → 更新仪表盘
+- [ ] **增量轮次捕获**：webRequest `onCompleted`（SSE 流关闭 = 回答完毕）→ 拉平台历史 API（message_id 权威）→ 估算本轮 → 更新仪表盘
 - [ ] **本地工作状态**：仪表盘的读源，纯本地，不依赖云端
 - [ ] **URL 作用域**：非匹配页面 `action.disable` 灰化、sidepanel 不响应
 - [ ] **用户设置面板**：阈值双滑块 / context 覆盖 / UI 语言切换 / Upstash 配置（URL·Token·测试·清空·保存）
@@ -126,65 +126,136 @@ tokens(text, platform) = Σ over 脚本 s  [ count(text, s) × coeff(s, platform
 
 新增一个 AI 平台 = 注册 + 写一个 `adapters/<platform>.ts`。完整契约（**归属**列说明哪个 spec 定义/使用该字段）：
 
-| 字段                                                                             | 归属 | 说明                                    |
-| -------------------------------------------------------------------------------- | ---- | --------------------------------------- |
-| `id` / `matchPattern`                                                            | 001  | 平台 id；content 注入 + host 匹配       |
-| `contextLimit`                                                                   | 001  | 默认 context window，用户可覆盖         |
-| `tokenCoefficients { cjk, latin }`                                               | 001  | 默认估算系数，用户可覆盖                |
-| `sendUrl` / `parseSend(body) → { prompt, dialogueId }`                           | 001  | 增量捕获：拦发送请求取 prompt + 对话 id |
-| `answerSelector`（或等价抓取策略）                                               | 001  | DOM 抓 AI 回复                          |
-| `deleteUrl` / `parseDelete(body) → dialogueId` / `deleteHost?` / `deleteMethod?` | 003  | 删除联动拦截                            |
-| `fetchHistory?(dialogueId) → HistoryMessage[]`                                   | 003  | 全量对账：拉平台完整历史                |
-| `fetchConversationList?() → string[]`                                            | 003  | 僵尸清理：拉对话 id 列表                |
-| `detectDeletedPage?(doc) → boolean`                                              | 003  | 移动端删除懒清理                        |
+| 字段                                                          | 归属    | 说明                                                                                                  |
+| ------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------- |
+| `platformId` / `displayName` / `host` / `matchPattern`        | 001     | 平台 id + 展示名；content 注入 + host 匹配                                                            |
+| `completionUrl`                                               | 001     | webRequest `onCompleted` 过滤 = 回答完毕（SSE 流关闭，根因；非 DOM 启发式）                           |
+| `contextLimit`                                                | 001     | 默认 context window，用户可覆盖                                                                       |
+| `tokenCoefficients { cjk, latin }`                            | 001     | 默认估算系数，用户可覆盖                                                                              |
+| `dialogueIdFromUrl?(url)`                                     | 001     | URL 派生对话 id（切对话 → gauge 重置）                                                                |
+| `fetchHistory?(dialogueId) → HistoryRound[]`                  | 001     | **核心真相源**：拉平台完整历史（message_id 正序）；打开 / 切对话 / 回答完成都走它，token 永远由它估算 |
+| `answerSelector` / `userSelector?` / `conversationSelector`   | 保留    | DOM 兜底原语；history-authoritative 核心当前不用，留给无历史 API 的平台                               |
+| `deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?` | 001+003 | 删除联动：本地 record 重置（001 background）；云端 DEL（003）                                         |
+| `fetchConversationList?() → string[]`                         | 003     | 僵尸清理：拉对话 id 列表                                                                              |
+| `detectDeletedPage?(doc) → boolean`                           | 003     | 移动端删除懒清理                                                                                      |
 
-001 实现 DeepSeek 的**全部 001 字段**；003 字段在本 spec 里只占契约位，实现在 003。background 是平台无关引擎——只认 adapter 接口。
+001 实现 DeepSeek 的 001 字段（`fetchHistory` 已实现并真机验过）；003 字段在本 spec 只占契约位。background 是平台无关引擎——只认 adapter 接口，历史 API 是轮次身份与 token 的唯一真相源。
 
 **DeepSeek 参考实现（001 范围）**：
 
-| 项                  | 值                                                      |
-| ------------------- | ------------------------------------------------------- |
-| `matchPattern`      | `chat.deepseek.com`                                     |
-| `contextLimit`      | 1,000,000                                               |
-| `sendUrl`           | DeepSeek 发送 API（真机抓包确认）                       |
-| `parseSend`         | 取 `content`（prompt）+ `chat_session_id`（dialogueId） |
-| `answerSelector`    | 回复 DOM 选择器（真机实测确认）                         |
-| `tokenCoefficients` | `cjk 0.6 / latin 0.5`（v1 起点值，待 004 标定）         |
+| 项                  | 值                                                                                              |
+| ------------------- | ----------------------------------------------------------------------------------------------- |
+| `matchPattern`      | `chat.deepseek.com`                                                                             |
+| `completionUrl`     | `*://chat.deepseek.com/api/v0/chat/completion`（SSE，onCompleted）                              |
+| `contextLimit`      | 1,000,000                                                                                       |
+| `fetchHistory`      | GET `/api/v0/chat/history_messages?chat_session_id=`（Bearer token + x-client-\* 头，真机确认） |
+| `dialogueIdFromUrl` | `/a/chat/s/<id>` → `chat_session_id`                                                            |
+| `tokenCoefficients` | `cjk 0.6 / latin 0.5`（v1 起点值，待 004 标定）                                                 |
 
 ### 7 平台 context 默认值（首期 DeepSeek 验通，其余 fast-follow）
 
-| 平台     | 页面 host         | Context（默认） | 发送请求解析                              |
-| -------- | ----------------- | --------------- | ----------------------------------------- |
-| DeepSeek | chat.deepseek.com | 1,000,000       | ✅ prompt + `chat_session_id`             |
-| ChatGPT  | chatgpt.com       | 128,000         | ✅ `content.parts[0]` + `conversation_id` |
-| Gemini   | gemini.google.com | 1,000,000       | ❌ 纯 DOM（`f.req` 不可解析）             |
-| Kimi     | www.kimi.com      | 200,000         | ✅ `blocks[0].text.content` + `chat_id`   |
-| Qwen     | chat.qwen.ai      | 131,072         | ✅ prompt + `chat_id`（URL query）        |
-| 通义千问 | www.qianwen.com   | 131,072         | ✅ `messages[0].content` + `session_id`   |
-| 豆包     | www.doubao.com    | 256,000         | ✅ prompt（`content` 是字符串化 JSON）    |
+| 平台     | 页面 host         | Context（默认） | fetchHistory（历史 API 逆向）            |
+| -------- | ----------------- | --------------- | ---------------------------------------- |
+| DeepSeek | chat.deepseek.com | 1,000,000       | ✅ 已实现 + 真机验过                     |
+| ChatGPT  | chatgpt.com       | 128,000         | ⏳ 待逆向                                |
+| Gemini   | gemini.google.com | 1,000,000       | ⏳ 待逆向（可能无历史 API，需 DOM 兜底） |
+| Kimi     | www.kimi.com      | 200,000         | ⏳ 待逆向                                |
+| Qwen     | chat.qwen.ai      | 131,072         | ⏳ 待逆向                                |
+| 通义千问 | www.qianwen.com   | 131,072         | ⏳ 待逆向                                |
+| 豆包     | www.doubao.com    | 256,000         | ⏳ 待逆向                                |
 
 > 7 家 DOM 选择器 + API host/path 均经真机实测确认（2026-06）。001 的**验收里程碑以 DeepSeek 验通为准**；其余 6 家 adapter 字段就绪，深度 runtime 验收见 004。
 
 ### Data Flow（001 scope，纯本地）
 
+历史 API 是轮次身份与 token 的**唯一真相源**；DOM 不参与轮次身份判定。打开对话、切对话、回答完成走同一条"拉历史 → REPLACE record"的路径。
+
+**图 A · 打开对话**（首次开启、移动端发起网页端查看——扩展不区分来源，统一拉历史）：
+
+```mermaid
+sequenceDiagram
+    actor U as 用户
+    participant P as 平台页
+    participant C as Content Script
+    participant B as Background SW
+    participant H as 平台历史API
+    participant S as Side Panel
+    U->>P: 打开 / 切换对话
+    P->>C: 注入 或 SPA URL 变(轮询)
+    C->>B: PAGE_READY
+    B->>S: STATE_UPDATE(平台+context, 用现有record)
+    C->>H: fetchHistory(dialogueId, Bearer)
+    H-->>C: 全部消息(message_id + 全文)
+    C->>B: HISTORY_PARSED(rounds)
+    B->>B: applyHistory(REPLACE, 逐轮估token)
+    B->>S: STATE_UPDATE(全部轮次/正序)
+    S->>U: 渲染进度条/占比/轮次
 ```
-1. 用户在平台页发消息
-2. webRequest 命中 adapter.sendUrl → parseSend 取 prompt + dialogueId → 存 pending（单槽，跨 SW 重启保活）
-3. content script 检测 AI 回复完成（answerSelector）→ 抓回复文本 → 发 background
-4. background 配对 pending.prompt + answer → 估算引擎算 prompt/answer token
-   → 追加本轮到 DialogueRecord → 更新 totalTokens/roundCount
-5. 占比 = totalTokens / contextLimit → 预警等级 → 广播 side panel
-6. side panel 渲染进度条/占比/颜色/轮次
+
+**图 B · 新增一轮问答**（含"回答完毕"判定）：
+
+```mermaid
+sequenceDiagram
+    actor U as 用户
+    participant P as 平台页
+    participant B as Background SW
+    participant C as Content Script
+    participant H as 平台历史API
+    participant S as Side Panel
+    U->>P: 提问
+    P->>P: 发 completion(SSE text/event-stream)
+    Note over P: 模型流式输出(面板不变)
+    P-->>B: onCompleted(SSE流关闭 = 回答完毕)
+    B->>B: 200ms settle
+    B->>C: REFRESH_HISTORY
+    C->>H: fetchHistory(新轮已在历史, 0ms无延迟)
+    H-->>C: 全部消息(含本轮)
+    C->>B: HISTORY_PARSED
+    B->>B: applyHistory(REPLACE)
+    B->>S: STATE_UPDATE(新增本轮)
+```
+
+**图 C · 重新生成**（B 的变体；说明为何不多算一轮）：
+
+```mermaid
+sequenceDiagram
+    actor U as 用户
+    participant P as 平台页
+    participant B as Background SW
+    participant C as Content Script
+    participant H as 平台历史API
+    U->>P: 点"重新生成"第 N 轮
+    P->>P: 重发 completion(SSE)
+    P-->>B: onCompleted(SSE关闭)
+    B->>C: REFRESH_HISTORY
+    C->>H: fetchHistory
+    H-->>C: 全部消息(第N轮换新message_id, 挂同一USER)
+    C->>B: HISTORY_PARSED
+    B->>B: applyHistory(REPLACE) 轮次数不变, 第N轮token更新
+    B->>S: STATE_UPDATE
 ```
 
 **无 Upstash。** 本轮的云持久化、跨设备对账是 003。001 的仪表盘离了云也照常工作。
+
+### 平台适配参考（以 DeepSeek 为范本）
+
+新增 / 调试一个平台时照此排查；每条都是实测 landmine，非泛泛之谈。
+
+**A. "回答完毕"找根因，不看表象** — 表象是发送按钮 stop/send icon 切换；根因是**流式补全响应（SSE，`text/event-stream`）关闭** = 回答完毕。用 `webRequest.onCompleted`（同 `completionUrl`）；禁止 DOM 文本 debounce、禁止监听按钮 icon。`onErrorOccurred`（用户停止 / 断网）同处理。
+
+**B. 轮次身份用 message_id，不数 DOM** — DeepSeek 用虚拟列表（`ds-virtual-list`），DOM 里只有可见的 ~2 条，更早的卸载，DOM 计数从第 2 轮起恒为 2。正解：历史 API 返回每条消息的 `message_id` + `parent_id`（答→问配对），一轮 = USER + 其 ASSISTANT 子消息。任何用虚拟列表的平台，DOM 都不可信，必须走历史 API。
+
+**C. 历史 API 鉴权 = Bearer token，且 "Copy as cURL" 会骗你** — DeepSeek 的 history_messages 要 `authorization: Bearer <token>`（token 在 `localStorage.userToken`，`{value}` 包裹）+ 一组 `x-client-*` 头；只带 cookie → `code 40003 INVALID_TOKEN`。**大坑：浏览器 "Copy as cURL" 出于安全省略 Authorization 头** —— 反推鉴权必须看 DevTools Network / Playwright 抓的**真实请求头**，cURL 不可信。
+
+**D. 历史 API：全量、无分页、无延迟** — 实测一次性返回全部消息（33 轮 / 66 条 / 27KB），`limit` / `page_size` 等参数被忽略，无分页字段；onCompleted 瞬间新轮已在历史（0ms 延迟）。单次 GET 拿全量，不翻页、不重试。
+
+**E. API 逆向不能跨环境复现** — `cf_clearance` / `ds_session_id` 绑 IP，从别的机器打用户的 curl 必然 `INVALID_TOKEN`；逆向要在用户真实浏览器或自控 Playwright 会话里做。
 
 ### Data Model（001 scope，本地）
 
 ```
 headroom:settings            → { thresholds, language, contextLimits(覆盖), upstash?(凭证) }
 headroom:conv:{p}:{id}       → DialogueRecord（当前活动对话）
-headroom:pending             → { platformId, dialogueId, prompt }（单槽；轮次完成后清除）
 ```
 
 **`DialogueRecord` / `RoundRecord` 只存 token 计数，绝不存对话文本**（隐私设计）：
@@ -249,16 +320,28 @@ DialogueRecord = {
 
 ### 闸门 1 — DeepSeek 端到端（必过，卡后续一切）
 
-- [ ] 平台页点扩展图标 → 原生侧边栏打开，显示 Headroom UI
-- [ ] 一轮问答后，面板实时更新 token 数与占比
-- [ ] 占比过阈值时进度条变色（黄/红）
-- [ ] 阈值可在设置面板自定义
-- [ ] 显示当前平台 context window limit
-- [ ] 非匹配页图标灰化、点击不开侧栏
+✅ **DeepSeek 真机验收通过（2026-06）**。
+
+- [x] 平台页点扩展图标 → 原生侧边栏打开，显示 Headroom UI
+- [x] 一轮问答后，面板实时更新 token 数与占比
+- [x] 占比过阈值时进度条变色（黄/红）
+- [x] 阈值可在设置面板自定义
+- [x] 显示当前平台 context window limit
+- [x] 非匹配页图标灰化、点击不开侧栏
 
 ### 闸门 2 — 另 6 家冒烟（fast-follow，不卡主路径）
 
-- [ ] ChatGPT / Gemini / Kimi / Qwen / 通义 / 豆包 各至少：能加载、能拦到一轮发送、面板有数
+> history-authoritative 设计要求每家有 `fetchHistory`（历史 API 逆向，见"平台适配参考"）。目前仅 DeepSeek 实现；其余 6 家需逆向各自的 history API。
+
+- [x] DeepSeek — 已验收（见闸门 1）
+- [ ] ChatGPT
+- [ ] Gemini（可能无历史 API，需 DOM 兜底）
+- [ ] Kimi
+- [ ] Qwen
+- [ ] 通义千问
+- [ ] 豆包
+
+各家验收点：能加载、打开对话显示历史、一轮问答后面板更新、regenerate 不多算。
 
 ### 闸门 3 — 跨浏览器冒烟（早抓 Chrome 专属假设；深度 QA 归 004）
 

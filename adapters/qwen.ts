@@ -16,20 +16,21 @@ export const qwenAdapter: PlatformAdapter = {
   completionUrl: "*://chat.qwen.ai/api/v2/chat/completions*",
   matchPattern: "*://chat.qwen.ai/*",
   contextLimit: 131_072, // ~128K (Qwen3 family); overridable
-  parseRequest(body, url) {
-    const b = body as { messages?: Array<{ content?: unknown }> } | null;
-    const content = b?.messages?.[0]?.content;
-    let prompt: string | null = null;
-    if (typeof content === "string") {
-      prompt = content;
-    } else if (Array.isArray(content) && content[0]) {
-      const text = (content[0] as { text?: unknown }).text;
-      if (typeof text === "string") prompt = text;
+  // Delete endpoint: CONFIRMED live (2026-06). Real RESTful DELETE:
+  // DELETE /api/v2/chats/<id> (id in the URL path, body empty). deleteMethod:
+  // "DELETE" disambiguates from GET /api/v2/chats/<id> (view a single chat)
+  // and from the send POST /api/v2/chat/completions (singular "chat", so the
+  // deleteUrl pattern "chats" doesn't even match it).
+  deleteUrl: "*://chat.qwen.ai/api/v2/chats/*",
+  deleteMethod: "DELETE",
+  parseDelete(_rawBody, url) {
+    try {
+      const m = new URL(url).pathname.match(/\/api\/v2\/chats\/([^/?#]+)/);
+      return m ? m[1] : null;
+    } catch {
+      return null;
     }
-    const m = url.match(/[?&]chat_id=([^&#]+)/);
-    return { prompt, dialogueId: m ? decodeURIComponent(m[1]) : null };
   },
-  // Qwen chat URLs: https://chat.qwen.ai/c/<id> (home = "/").
   dialogueIdFromUrl(url) {
     try {
       return new URL(url).pathname.match(/\/c\/([^/?#]+)/)?.[1] ?? null;

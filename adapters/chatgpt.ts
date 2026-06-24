@@ -11,21 +11,23 @@ export const chatgptAdapter: PlatformAdapter = {
   completionUrl: "*://chatgpt.com/backend-api/conversation",
   matchPattern: "*://chatgpt.com/*",
   contextLimit: 128_000,
-  parseRequest(body) {
-    const b = body as {
-      messages?: Array<{ content?: { parts?: unknown[] } }>;
-      conversation_id?: unknown;
-    } | null;
-    const parts = b?.messages?.[0]?.content?.parts;
-    const prompt =
-      Array.isArray(parts) && typeof parts[0] === "string" ? parts[0] : null;
-    return {
-      prompt,
-      dialogueId:
-        typeof b?.conversation_id === "string" ? b.conversation_id : null,
-    };
+  // Delete endpoint: CONFIRMED live (2026-06). ChatGPT soft-deletes via
+  // PATCH /backend-api/conversation/<id> (not a real DELETE) — body is a
+  // {is_visible:false} flag, id rides in the URL path. deleteMethod:"PATCH"
+  // disambiguates from the send POST that hits the same /backend-api/conversation
+  // prefix (send ends at /conversation with no trailing id).
+  deleteUrl: "*://chatgpt.com/backend-api/conversation/*",
+  deleteMethod: "PATCH",
+  parseDelete(_rawBody, url) {
+    try {
+      const m = new URL(url).pathname.match(
+        /\/backend-api\/conversation\/([^/?#]+)/,
+      );
+      return m ? m[1] : null;
+    } catch {
+      return null;
+    }
   },
-  // ChatGPT chat URLs: https://chatgpt.com/c/<id> (home = "/").
   dialogueIdFromUrl(url) {
     try {
       return new URL(url).pathname.match(/\/c\/([^/?#]+)/)?.[1] ?? null;

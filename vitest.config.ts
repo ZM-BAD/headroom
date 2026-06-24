@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
  * Vitest config for Headroom's pure-logic layer.
  *
  * Scope is deliberately narrow: only `utils/` (pure functions, no browser API)
- * and adapter `parseRequest` parsing. DOM selectors, background messaging, and
+ * and adapter `parseDelete` parsing. DOM selectors, background messaging, and
  * side-panel UI are NOT unit-tested here — selector regressions are caught by
  * Playwright e2e, and the rest is integration-test territory.
  *

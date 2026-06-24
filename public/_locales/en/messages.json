@@ -51,5 +51,8 @@
   },
   "upstashErrUnexpected": { "message": "Connected, but unexpected response." },
   "upstashErrStatus": { "message": "Request failed" },
-  "upstashErrNetwork": { "message": "Network error" }
+  "upstashErrNetwork": { "message": "Network error" },
+  "upstashErrNotHttps": {
+    "message": "Upstash URL must use https:// — http would expose your token."
+  }
 }

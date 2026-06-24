@@ -33,6 +33,7 @@ export default defineConfig({
       "*://chat.qwen.ai/*",
       "*://www.qianwen.com/*",
       "*://chat2.qianwen.com/*",
+      "*://chat2-api.qianwen.com/*",
       "*://www.doubao.com/*",
     ],
     // Firefox-only: built-in data collection consent (required for new

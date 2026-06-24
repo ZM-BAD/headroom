@@ -1,22 +1,12 @@
 import { ADAPTERS } from "../adapters";
 import { DEFAULT_THRESHOLDS, type Thresholds } from "./thresholds";
+import type { UpstashCreds } from "./upstash";
 
 /** Storage key follows the spec's settings-key scheme. */
 export const STORAGE_KEY = "headroom:settings";
 
 /** "auto" follows the browser UI locale; en/zh_CN force a language. */
 export type Language = "auto" | "en" | "zh_CN";
-
-/**
- * Upstash REST API credentials (BYOK). Empty strings = not configured.
- * These are the REST API pair (UPSTASH_REDIS_REST_URL /
- * UPSTASH_REDIS_REST_TOKEN), NOT the native Redis URL/password — the
- * browser can only reach Upstash over HTTPS via the REST API.
- */
-export interface UpstashConfig {
-  url: string;
-  token: string;
-}
 
 /**
  * Per-platform context-window limits in tokens, keyed by platformId. Defaults
@@ -29,7 +19,7 @@ export type ContextLimits = Record<string, number>;
 export interface Settings {
   thresholds: Thresholds;
   language: Language;
-  upstash: UpstashConfig;
+  upstash: UpstashCreds;
   contextLimits: ContextLimits;
 }
 

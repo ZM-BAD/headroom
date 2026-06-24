@@ -16,11 +16,9 @@ export interface RoundRecord {
 }
 
 export interface DialogueRecord {
-  platform: string;
+  platformId: string;
   dialogueId: string;
   contextLimit: number;
-  /** Conversation title (the page <title>) — ties the record to the chat in view. */
-  title: string;
   /** sum of every round's total. */
   totalTokens: number;
   roundCount: number;
@@ -29,16 +27,14 @@ export interface DialogueRecord {
 }
 
 export function emptyDialogue(
-  platform: string,
+  platformId: string,
   dialogueId: string,
   contextLimit: number,
-  title = "",
 ): DialogueRecord {
   return {
-    platform,
+    platformId,
     dialogueId,
     contextLimit,
-    title,
     totalTokens: 0,
     roundCount: 0,
     rounds: [],
@@ -82,14 +78,12 @@ export function upsertRoundInto(
 
 export function upsertRound(
   record: DialogueRecord | null,
-  platform: string,
+  platformId: string,
   dialogueId: string,
   contextLimit: number,
   round: Pick<RoundRecord, "n" | "promptTokens" | "answerTokens" | "ts">,
-  title?: string,
 ): DialogueRecord {
-  const base =
-    record ?? emptyDialogue(platform, dialogueId, contextLimit, title);
+  const base = record ?? emptyDialogue(platformId, dialogueId, contextLimit);
   const total = round.promptTokens + round.answerTokens;
   const idx = base.rounds.findIndex((r) => r.n === round.n);
   // Replace the existing round: subtract its old total, add the new one. Keeps
@@ -104,15 +98,52 @@ export function upsertRound(
   );
   return {
     ...base,
-    platform,
+    platformId,
     dialogueId,
     contextLimit,
-    title: title ?? base.title,
     // True round count = the highest round number seen (monotonic in `n`),
     // independent of how many rounds are retained.
     roundCount: Math.max(base.roundCount, round.n),
     totalTokens,
     rounds,
     updatedAt: Date.now(),
+  };
+}
+
+/**
+ * The gauge's read of a DialogueRecord (spec 001 → "仪表盘从 DialogueRecord
+ * 投影": 累计=totalTokens, 轮次=roundCount, 最近轮=rounds[last].total). This is
+ * the SINGLE local source of truth for the side panel — there is no parallel
+ * running tally.
+ *
+ * Reads `totalTokens` / `roundCount` straight off the record (the true lifetime
+ * values) — it must NOT re-sum the retained `rounds[]`, which is trimmed and
+ * would under-count (the trim-but-keep-totals invariant). Pure; the caller
+ * (background) wraps this into the wire `UsageState` with platformId/contextLimit.
+ */
+export interface UsageProjection {
+  totalTokens: number;
+  roundCount: number;
+  /** The last round's total (`rounds[last].total`), or null if no rounds yet. */
+  lastRoundTokens: number | null;
+  /** The retained rounds (already bounded by MAX_RETAINED_ROUNDS). */
+  rounds: RoundRecord[];
+}
+
+export function projectUsage(record: DialogueRecord | null): UsageProjection {
+  if (!record || record.rounds.length === 0) {
+    return {
+      totalTokens: record?.totalTokens ?? 0,
+      roundCount: record?.roundCount ?? 0,
+      lastRoundTokens: null,
+      rounds: [],
+    };
+  }
+  const last = record.rounds[record.rounds.length - 1];
+  return {
+    totalTokens: record.totalTokens,
+    roundCount: record.roundCount,
+    lastRoundTokens: last.total,
+    rounds: record.rounds,
   };
 }

@@ -21,30 +21,31 @@ export const doubaoAdapter: PlatformAdapter = {
   completionUrl: "*://www.doubao.com/chat/completion*",
   matchPattern: "*://www.doubao.com/*",
   contextLimit: 256_000, // approximate (Doubao Pro family); overridable
-  parseRequest(body) {
-    const b = body as {
-      messages?: Array<{ content?: unknown }>;
-      local_conversation_id?: unknown;
-    } | null;
-    const raw = b?.messages?.[0]?.content;
-    let prompt: string | null = null;
-    if (typeof raw === "string") {
-      try {
-        const parsed = JSON.parse(raw) as { text?: unknown };
-        prompt = typeof parsed.text === "string" ? parsed.text : raw;
-      } catch {
-        prompt = raw; // not JSON — use as-is
-      }
+  // Delete endpoint: CONFIRMED live (2026-06). ByteDance IM-protocol style:
+  // POST /im/conversation/batch_del_user_conv with a deeply-nested body —
+  // uplink_body.batch_delete_user_conversation_uplink_body.conversation_id is
+  // a [<id>] array (the cmd/uplink/downlink envelope is ByteDance's IM framing).
+  // We pluck the first (and only) id from that nested array.
+  deleteUrl: "*://www.doubao.com/im/conversation/batch_del_user_conv*",
+  parseDelete(rawBody) {
+    try {
+      const b = JSON.parse(rawBody) as {
+        uplink_body?: {
+          batch_delete_user_conversation_uplink_body?: {
+            conversation_id?: unknown;
+          };
+        };
+      } | null;
+      const ids =
+        b?.uplink_body?.batch_delete_user_conversation_uplink_body
+          ?.conversation_id;
+      if (!Array.isArray(ids)) return null;
+      const first = ids[0];
+      return typeof first === "string" ? first : null;
+    } catch {
+      return null;
     }
-    return {
-      prompt,
-      dialogueId:
-        typeof b?.local_conversation_id === "string"
-          ? b.local_conversation_id
-          : null,
-    };
   },
-  // 豆包 chat URLs: https://www.doubao.com/chat/<id> (home = "/chat/", no id).
   dialogueIdFromUrl(url) {
     try {
       return new URL(url).pathname.match(/\/chat\/([^/?#]+)/)?.[1] ?? null;

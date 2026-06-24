@@ -49,5 +49,8 @@
   },
   "upstashErrUnexpected": { "message": "已连接，但返回结果异常。" },
   "upstashErrStatus": { "message": "请求失败" },
-  "upstashErrNetwork": { "message": "网络错误" }
+  "upstashErrNetwork": { "message": "网络错误" },
+  "upstashErrNotHttps": {
+    "message": "Upstash 地址必须使用 https:// —— http 会暴露你的 Token。"
+  }
 }
