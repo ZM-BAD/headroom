@@ -10,10 +10,10 @@ import type { TokenCoefficients } from "./estimate";
  * selectors below are a fallback, unused by the history-authoritative core.
  */
 /**
- * One historical round reconstructed from a platform's history API (spec 003's
- * `fetchHistory`, used here for 001's "open = full recompute"). Text only —
- * tokens are estimated by the caller; the platform's own token counts (if any)
- * are ignored per spec ("token 永远估算").
+ * One historical round reconstructed from a platform's history API
+ * (`fetchHistory` — a 001 primitive; 003 reuses it under union orchestration).
+ * Text only — tokens are estimated by the caller; the platform's own token
+ * counts (if any) are ignored per spec ("token 永远估算").
  */
 export interface HistoryRound {
   /** 1-based round number, ascending (oldest first). */
@@ -86,12 +86,12 @@ export interface PlatformAdapter {
    */
   parseDelete?(rawBody: string, url: string): string | null;
   /**
-   * Fetch the full message history of a conversation (spec 003 `fetchHistory`,
-   * used here for 001's "open = full recompute"). Runs in the CONTENT SCRIPT
-   * (same-origin to the platform, so session cookies are included) and returns
-   * ASCENDING rounds, text only — the caller estimates tokens. Absent ⇒ no
-   * history parse on open (the gauge starts empty, fills incrementally).
-   * Must never throw — return [] on any failure.
+   * Fetch the full message history of a conversation. A 001 primitive (used
+   * for 001's "open = full recompute"); 003 reuses it and adds union merge on
+   * top. Runs in the CONTENT SCRIPT (same-origin to the platform, so session
+   * cookies are included) and returns ASCENDING rounds, text only — the caller
+   * estimates tokens. Absent ⇒ no history parse on open (the gauge stays empty
+   * for that platform). Must never throw — return [] on any failure.
    */
   fetchHistory?(dialogueId: string): Promise<HistoryRound[]>;
   /** DOM selector for a single AI/assistant message (content-script side). */

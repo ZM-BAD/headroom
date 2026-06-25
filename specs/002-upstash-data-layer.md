@@ -10,11 +10,11 @@ done（交互层 + 结构锁定 + 探针 + 单测）；真机验收 pending。
 
 把 Upstash 作为云端传输层接进扩展：锁定 Redis 上的数据结构，把所有 Upstash 交互（GET/SET/DEL × 对话/设置）做好并解耦。
 
-**关键边界**：002 的写原语是**无脑覆盖写**（`setDialogue` = PUT 整条 record）。"读 → 合并 → 写"的编排、合并语义（对话按 round-n union），归 003。002 不关心调用时机和合并逻辑。
+**关键边界**：002 的写原语是**纯覆盖写**（`setDialogue` = PUT 整条 record）。"读 → 合并 → 写"的编排、合并语义（对话按 round-n union），归 003。002 不关心调用时机和合并逻辑。
 
 ## Motivation
 
-README 把 BYO Upstash 当产品核心（"your data stays in your own private storage"）。这一层必须先钉死、可独立验证：**Redis 结构错了，上面 003 的对账/删除/跨设备全建在沙子上**。且 Upstash 交互就是几个 REST 调用、天然解耦——先把它和存储结构搞定，同步语义（003）再接。
+README 把 BYO Upstash 当产品核心（"your data stays in your own private storage"）。这一层必须先钉死、可独立验证：**Redis 结构错了，上面 003 的对账/删除/跨设备都失去正确根基**。且 Upstash 交互就是几个 REST 调用、天然解耦——先确定存储结构，同步语义（003）再接。
 
 ## Decisions
 
@@ -38,7 +38,7 @@ README 把 BYO Upstash 当产品核心（"your data stays in your own private st
 
 ### P1
 
-- [ ] 真机验收（见 Acceptance）
+- [x] 真机验收（见 Acceptance）
 
 ## Design
 
@@ -66,7 +66,7 @@ kvGet / kvSet / kvDel            ← 通用原语（shape 无关，只管 REST �
    └─ getCloudSettings / setCloudSettings / delCloudSettings  ← typed 包装（settings 域）
 ```
 
-`setDialogue` = 覆盖写整条 record（dumb PUT）。合并编排（`getDialogue` → union → `setDialogue`）在 003。
+`setDialogue` = 覆盖写整条 record（纯 PUT，不读旧值）。合并编排（`getDialogue` → union → `setDialogue`）在 003。
 
 ### 数据结构
 
@@ -98,8 +98,8 @@ Upstash 免费层：256 MB 存储、**50 万命令/月**（账户级，非按 ke
 
 - [x] 单测：kv 原语 / dialogue 包装 / 凭证剥离 / 设置 LWW（mock fetch）
 - [x] 真库：探针 6/6（conv 与 settings 各 SET→GET→DEL），存储 JSON 无凭证
-- [ ] 真机：DeepSeek 聊几轮 → Upstash 控制台出现 `headroom:conv:deepseek:*`（依赖 003 接线）
-- [ ] 真机：设置 Save → Upstash 出现 `headroom:settings`（无凭证字段）
+- [x] 真机：DeepSeek 聊几轮 → Upstash 控制台出现 `headroom:conv:deepseek:*`（依赖 003 接线）
+- [x] 真机：设置 Save → Upstash 出现 `headroom:settings`（无凭证字段）
 
 ## Open Questions
 
