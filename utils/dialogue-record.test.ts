@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   upsertRound,
   upsertRoundInto,
+  unionRounds,
   projectUsage,
   emptyDialogue,
   MAX_RETAINED_ROUNDS,
   type DialogueRecord,
+  type RoundRecord,
 } from "./dialogue-record";
 
 /**
@@ -249,5 +251,115 @@ describe("projectUsage — gauge projection from a record", () => {
     expect(proj.totalTokens).toBe(1000); // NOT 4
     expect(proj.roundCount).toBe(500); // NOT 2
     expect(proj.lastRoundTokens).toBe(2); // last retained round's total
+  });
+
+  /**
+   * unionRounds merges cloud-retained rounds with history-derived rounds (by
+   * round-n). Invariants that must hold forever (spec 003 union merge):
+   *   1. History wins on conflict (same n) — it's the platform's live truth,
+   *      re-estimated, so its token count overwrites the cloud's stale value.
+   *   2. Cloud-only rounds (n present in cloud but absent from history because
+   *      the platform's history pagination truncated them) SURVIVE with their
+   *      stored estimate — this is the anti-data-loss guarantee.
+   *   3. Result is sorted ascending by n, trimmed to MAX_RETAINED_ROUNDS.
+   *   4. Pure: input arrays are not mutated.
+   */
+  const rr = (
+    n: number,
+    promptTokens: number,
+    answerTokens: number,
+  ): RoundRecord => ({
+    n,
+    promptTokens,
+    answerTokens,
+    total: promptTokens + answerTokens,
+    ts: n * 100,
+  });
+
+  describe("unionRounds — empty inputs", () => {
+    it("both empty → []", () => {
+      expect(unionRounds([], [])).toEqual([]);
+    });
+    it("cloud empty → history as-is (new conversation first round)", () => {
+      const history = [rr(1, 10, 20)];
+      expect(unionRounds([], history)).toEqual(history);
+    });
+    it("history empty → cloud as-is (degenerate but correct)", () => {
+      const cloud = [rr(1, 10, 20)];
+      expect(unionRounds(cloud, [])).toEqual(cloud);
+    });
+  });
+
+  describe("unionRounds — conflict resolution (history wins)", () => {
+    it("same n → takes history version (re-estimated tokens overwrite cloud)", () => {
+      const cloud = [rr(1, 10, 10)]; // total 20
+      const history = [rr(1, 50, 50)]; // total 100 — re-estimated, more accurate
+      const out = unionRounds(cloud, history);
+      expect(out).toHaveLength(1);
+      expect(out[0].total).toBe(100); // history won, not 20
+    });
+  });
+
+  describe("unionRounds — subset cases (the cross-device guarantees)", () => {
+    it("history ⊃ cloud (new device opens a long conversation) → = history", () => {
+      const cloud = [rr(1, 10, 10)]; // total 20
+      const history = [rr(1, 20, 20), rr(2, 30, 30), rr(3, 40, 40)];
+      const out = unionRounds(cloud, history);
+      expect(out.map((r) => r.n)).toEqual([1, 2, 3]);
+      expect(out[0].total).toBe(40); // history won on n=1 (20+20, not cloud's 10+10)
+    });
+    it("cloud ⊃ history (platform paginated, truncated old rounds) → no loss", () => {
+      // Cloud has rounds 1-5 (old, persisted from a prior open). Platform's
+      // history API only returns the last 3 (3,4,5) due to pagination. The union
+      // must keep cloud's 1,2 and use history's 3,4,5.
+      const cloud = [rr(1, 10, 10), rr(2, 20, 20), rr(3, 30, 30)];
+      const history = [rr(3, 35, 35), rr(4, 40, 40), rr(5, 50, 50)];
+      const out = unionRounds(cloud, history);
+      expect(out.map((r) => r.n)).toEqual([1, 2, 3, 4, 5]);
+      expect(out[2].total).toBe(70); // history won on n=3 (35+35, not 30+30)
+      expect(out[0].total).toBe(20); // cloud-only round 1 survived
+    });
+  });
+
+  describe("unionRounds — ordering and gaps", () => {
+    it("result is ascending by n", () => {
+      const cloud = [rr(5, 1, 1), rr(2, 1, 1)];
+      const history = [rr(3, 1, 1), rr(1, 1, 1)];
+      const out = unionRounds(cloud, history);
+      expect(out.map((r) => r.n)).toEqual([1, 2, 3, 5]);
+    });
+    it("does not fill gaps (non-contiguous n survives as-is)", () => {
+      const cloud = [rr(1, 1, 1)];
+      const history = [rr(5, 1, 1)]; // rounds 2,3,4 missing entirely
+      const out = unionRounds(cloud, history);
+      expect(out.map((r) => r.n)).toEqual([1, 5]); // no fabricated rounds
+    });
+  });
+
+  describe("unionRounds — trim to MAX_RETAINED_ROUNDS", () => {
+    it("keeps only the last MAX_RETAINED_ROUNDS (newest by n)", () => {
+      // Build cloud with rounds 1..MAX+5; history empty. Union result should be
+      // trimmed to the last MAX (rounds 6..MAX+5).
+      const cloud: RoundRecord[] = [];
+      for (let n = 1; n <= MAX_RETAINED_ROUNDS + 5; n++) {
+        cloud.push(rr(n, 1, 1));
+      }
+      const out = unionRounds(cloud, []);
+      expect(out).toHaveLength(MAX_RETAINED_ROUNDS);
+      expect(out[0].n).toBe(6); // first 5 dropped
+      expect(out[out.length - 1].n).toBe(MAX_RETAINED_ROUNDS + 5);
+    });
+  });
+
+  describe("unionRounds — purity", () => {
+    it("does not mutate either input array", () => {
+      const cloud = [rr(1, 10, 10)];
+      const history = [rr(1, 20, 20), rr(2, 30, 30)];
+      const cloudSnap = JSON.parse(JSON.stringify(cloud));
+      const historySnap = JSON.parse(JSON.stringify(history));
+      unionRounds(cloud, history);
+      expect(cloud).toEqual(cloudSnap);
+      expect(history).toEqual(historySnap);
+    });
   });
 });

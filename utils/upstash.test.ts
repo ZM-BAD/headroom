@@ -3,6 +3,8 @@ import {
   kvDel,
   kvGet,
   kvSet,
+  kvScan,
+  selectZombieKeys,
   getDialogue,
   setDialogue,
   delDialogue,
@@ -160,5 +162,113 @@ describe("key scheme", () => {
 
   it("SETTINGS_KEY is the cloud settings key", () => {
     expect(SETTINGS_KEY).toBe("headroom:settings");
+  });
+});
+
+describe("kvScan", () => {
+  it("pages through cursors until 0, collecting all keys", async () => {
+    const mock = vi.fn();
+    mock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          result: [
+            "7",
+            ["headroom:conv:deepseek:a", "headroom:conv:deepseek:b"],
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ result: ["0", ["headroom:conv:deepseek:c"]] }),
+      });
+    globalThis.fetch = mock as unknown as typeof fetch;
+    const keys = await kvScan(CREDS, "headroom:conv:deepseek:*");
+    expect([...keys].sort()).toEqual([
+      "headroom:conv:deepseek:a",
+      "headroom:conv:deepseek:b",
+      "headroom:conv:deepseek:c",
+    ]);
+    expect(mock).toHaveBeenCalledTimes(2);
+  });
+
+  it("issues SCAN cursor MATCH pattern COUNT", async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: ["0", []] }),
+    });
+    globalThis.fetch = mock as unknown as typeof fetch;
+    await kvScan(CREDS, "headroom:conv:deepseek:*");
+    expect(bodyAt(mock)).toEqual([
+      "SCAN",
+      "0",
+      "MATCH",
+      "headroom:conv:deepseek:*",
+      "COUNT",
+      "100",
+    ]);
+  });
+
+  it("single page (cursor 0 immediately) → one call", async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: ["0", ["headroom:conv:p:only"]] }),
+    });
+    globalThis.fetch = mock as unknown as typeof fetch;
+    expect(await kvScan(CREDS, "headroom:conv:p:*")).toEqual([
+      "headroom:conv:p:only",
+    ]);
+    expect(mock).toHaveBeenCalledOnce();
+  });
+
+  it("absent creds → [] no fetch", async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: ["0", ["x"]] }),
+    });
+    globalThis.fetch = mock as unknown as typeof fetch;
+    expect(await kvScan({ url: "", token: "" }, "p*")).toEqual([]);
+    expect(mock).not.toHaveBeenCalled();
+  });
+});
+
+describe("selectZombieKeys", () => {
+  it("returns cloud keys whose dialogueId is not in the live list", () => {
+    const cloud = [
+      "headroom:conv:deepseek:alive",
+      "headroom:conv:deepseek:gone",
+      "headroom:conv:deepseek:also-gone",
+      "headroom:conv:chatgpt:other", // wrong platform → ignored
+      "headroom:settings", // not a conv key → ignored
+    ];
+    expect(selectZombieKeys(cloud, new Set(["alive"]), "deepseek")).toEqual([
+      "headroom:conv:deepseek:gone",
+      "headroom:conv:deepseek:also-gone",
+    ]);
+  });
+
+  it("returns [] when every cloud id is still live", () => {
+    expect(
+      selectZombieKeys(
+        ["headroom:conv:deepseek:a", "headroom:conv:deepseek:b"],
+        new Set(["a", "b"]),
+        "deepseek",
+      ),
+    ).toEqual([]);
+  });
+
+  it("ignores keys from other platforms", () => {
+    expect(
+      selectZombieKeys(["headroom:conv:chatgpt:z"], new Set([]), "deepseek"),
+    ).toEqual([]);
+  });
+
+  it("returns [] for an empty cloud", () => {
+    expect(selectZombieKeys([], new Set(["a"]), "deepseek")).toEqual([]);
   });
 });

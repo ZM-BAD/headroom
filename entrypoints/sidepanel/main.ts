@@ -39,6 +39,8 @@ const STATUS_KEYS: Record<Level, string> = {
 
 const IDLE_STATE: UsageState = {
   platformId: null,
+  dialogueId: null,
+  dialogueTitle: null,
   contextLimit: null,
   totalTokens: 0,
   lastRoundTokens: null,
@@ -51,6 +53,9 @@ const els = {
   viewSettings: document.querySelector<HTMLElement>("#view-settings")!,
   modelName: document.querySelector<HTMLElement>("#model-name")!,
   contextLimit: document.querySelector<HTMLElement>("#context-limit")!,
+  dialogueIdentity: document.querySelector<HTMLElement>("#dialogue-identity")!,
+  dialogueTitle: document.querySelector<HTMLElement>("#dialogue-title")!,
+  dialogueId: document.querySelector<HTMLElement>("#dialogue-id")!,
   percent: document.querySelector<HTMLElement>("#percent")!,
   barFill: document.querySelector<HTMLElement>("#bar-fill")!,
   tokenUsed: document.querySelector<HTMLElement>("#token-used")!,
@@ -155,6 +160,20 @@ function render(state: UsageState, th: Thresholds): void {
     : t("detectingPlatform");
   els.contextLimit.textContent =
     limit > 0 ? formatContext(limit) : t("noContext");
+
+  // Conversation identity: show the title (primary) + full dialogueId
+  // (secondary, small/grey) so the user can anchor "this gauge = this chat".
+  // Hidden entirely when no dialogue is open (home / non-platform page) so the
+  // card stays clean in the idle state.
+  if (state.dialogueId) {
+    els.dialogueIdentity.hidden = false;
+    els.dialogueTitle.textContent =
+      state.dialogueTitle ?? t("untitledDialogue");
+    els.dialogueId.textContent = state.dialogueId;
+    els.dialogueId.title = state.dialogueId; // full id on hover for copy/verify
+  } else {
+    els.dialogueIdentity.hidden = true;
+  }
 
   els.percent.textContent = `${(ratio * 100).toFixed(1)}%`;
   els.barFill.style.width = `${ratio * 100}%`;

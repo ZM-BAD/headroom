@@ -6,6 +6,7 @@
   "openSettings": { "message": "Settings" },
   "detectingPlatform": { "message": "Detecting platform…" },
   "noContext": { "message": "— context" },
+  "untitledDialogue": { "message": "Untitled conversation" },
   "contextSuffix": { "message": "context" },
   "tokensUnit": { "message": "tokens" },
   "round": { "message": "Round" },

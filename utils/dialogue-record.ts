@@ -76,6 +76,37 @@ export function upsertRoundInto(
   return [...rounds, { ...round, total }];
 }
 
+/**
+ * Merge cloud-retained rounds with history-derived rounds, keyed by round `n`
+ * (spec 003 union merge). Array-level pure function — does NOT touch
+ * totalTokens/roundCount; the caller rebuilds those by feeding the result
+ * through upsertRound (which recomputes the running-sum invariant).
+ *
+ * Conflict rule: history WINS. History is the platform's live truth, freshly
+ * re-estimated, so its token count overwrites the cloud's stale value for the
+ * same round n.
+ *
+ * Survival rule: cloud-only rounds (n present in cloud but absent from history
+ * because the platform's history API paginated/truncated them) are RETAINED
+ * with their stored estimate. This is the anti-data-loss guarantee — a long
+ * conversation's old rounds don't vanish when only the tail is re-fetched.
+ *
+ * Result is ascending by n, trimmed to MAX_RETAINED_ROUNDS. Pure: neither
+ * input array is mutated.
+ */
+export function unionRounds(
+  cloud: RoundRecord[],
+  history: RoundRecord[],
+): RoundRecord[] {
+  const byN = new Map<number, RoundRecord>();
+  // Cloud first (lower priority), then history overwrites on same n.
+  for (const r of cloud) byN.set(r.n, r);
+  for (const r of history) byN.set(r.n, r);
+  return [...byN.values()]
+    .sort((a, b) => a.n - b.n)
+    .slice(-MAX_RETAINED_ROUNDS);
+}
+
 export function upsertRound(
   record: DialogueRecord | null,
   platformId: string,

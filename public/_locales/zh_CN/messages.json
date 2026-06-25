@@ -6,6 +6,7 @@
   "openSettings": { "message": "设置" },
   "detectingPlatform": { "message": "正在检测平台…" },
   "noContext": { "message": "— 上下文" },
+  "untitledDialogue": { "message": "未命名对话" },
   "contextSuffix": { "message": "上下文" },
   "tokensUnit": { "message": "tokens" },
   "round": { "message": "轮次" },

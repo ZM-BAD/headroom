@@ -56,6 +56,7 @@ Headroom 选估算。v1 做中文（CJK）+ 英文（Latin）两种书写系统�
 
 - [x] **侧边栏开关**：点击扩展图标打开/关闭原生侧边栏
 - [x] **轮次计数显示**
+- [x] **对话身份展示**：侧边栏显示当前对话标题 + dialogueId（仅展示，不写入 record、不上云）
 - [ ] **估算系数用户覆盖**：默认系数来自 adapter，用户可在设置按平台调
 
 ## Browser Support
@@ -211,18 +212,19 @@ tokens(text, platform) = Σ over 书写系统 s  [ count(text, s) × coeff(s, pl
 
 新增一个 AI 平台 = 注册 + 写一个 `adapters/<platform>.ts`。完整契约（**归属**列说明哪个 spec 定义/使用该字段）：
 
-| 字段                                                          | 归属    | 说明                                                                                                  |
-| ------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------- |
-| `platformId` / `displayName` / `host` / `matchPattern`        | 001     | 平台 id + 展示名；content 注入 + host 匹配                                                            |
-| `completionUrl`                                               | 001     | webRequest `onCompleted` 过滤 = 回答完毕（SSE 流关闭，根因；非 DOM 启发式）                           |
-| `contextLimit`                                                | 001     | 默认 context window，用户可覆盖                                                                       |
-| `tokenCoefficients { cjk, latin }`                            | 001     | 默认估算系数，用户可覆盖                                                                              |
-| `dialogueIdFromUrl?(url)`                                     | 001     | URL 派生对话 id（切对话 → gauge 重置）                                                                |
-| `fetchHistory?(dialogueId) → HistoryRound[]`                  | 001     | **核心真相源**：拉平台完整历史（message_id 正序）；打开 / 切对话 / 回答完成都走它，token 永远由它估算 |
-| `answerSelector` / `userSelector?` / `conversationSelector`   | 001     | DOM 兜底原语；history-authoritative 核心当前不用，留给无历史 API 的平台                               |
-| `deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?` | 001+003 | 删除联动：本地 record 重置（001 background）；云端 DEL（003）                                         |
-| `fetchConversationList?() → string[]`                         | 003     | 僵尸清理：拉对话 id 列表                                                                              |
-| `detectDeletedPage?(doc) → boolean`                           | 003     | 移动端删除懒清理                                                                                      |
+| 字段                                                          | 归属    | 说明                                                                                                        |
+| ------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------- |
+| `platformId` / `displayName` / `host` / `matchPattern`        | 001     | 平台 id + 展示名；content 注入 + host 匹配                                                                  |
+| `completionUrl`                                               | 001     | webRequest `onCompleted` 过滤 = 回答完毕（SSE 流关闭，根因；非 DOM 启发式）                                 |
+| `contextLimit`                                                | 001     | 默认 context window，用户可覆盖                                                                             |
+| `tokenCoefficients { cjk, latin }`                            | 001     | 默认估算系数，用户可覆盖                                                                                    |
+| `dialogueIdFromUrl?(url)`                                     | 001     | URL 派生对话 id（切对话 → gauge 重置）                                                                      |
+| `dialogueTitleFromDoc?(doc) → string \| null`                 | 001     | 对话标题（content-script 从 DOM 抓）；**仅面板展示，不写入 `DialogueRecord`、不上云**（标题可能含敏感信息） |
+| `fetchHistory?(dialogueId) → HistoryRound[]`                  | 001     | **核心真相源**：拉平台完整历史（message_id 正序）；打开 / 切对话 / 回答完成都走它，token 永远由它估算       |
+| `answerSelector` / `userSelector?` / `conversationSelector`   | 001     | DOM 兜底原语；history-authoritative 核心当前不用，留给无历史 API 的平台                                     |
+| `deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?` | 001+003 | 删除联动：本地 record 重置（001 background）；云端 DEL（003）                                               |
+| `fetchConversationList?() → string[]`                         | 003     | 僵尸清理：拉对话 id 列表                                                                                    |
+| `detectDeletedPage?(doc) → boolean`                           | 003     | 移动端删除懒清理                                                                                            |
 
 001 实现 DeepSeek 的 001 字段（`fetchHistory` 已实现并真机验过）；003 字段在本 spec 只占契约位。background 是平台无关引擎——只认 adapter 接口，历史 API 是轮次身份与 token 的唯一真相源。
 
@@ -381,6 +383,7 @@ DialogueRecord = {
 
 - 第一行显示**平台名**（v1 不检测具体模型；context limit 取 adapter 默认或用户覆盖）。
 - **Upstash 字段是输入控件**；「测试连接」「保存」的云端动作由 002（传输）/ 003（同步）接线。未配 Upstash 时这些控件 inert，仪表盘照常工作。
+- **对话身份（标题 + dialogueId）**：平台名下方一行显示当前对话的**标题**（缺失时显示「未命名对话」）与 **dialogueId**；仅在打开对话时显示，主页态隐藏。标题由 `dialogueTitleFromDoc` 从 DOM 抓取——**纯展示，不写入 `DialogueRecord`、不上 Upstash**（标题可能含敏感信息，只活在 background 内存按 tabId 缓存）；dialogueId 完整显示、hover 看全便于核对/复制。
 
 ### Browser APIs
 

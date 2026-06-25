@@ -18,6 +18,8 @@ export interface PageReadyMessage {
   type: "PAGE_READY";
   platformId: string;
   url: string;
+  /** Conversation title scraped from the DOM (adapter.dialogueTitleFromDoc), if available. */
+  dialogueTitle: string | null;
 }
 
 /** Side panel asks the background for the current usage state. */
@@ -54,6 +56,21 @@ export interface HistoryParsedMessage {
   platformId: string;
   url: string;
   rounds: HistoryRound[];
+  /** Conversation title scraped from the DOM, re-sent in case it changed (rename). */
+  dialogueTitle: string | null;
+}
+
+/**
+ * Content → background: the platform's full conversation-id list (adapter.
+ * fetchConversationList on the home page). The background diffs it against
+ * the cloud keys (SCAN) and DELs the orphans — zombie cleanup (spec 003).
+ * Sent on home-page load (no dialogue id open).
+ */
+export interface ConversationListMessage {
+  type: "CONVERSATION_LIST";
+  platformId: string;
+  url: string;
+  ids: string[];
 }
 
 export type HeadroomMessage =
@@ -61,19 +78,24 @@ export type HeadroomMessage =
   | GetStateMessage
   | StateUpdateMessage
   | RefreshHistoryMessage
-  | HistoryParsedMessage;
+  | HistoryParsedMessage
+  | ConversationListMessage;
 
 /**
  * Live usage state rendered by the side panel — a pure DISPLAY projection of
- * the active dialogue's totals (spec 001: platform name + context + ratio +
- * round count, no conversation title/id — v1 shows the platform, not the
- * model or chat identity). `platformId` null = not on a supported page.
+ * the active dialogue's identity + totals (spec 001: platform name + context
+ * + ratio + round count + conversation title/id for the "this gauge = this
+ * conversation" mental model). `platformId` null = not on a supported page.
  *
- * The conversation identity (dialogueId) stays internal to the background
- * (it keys the local record); it is not shipped to the panel.
+ * `dialogueId` keys the local/cloud record; `dialogueTitle` is the human label
+ * scraped from the DOM (may lag a rename by one render). Both null on home/idle.
  */
 export interface UsageState {
   platformId: string | null;
+  /** Active dialogue id (URL-derived); null on home / non-platform pages. */
+  dialogueId: string | null;
+  /** Human-readable title (DOM-scraped); null when the platform hasn't rendered one yet. */
+  dialogueTitle: string | null;
   contextLimit: number | null;
   totalTokens: number;
   lastRoundTokens: number | null;

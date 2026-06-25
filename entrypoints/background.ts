@@ -10,9 +10,26 @@ import {
   emptyDialogue,
   projectUsage,
   upsertRound,
+  unionRounds,
   type DialogueRecord,
 } from "../utils/dialogue-record";
-import { dialogueKey } from "../utils/upstash";
+import {
+  convIndexAfterDelete,
+  convIndexAfterSet,
+  pickOldestKeys,
+  HARD_LIMIT_BYTES,
+  SOFT_LIMIT_BYTES,
+  type ConvIndex,
+} from "../utils/local-cache";
+import {
+  dialogueKey,
+  getDialogue,
+  setDialogue,
+  delDialogue,
+  kvScan,
+  kvDel,
+  selectZombieKeys,
+} from "../utils/upstash";
 import { getSettings, type Settings } from "../utils/settings";
 import { adapterForUrl, isSupportedPlatformUrl } from "../utils/match-host";
 
@@ -52,12 +69,22 @@ const DISPLAY_ROUNDS = 50;
 
 const IDLE_STATE: UsageState = {
   platformId: null,
+  dialogueId: null,
+  dialogueTitle: null,
   contextLimit: null,
   totalTokens: 0,
   lastRoundTokens: null,
   roundCount: 0,
   rounds: [],
 };
+
+/**
+ * Latest DOM-scraped conversation title per tab. PAGE_READY / HISTORY_PARSED
+ * refresh it; projectForTab reads it when building the gauge's identity. The
+ * SW may be evicted (losing this map) — that only delays the title by one
+ * PAGE_READY on next open, acceptable for a display-only field.
+ */
+const tabDialogueTitle = new Map<number, string | null>();
 
 /** webRequest URL filter built from every adapter's completion match-pattern. */
 const URL_FILTER = ADAPTERS.map((a) => a.completionUrl);
@@ -79,6 +106,20 @@ function adapterForRequest(url: string): PlatformAdapter | undefined {
 }
 
 // --- local per-conversation record store (the gauge's source of truth) ---
+// The conv-index ({ [fullKey]: updatedAt }) mirrors which conversations are
+// cached locally, so LRU eviction can find the oldest without a full scan.
+// Maintained alongside every set/del below.
+
+const CONV_INDEX_KEY = "headroom:conv-index";
+
+async function getConvIndex(): Promise<ConvIndex> {
+  const raw = await browser.storage.local.get(CONV_INDEX_KEY);
+  return (raw[CONV_INDEX_KEY] as ConvIndex | undefined) ?? {};
+}
+
+async function setConvIndex(index: ConvIndex): Promise<void> {
+  await browser.storage.local.set({ [CONV_INDEX_KEY]: index });
+}
 
 async function getLocalDialogue(key: string): Promise<DialogueRecord | null> {
   const raw = await browser.storage.local.get(key);
@@ -90,10 +131,44 @@ async function setLocalDialogue(
   record: DialogueRecord,
 ): Promise<void> {
   await browser.storage.local.set({ [key]: record });
+  await setConvIndex(
+    convIndexAfterSet(await getConvIndex(), key, record.updatedAt),
+  );
 }
 
 async function delLocalDialogue(key: string): Promise<void> {
   await browser.storage.local.remove(key);
+  await setConvIndex(convIndexAfterDelete(await getConvIndex(), key));
+}
+
+/** Total bytes in storage.local (UTF-8 of every JSON value). Cross-browser:
+ *  get()-all + TextEncoder rather than Chrome-only `getBytesInUse`, so Firefox
+ *  (which lacks getBytesInUse) behaves the same. */
+async function localCacheBytes(): Promise<number> {
+  const all = await browser.storage.local.get();
+  let bytes = 0;
+  for (const value of Object.values(all)) {
+    bytes += new TextEncoder().encode(JSON.stringify(value)).length;
+  }
+  return bytes;
+}
+
+/** spec 003 LRU: if local usage exceeds SOFT_LIMIT, drop the oldest cached
+ *  conversations (by conv-index updatedAt) until under HARD_LIMIT. Local only
+ *  — the cloud record survives and is re-fetched on next open. Best-effort:
+ *  fire-and-forget after a write; failure just leaves the cache a touch full. */
+async function evictLocalCacheIfNeeded(): Promise<void> {
+  let bytes = await localCacheBytes();
+  if (bytes <= SOFT_LIMIT_BYTES) return;
+  let index = await getConvIndex();
+  while (bytes > HARD_LIMIT_BYTES) {
+    const [oldest] = pickOldestKeys(index, 1);
+    if (!oldest) break; // index empty — nothing left to evict
+    await browser.storage.local.remove(oldest);
+    index = convIndexAfterDelete(index, oldest);
+    bytes = await localCacheBytes();
+  }
+  await setConvIndex(index);
 }
 
 async function broadcast(state: UsageState): Promise<void> {
@@ -135,10 +210,14 @@ function buildState(
   adapter: PlatformAdapter,
   contextLimit: number,
   record: DialogueRecord | null,
+  dialogueId: string | null,
+  dialogueTitle: string | null,
 ): UsageState {
   const proj = projectUsage(record);
   return {
     platformId: adapter.platformId,
+    dialogueId,
+    dialogueTitle,
     contextLimit,
     totalTokens: proj.totalTokens,
     lastRoundTokens: proj.lastRoundTokens,
@@ -155,6 +234,7 @@ function buildState(
  */
 async function projectForTab(
   url: string | undefined,
+  tabId?: number,
   opts: { broadcast?: boolean } = {},
 ): Promise<UsageState> {
   const adapter = url ? adapterForUrl(url) : undefined;
@@ -167,7 +247,15 @@ async function projectForTab(
   const dialogueId = adapter.dialogueIdFromUrl?.(url) ?? null;
   const key = dialogueId ? dialogueKey(adapter.platformId, dialogueId) : null;
   const record = key ? await getLocalDialogue(key) : null;
-  const state = buildState(adapter, contextLimit, record);
+  const dialogueTitle =
+    tabId != null ? (tabDialogueTitle.get(tabId) ?? null) : null;
+  const state = buildState(
+    adapter,
+    contextLimit,
+    record,
+    dialogueId,
+    dialogueTitle,
+  );
   if (opts.broadcast !== false) await broadcast(state);
   return state;
 }
@@ -198,7 +286,7 @@ export default defineBackground(() => {
     // resets to the new conversation's record. (PAGE_READY does NOT re-fire on
     // an SPA route change.)
     if (change.url && tab?.active) {
-      void projectForTab(tab?.url ?? change.url);
+      void projectForTab(tab?.url ?? change.url, tabId);
     }
   });
   // Best-effort initial project for the already-active tab when the service
@@ -285,7 +373,10 @@ export default defineBackground(() => {
           // Only project if the page that loaded is the active tab — a
           // background-tab load must not clobber the active tab's gauge.
           if (!(await isTabActive(sender?.tab?.id))) return;
-          await projectForTab(message.url);
+          if (sender?.tab?.id != null) {
+            tabDialogueTitle.set(sender.tab.id, message.dialogueTitle);
+          }
+          await projectForTab(message.url, sender?.tab?.id);
           return;
         }
         case "GET_STATE":
@@ -297,6 +388,11 @@ export default defineBackground(() => {
           return;
         case "STATE_UPDATE":
           // Emitted only by this background; ignore any echoed copy.
+          return;
+        case "CONVERSATION_LIST":
+          // Home page: diff the live conversation list against cloud keys and
+          // DEL orphans (spec 003 zombie cleanup). Fire-and-forget.
+          void cleanupZombies(message.platformId, message.ids);
           return;
       }
     },
@@ -324,11 +420,20 @@ export default defineBackground(() => {
 
   /**
    * History is the SOLE authority: the content script fetched the conversation's
-   * full history (text only, ascending by message_id). Estimate each round and
-   * REPLACE the local record — any locally-guessed or stale round (or a
-   * regenerated answer that got a new message_id) is dropped; history defines
-   * the canonical set. Called on open, SPA switch, and after a round finishes
-   * (REFRESH_HISTORY).
+   * full history (text only, ascending by message_id). Estimate each round,
+   * UNION-merge with the cloud record (spec 003: history wins on conflict,
+   * cloud-only rounds from prior opens survive), then persist + broadcast.
+   *
+   * Order matters (spec 003 "先显示后同步"): write the local cache and broadcast
+   * BEFORE the cloud sync so the gauge updates instantly even if Upstash is
+   * slow/down. The cloud sync is best-effort — on failure it warns and leaves
+   * the next open to reconcile.
+   *
+   * No-creds degradation: getDialogue returns null when Upstash is unconfigured,
+   * so union(null-rounds, history) = history-only — identical to 001's old
+   * REPLACE behavior. 001 is thus the no-creds subset of 003, zero regression.
+   *
+   * Called on open, SPA switch, and after a round finishes (REFRESH_HISTORY).
    */
   async function applyHistory(
     m: HistoryParsedMessage,
@@ -343,49 +448,125 @@ export default defineBackground(() => {
     const settings = await getSettings();
     const contextLimit = effectiveLimit(settings, adapter);
     const key = dialogueKey(adapter.platformId, dialogueId);
-    // REPLACE: build fresh from history. Don't merge — history is canonical.
+
+    // 1. Estimate history rounds into RoundRecords (history is the live truth).
+    const historyRounds = m.rounds.map((h) => {
+      const promptTokens = Math.round(estimateTokens(h.promptText, coeff));
+      const answerTokens = Math.round(estimateTokens(h.answerText, coeff));
+      // Round at the storage boundary: a token is the smallest unit, so the
+      // stored/displayed count must be an integer. estimateTokens stays a
+      // precise float so its unit tests + 004 coefficient calibration hold.
+      return {
+        n: h.n,
+        promptTokens,
+        answerTokens,
+        total: promptTokens + answerTokens,
+        ts: 0, // history rounds carry no per-round ts; ordering is by n
+      };
+    });
+
+    // 2. Read the cloud record (null when unconfigured → history-only path).
+    let cloudRecord: DialogueRecord | null = null;
+    try {
+      cloudRecord = await getDialogue(settings.upstash, key);
+    } catch (e) {
+      // Don't let a transient cloud read block the local update — proceed with
+      // history-only; the next open will retry the union.
+      console.warn("[Headroom] cloud read failed for", key, e);
+    }
+
+    // 3. Union merge (spec 003 core): history wins on conflict, cloud-only
+    //    rounds survive. Rebuild the record through upsertRound so the
+    //    running-sum (totalTokens) + true-count (roundCount) invariants hold.
+    const mergedRounds = unionRounds(cloudRecord?.rounds ?? [], historyRounds);
     let record = emptyDialogue(adapter.platformId, dialogueId, contextLimit);
-    for (const h of m.rounds) {
+    for (const r of mergedRounds) {
       record = upsertRound(
         record,
         adapter.platformId,
         dialogueId,
         contextLimit,
         {
-          n: h.n,
-          // Round at the storage boundary: a token is the smallest unit, so the
-          // stored/displayed count must be an integer. estimateTokens stays a
-          // precise float so its unit tests + 004 coefficient calibration hold.
-          promptTokens: Math.round(estimateTokens(h.promptText, coeff)),
-          answerTokens: Math.round(estimateTokens(h.answerText, coeff)),
-          ts: 0, // history rounds carry no per-round ts; ordering is by n
+          n: r.n,
+          promptTokens: r.promptTokens,
+          answerTokens: r.answerTokens,
+          ts: r.ts,
         },
       );
     }
-    await setLocalDialogue(key, record);
 
-    if (!(await isTabActive(tabId))) return; // backgrounded tab — don't clobber
-    await broadcast(buildState(adapter, contextLimit, record));
+    // 4. Show first: persist locally + broadcast (active-tab guarded so a
+    //    backgrounded tab doesn't clobber the foreground gauge).
+    await setLocalDialogue(key, record);
+    // Best-effort LRU eviction (spec 003): a write may push local usage over
+    // the soft limit. Fire-and-forget — never block the gauge update below.
+    void evictLocalCacheIfNeeded();
+    if (tabId != null) tabDialogueTitle.set(tabId, m.dialogueTitle);
+    if (await isTabActive(tabId)) {
+      await broadcast(
+        buildState(adapter, contextLimit, record, dialogueId, m.dialogueTitle),
+      );
+    }
+
+    // 5. Sync later: best-effort cloud write. Not guarded by active-tab — a
+    //    backgrounded tab's rounds must still reach the cloud. Failure warns
+    //    and leaves the next open to reconcile; it never blocks the UI.
+    try {
+      await setDialogue(settings.upstash, key, record);
+    } catch (e) {
+      console.warn("[Headroom] cloud sync failed for", key, e);
+    }
   }
 
   /**
-   * A conversation was deleted on the platform: drop its local record (the
-   * cloud DEL is 003's concern) and re-project the active tab so a deleted
-   * conversation's gauge resets to 0.
+   * A conversation was deleted on the platform: drop the local record, then
+   * best-effort DEL the cloud record (spec 003). No-creds = no-op; failure
+   * warns and leaves a zombie key that zombie-cleanup [P1, deferred] sweeps.
+   * Either way the active tab is re-projected so the gauge resets to 0.
    */
   async function handleDelete(
     platformId: string,
     dialogueId: string,
   ): Promise<void> {
-    await delLocalDialogue(dialogueKey(platformId, dialogueId));
+    const key = dialogueKey(platformId, dialogueId);
+    await delLocalDialogue(key);
+    try {
+      const { upstash: creds } = await getSettings();
+      await delDialogue(creds, key);
+    } catch (e) {
+      // Leaves a zombie key in Upstash; zombie-cleanup (P1) will sweep it.
+      console.warn("[Headroom] cloud DEL failed for", key, e);
+    }
     try {
       const [active] = await browser.tabs.query({
         active: true,
         currentWindow: true,
       });
-      await projectForTab(active?.url);
+      await projectForTab(active?.url, active?.id);
     } catch {
       // Tab query failed (rare) — the record is gone; the next tab event re-projects.
+    }
+  }
+
+  /**
+   * spec 003 zombie cleanup: the home page shipped the platform's live
+   * conversation list. Diff it against the platform's cloud keys (SCAN) and
+   * DEL the orphans — conversations deleted elsewhere (e.g. mobile) that left
+   * dangling Upstash keys. Best-effort: a failure warns and leaves orphans for
+   * the next open-home. Local cache is untouched (LRU manages it separately).
+   */
+  async function cleanupZombies(
+    platformId: string,
+    liveIds: string[],
+  ): Promise<void> {
+    const { upstash: creds } = await getSettings();
+    if (!creds.url || !creds.token) return; // no cloud → nothing to clean
+    try {
+      const cloudKeys = await kvScan(creds, `headroom:conv:${platformId}:*`);
+      const zombies = selectZombieKeys(cloudKeys, new Set(liveIds), platformId);
+      await Promise.all(zombies.map((k) => kvDel(creds, k).catch(() => {})));
+    } catch (e) {
+      console.warn("[Headroom] zombie cleanup failed for", platformId, e);
     }
   }
 });
@@ -393,16 +574,18 @@ export default defineBackground(() => {
 /** Project the gauge for whatever tab is currently active (SW start / GET_STATE). */
 async function getActiveTabState(): Promise<UsageState> {
   let url: string | undefined;
+  let tabId: number | undefined;
   try {
     const [active] = await browser.tabs.query({
       active: true,
       currentWindow: true,
     });
     url = active?.url;
+    tabId = active?.id;
   } catch {
     // fall through to idle
   }
-  return await projectForTab(url, { broadcast: false });
+  return await projectForTab(url, tabId, { broadcast: false });
 }
 
 /** Project the gauge for a tab id (onActivated), reading its URL. */
@@ -516,7 +699,7 @@ async function syncActiveTab(): Promise<void> {
       windowId: active.windowId,
       isActive: true,
     });
-    await projectForTab(active.url);
+    await projectForTab(active.url, active.id);
   } catch {
     // Non-fatal: the onActivated listener will catch up on the next switch.
   }

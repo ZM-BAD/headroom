@@ -54,6 +54,15 @@ export interface PlatformAdapter {
    */
   dialogueIdFromUrl?(url: string): string | null;
   /**
+   * Extract the conversation's human-readable title from the page DOM (content
+   * script side). Read from wherever the platform renders the chat title (header
+   * / sidebar active item). The side panel shows it alongside the dialogueId to
+   * build the "this gauge = this conversation" mental model (spec 001). Runs
+   * in the content script on open / SPA switch; null when no title element is
+   * present yet (the panel falls back to the dialogueId only).
+   */
+  dialogueTitleFromDoc?(doc: Document): string | null;
+  /**
    * webRequest match-pattern for the platform's "delete conversation"
    * request, if known. When absent, delete-sync is skipped for this platform
    * (no error). Capture it from the web app: DevTools → Network, delete a
@@ -94,6 +103,14 @@ export interface PlatformAdapter {
    * for that platform). Must never throw — return [] on any failure.
    */
   fetchHistory?(dialogueId: string): Promise<HistoryRound[]>;
+  /**
+   * Fetch the list of ALL conversation ids for this platform (the home-page
+   * sidebar). Used by zombie cleanup (spec 003): ids still in Upstash but no
+   * longer on the platform (deleted elsewhere, e.g. mobile) get cloud-DELed.
+   * Runs in the CONTENT SCRIPT (same-origin). Absent ⇒ zombie cleanup is
+   * skipped for this platform. Must never throw — return [] on failure.
+   */
+  fetchConversationList?(): Promise<string[]>;
   /** DOM selector for a single AI/assistant message (content-script side). */
   answerSelector: string;
   /** DOM selector for a single user message (optional; DOM prompt fallback). */

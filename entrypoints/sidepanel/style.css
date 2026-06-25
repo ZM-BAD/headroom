@@ -125,6 +125,33 @@ body {
 .hd-model-meta {
   margin-top: 6px;
 }
+/* Conversation identity block: title (human label) + dialogueId (machine id).
+   Builds "this gauge = this conversation". Title truncates with ellipsis so a
+   long title can't blow the card; the id wraps (full id, break-all so a UUID
+   fits the narrow panel) and sits muted below. */
+.hd-dialogue-identity {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.hd-dialogue-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hd-dialogue-id {
+  margin-top: 4px;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--fg-muted);
+  word-break: break-all;
+  line-height: 1.3;
+  user-select: all; /* let the user copy the id to verify against the URL */
+}
 .hd-badge {
   display: inline-block;
   padding: 2px 8px;

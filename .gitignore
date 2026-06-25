@@ -36,3 +36,6 @@ Thumbs.db
 
 # Requirements — human discussion/drafts, not part of codebase
 requirements/
+
+# QA — local manual acceptance checklist, not version-controlled
+qa.md

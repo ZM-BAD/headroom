@@ -26,10 +26,7 @@ export interface UpstashCreds {
 /** Cloud-side settings key. Credentials are NEVER stored here (see cloud-settings). */
 export const SETTINGS_KEY = "headroom:settings";
 
-async function command(
-  creds: UpstashCreds,
-  args: string[],
-): Promise<string | null> {
+async function command(creds: UpstashCreds, args: string[]): Promise<unknown> {
   if (!creds.url || !creds.token) return null;
   if (!creds.url.startsWith("https://")) {
     // Refuse to send the REST token over a non-https URL — defense at the
@@ -49,7 +46,7 @@ async function command(
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(`upstash HTTP ${res.status}`);
-    const data = (await res.json()) as { result?: string | null };
+    const data = (await res.json()) as { result?: unknown };
     return data.result ?? null;
   } finally {
     clearTimeout(timer);
@@ -61,7 +58,7 @@ export async function kvGet(
   creds: UpstashCreds,
   key: string,
 ): Promise<string | null> {
-  return command(creds, ["GET", key]);
+  return (await command(creds, ["GET", key])) as string | null;
 }
 
 /** Generic transport — SET a raw string value. No-op when unconfigured. */
@@ -78,8 +75,49 @@ export async function kvDel(creds: UpstashCreds, key: string): Promise<void> {
   await command(creds, ["DEL", key]);
 }
 
+/** Generic transport — SCAN keys matching `pattern` across all cursor pages.
+ *  Empty when unconfigured. Used by zombie cleanup (spec 003) to enumerate a
+ *  platform's cloud conversation keys. COUNT tunes page size, not a cap. */
+export async function kvScan(
+  creds: UpstashCreds,
+  pattern: string,
+): Promise<string[]> {
+  const keys: string[] = [];
+  let cursor = "0";
+  do {
+    const res = await command(creds, [
+      "SCAN",
+      cursor,
+      "MATCH",
+      pattern,
+      "COUNT",
+      "100",
+    ]);
+    if (res == null) break; // unconfigured → command returned null
+    const [next, batch] = res as [string, string[]];
+    cursor = next;
+    if (Array.isArray(batch)) keys.push(...batch);
+  } while (cursor && cursor !== "0");
+  return keys;
+}
+
 export function dialogueKey(platformId: string, dialogueId: string): string {
   return `headroom:conv:${platformId}:${dialogueId}`;
+}
+
+/** From a SCAN of cloud keys, return those whose dialogueId is NOT in `liveIds`
+ *  — the zombies (conversations deleted on the platform but still in Upstash,
+ *  e.g. via mobile). Keys from other platforms / non-conv keys are ignored.
+ *  Pure (no I/O); the caller DELs the returned keys. */
+export function selectZombieKeys(
+  cloudKeys: string[],
+  liveIds: ReadonlySet<string>,
+  platformId: string,
+): string[] {
+  const prefix = `headroom:conv:${platformId}:`;
+  return cloudKeys.filter(
+    (k) => k.startsWith(prefix) && !liveIds.has(k.slice(prefix.length)),
+  );
 }
 
 export async function getDialogue(

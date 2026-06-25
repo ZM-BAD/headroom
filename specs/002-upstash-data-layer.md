@@ -49,7 +49,7 @@ README 把 BYO Upstash 当产品核心（"your data stays in your own private st
 ```
 POST {UPSTASH_REDIS_REST_URL}/
 Header: Authorization: Bearer {UPSTASH_REDIS_REST_TOKEN}
-Body:   JSON 命令数组  ["GET", key] / ["SET", key, val] / ["DEL", key]
+Body:   JSON 命令数组  ["GET", key] / ["SET", key, val] / ["DEL", key] / ["SCAN", cursor, "MATCH", pattern, "COUNT", n]
 → { "result": <string|null> }
 ```
 
@@ -60,7 +60,7 @@ Body:   JSON 命令数组  ["GET", key] / ["SET", key, val] / ["DEL", key]
 ### Client 分层
 
 ```
-kvGet / kvSet / kvDel            ← 通用原语（shape 无关，只管 REST 传输）
+kvGet / kvSet / kvDel / kvScan   ← 通用原语（shape 无关，只管 REST 传输）
    │
    ├─ getDialogue / setDialogue / delDialogue        ← typed 包装（conv 域）
    └─ getCloudSettings / setCloudSettings / delCloudSettings  ← typed 包装（settings 域）

@@ -1,4 +1,8 @@
-import type { HeadroomMessage, HistoryParsedMessage } from "../utils/messages";
+import type {
+  ConversationListMessage,
+  HeadroomMessage,
+  HistoryParsedMessage,
+} from "../utils/messages";
 import type { PlatformAdapter } from "../utils/platform-adapter";
 import { ADAPTERS } from "../adapters";
 
@@ -40,6 +44,7 @@ export default defineContentScript({
         type: "PAGE_READY",
         platformId: adapter.platformId,
         url: location.href,
+        dialogueTitle: adapter.dialogueTitleFromDoc?.(document) ?? null,
       });
 
     // Fetch the conversation's full history (text + message_id-ordered rounds)
@@ -58,9 +63,34 @@ export default defineContentScript({
           platformId: adapter.platformId,
           url: location.href,
           rounds,
+          // Re-scrape the title on every history ship — cheap, and catches a
+          // rename (the SPA may have updated the tab title since PAGE_READY).
+          dialogueTitle: adapter.dialogueTitleFromDoc?.(document) ?? null,
         } satisfies HistoryParsedMessage);
       } catch {
         // fetch failed — the next trigger (open / switch / round-complete) re-fetches
+      }
+    };
+
+    // On the platform HOME page (no dialogue id), fetch the conversation list
+    // and ship it for zombie cleanup (spec 003): the background diffs it
+    // against the cloud keys and DELs orphans. No-op when the adapter can't
+    // list conversations or a specific conversation is open.
+    const fetchAndShipConversationList = async (): Promise<void> => {
+      if (!adapter.fetchConversationList) return;
+      const dialogueId = adapter.dialogueIdFromUrl?.(location.href) ?? null;
+      if (dialogueId) return; // a conversation is open, not the home page
+      try {
+        const ids = await adapter.fetchConversationList();
+        if (ids.length === 0) return;
+        send({
+          type: "CONVERSATION_LIST",
+          platformId: adapter.platformId,
+          url: location.href,
+          ids,
+        } satisfies ConversationListMessage);
+      } catch {
+        // list fetch failed — the next open-home retries
       }
     };
 
@@ -73,6 +103,7 @@ export default defineContentScript({
     // Initial load.
     sendPageReady();
     void fetchAndShipHistory();
+    void fetchAndShipConversationList();
 
     // SPA conversation switches change the URL WITHOUT reloading (DeepSeek is a
     // React SPA), so PAGE_READY doesn't re-fire. Poll the URL lightly and, when
@@ -86,6 +117,7 @@ export default defineContentScript({
       lastHref = location.href;
       sendPageReady();
       void fetchAndShipHistory();
+      void fetchAndShipConversationList();
     }, 1500);
   },
 });

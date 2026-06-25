@@ -151,6 +151,16 @@ export const deepseekAdapter: PlatformAdapter = {
       return null;
     }
   },
+  // DeepSeek writes the conversation title into the browser tab title
+  // (document.title), updated by the SPA on open/rename. This is the most
+  // stable source — hashed CSS classes on the header/sidebar shift between
+  // builds, but document.title is the OS-level tab label the platform keeps
+  // correct. Strip a trailing " - DeepSeek" brand suffix if present.
+  dialogueTitleFromDoc(doc) {
+    const raw = doc.title?.trim();
+    if (!raw) return null;
+    return raw.replace(/\s*[-—]\s*DeepSeek\s*$/i, "").trim() || null;
+  },
   // History API: CONFIRMED live (2026-06 Playwright). GET
   // /api/v0/chat/history_messages?chat_session_id=<id> → chat_messages[] (USER/
   // ASSISTANT paired by parent_id, fragments[].content = text). Runs in the

@@ -43,6 +43,12 @@
           <div class="hd-model-meta">
             <span class="hd-badge" id="context-limit">— context</span>
           </div>
+          <!-- Conversation identity: title + id build the "this gauge = this
+               conversation" mental model. Hidden until a dialogue is open. -->
+          <div class="hd-dialogue-identity" id="dialogue-identity" hidden>
+            <div class="hd-dialogue-title" id="dialogue-title"></div>
+            <div class="hd-dialogue-id" id="dialogue-id"></div>
+          </div>
         </section>
 
         <section class="hd-card hd-usage">

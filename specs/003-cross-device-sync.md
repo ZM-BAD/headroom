@@ -2,7 +2,7 @@
 
 ## Status
 
-删除拦截 + 本地删除联动已实现（001 background，真机验过）；本 spec 的核心——union 对账引擎、增量上云、僵尸清理、移动端懒清理——均待实现。7 家拉历史 API 与删除端点已完成真机抓包（2026-06）。
+union 对账引擎 + 增量上云 + 删除联动（本地 + 云端 DEL）+ 本地缓存 LRU 淘汰已实现，真机验收 pending。僵尸清理引擎已实现（kvScan + 差集 DEL，待 DeepSeek `fetchConversationList` 真机抓包驱动）、移动端删除懒清理、对账频率控制（P1）待实现。7 家拉历史 API 与删除端点已完成真机抓包（2026-06）。
 
 **范围定位**：跨设备同步语义。把 [001](./001-headroom-core.md) 的估算能力 + [002](./002-upstash-data-layer.md) 的传输管道组合起来，让对话记录跨设备正确。
 
@@ -102,18 +102,18 @@ sequenceDiagram
 
 ### P0 — 核心
 
-- [ ] **打开即全量对账引擎**：`PAGE_READY` → `fetchHistory` → 逐条估 token → union 合并本地+Upstash → **先显示后同步**。
-- [ ] **union 合并语义（by round-n）**：平台有的轮以平台为准；平台不再返回的旧轮保留；`totalTokens`/`roundCount` 重算为合并后真实累计。
-- [ ] **本地多对话缓存**：`headroom:conv:{p}:{id}` 存最近一次对账/增量结果；仪表盘从缓存秒开（GET_STATE 投影）。
-- [ ] **增量上云**：本轮历史落地后（`onCompleted` → `fetchHistory` → `applyHistory`）→ best-effort 推 Upstash（覆盖写整条）；失败只 warn，下次打开重算补回。
-- [ ] **删除联动（存储效果）**：webRequest 命中 `deleteUrl` → `parseDelete` 取 id → 删本地缓存 + Upstash `DEL`（best-effort）。
+- [x] **打开即全量对账引擎**：`PAGE_READY` → `fetchHistory` → 逐条估 token → union 合并本地+Upstash → **先显示后同步**。
+- [x] **union 合并语义（by round-n）**：平台有的轮以平台为准；平台不再返回的旧轮保留；`totalTokens`/`roundCount` 重算为合并后真实累计。
+- [x] **本地多对话缓存**：`headroom:conv:{p}:{id}` 存最近一次对账/增量结果；仪表盘从缓存秒开（GET_STATE 投影）。LRU 淘汰见 P1。
+- [x] **增量上云**：本轮历史落地后（`onCompleted` → `fetchHistory` → `applyHistory`）→ best-effort 推 Upstash（覆盖写整条）；失败只 warn，下次打开重算补回。
+- [x] **删除联动（存储效果）**：webRequest 命中 `deleteUrl` → `parseDelete` 取 id → 删本地缓存 + Upstash `DEL`（best-effort）。
 - [x] **仪表盘从本地缓存 record 派生**（`projectUsage`）：001 已落地，003 沿用。
 
 ### P1 — 增强
 
 - [ ] **僵尸清理**：打开平台首页 → `fetchConversationList` → 对比 Upstash → 删差集。
 - [ ] **移动端删除懒清理**：`detectDeletedPage`（404/空页）→ `delDialogue`。
-- [ ] **本地缓存 LRU 淘汰**：超软阈值按 `updatedAt` 删最旧（见 Design）。
+- [x] **本地缓存 LRU 淘汰**：超软阈值按 `updatedAt` 删最旧（见 Design）。
 - [ ] **对账频率控制**：快速切多个对话时 debounce / 只对停留 >N 秒的对话触发全量对账。
 - [x] 7 家拉历史 API 验证（2026-06 真机抓包，全平台文本可取）。
 - [x] 7 家删除端点实测（拦截层就绪）。
