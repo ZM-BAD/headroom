@@ -86,7 +86,7 @@ describe("dialogue wrappers", () => {
   const record = JSON.stringify({
     platformId: "deepseek",
     dialogueId: "1",
-    contextLimit: 1_000_000,
+    contextLimit: 1_048_576,
     totalTokens: 5,
     roundCount: 1,
     rounds: [],

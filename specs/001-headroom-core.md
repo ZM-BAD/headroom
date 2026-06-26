@@ -212,19 +212,19 @@ tokens(text, platform) = Σ over 书写系统 s  [ count(text, s) × coeff(s, pl
 
 新增一个 AI 平台 = 注册 + 写一个 `adapters/<platform>.ts`。完整契约（**归属**列说明哪个 spec 定义/使用该字段）：
 
-| 字段                                                          | 归属    | 说明                                                                                                        |
-| ------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------- |
-| `platformId` / `displayName` / `host` / `matchPattern`        | 001     | 平台 id + 展示名；content 注入 + host 匹配                                                                  |
-| `completionUrl`                                               | 001     | webRequest `onCompleted` 过滤 = 回答完毕（SSE 流关闭，根因；非 DOM 启发式）                                 |
-| `contextLimit`                                                | 001     | 默认 context window，用户可覆盖                                                                             |
-| `tokenCoefficients { cjk, latin }`                            | 001     | 默认估算系数，用户可覆盖                                                                                    |
-| `dialogueIdFromUrl?(url)`                                     | 001     | URL 派生对话 id（切对话 → gauge 重置）                                                                      |
-| `dialogueTitleFromDoc?(doc) → string \| null`                 | 001     | 对话标题（content-script 从 DOM 抓）；**仅面板展示，不写入 `DialogueRecord`、不上云**（标题可能含敏感信息） |
-| `fetchHistory?(dialogueId) → HistoryRound[]`                  | 001     | **核心真相源**：拉平台完整历史（message_id 正序）；打开 / 切对话 / 回答完成都走它，token 永远由它估算       |
-| `answerSelector` / `userSelector?` / `conversationSelector`   | 001     | DOM 兜底原语；history-authoritative 核心当前不用，留给无历史 API 的平台                                     |
-| `deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?` | 001+003 | 删除联动：本地 record 重置（001 background）；云端 DEL（003）                                               |
-| `fetchConversationList?() → string[]`                         | 003     | 僵尸清理：拉对话 id 列表                                                                                    |
-| `detectDeletedPage?(doc) → boolean`                           | 003     | 移动端删除懒清理                                                                                            |
+| 字段                                                          | 归属    | 说明                                                                                                                                                             |
+| ------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `platformId` / `displayName` / `host` / `matchPattern`        | 001     | 平台 id + 展示名；content 注入 + host 匹配                                                                                                                       |
+| `completionUrl`                                               | 001     | webRequest `onCompleted` 过滤 = 回答完毕（SSE 流关闭，根因；非 DOM 启发式）                                                                                      |
+| `contextLimit`                                                | 001     | 默认 context window，用户可覆盖                                                                                                                                  |
+| `tokenCoefficients { cjk, latin }`                            | 001     | 默认估算系数，用户可覆盖                                                                                                                                         |
+| `dialogueIdFromUrl?(url)`                                     | 001     | URL 派生对话 id（切对话 → gauge 重置）                                                                                                                           |
+| `dialogueTitleFromDoc?(doc) → string \| null`                 | 001     | 对话标题（content-script 从 DOM 抓）；**仅面板展示，不写入 `DialogueRecord`、不上云**（标题可能含敏感信息）                                                      |
+| `fetchHistory?(dialogueId) → HistoryRound[]`                  | 001     | **核心真相源**：拉平台完整历史；`HistoryRound` 携带**稳定 messageId**（003 union 合并 key）+ `n`（仅显示序）。打开 / 切对话 / 回答完成都走它，token 永远由它估算 |
+| `answerSelector` / `userSelector?` / `conversationSelector`   | 001     | DOM 兜底原语；history-authoritative 核心当前不用，留给无历史 API 的平台                                                                                          |
+| `deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?` | 001+003 | 删除联动：本地 record 重置（001 background）；云端 DEL（003）                                                                                                    |
+| `fetchConversationList?() → string[]`                         | 003     | 僵尸清理：拉对话 id 列表                                                                                                                                         |
+| `detectDeletedPage?(doc) → boolean`                           | 003     | 移动端删除懒清理                                                                                                                                                 |
 
 001 实现 DeepSeek 的 001 字段（`fetchHistory` 已实现并真机验过）；003 字段在本 spec 只占契约位。background 是平台无关引擎——只认 adapter 接口，历史 API 是轮次身份与 token 的唯一真相源。
 
@@ -234,22 +234,22 @@ tokens(text, platform) = Σ over 书写系统 s  [ count(text, s) × coeff(s, pl
 | ------------------- | ----------------------------------------------------------------------------------------------- |
 | `matchPattern`      | `chat.deepseek.com`                                                                             |
 | `completionUrl`     | `*://chat.deepseek.com/api/v0/chat/completion`（SSE，onCompleted）                              |
-| `contextLimit`      | 1,000,000                                                                                       |
+| `contextLimit`      | 1,048,576 (= 1 << 20)                                                                           |
 | `fetchHistory`      | GET `/api/v0/chat/history_messages?chat_session_id=`（Bearer token + x-client-\* 头，真机确认） |
 | `dialogueIdFromUrl` | `/a/chat/s/<id>` → `chat_session_id`                                                            |
 | `tokenCoefficients` | `cjk 0.6 / latin 0.5`（v1 起点值，待 004 标定）                                                 |
 
 ### 7 平台 context 默认值（首期 DeepSeek 验通，其余 fast-follow）
 
-| 平台     | 页面 host         | Context（默认） | fetchHistory（历史 API 逆向）            |
-| -------- | ----------------- | --------------- | ---------------------------------------- |
-| DeepSeek | chat.deepseek.com | 1,000,000       | ✅ 已实现 + 真机验过                     |
-| ChatGPT  | chatgpt.com       | 128,000         | ⏳ 待逆向                                |
-| Gemini   | gemini.google.com | 1,000,000       | ⏳ 待逆向（可能无历史 API，需 DOM 兜底） |
-| Kimi     | www.kimi.com      | 200,000         | ⏳ 待逆向                                |
-| Qwen     | chat.qwen.ai      | 131,072         | ⏳ 待逆向                                |
-| 通义千问 | www.qianwen.com   | 131,072         | ⏳ 待逆向                                |
-| 豆包     | www.doubao.com    | 256,000         | ⏳ 待逆向                                |
+| 平台     | 页面 host         | Context（默认）   | fetchHistory（历史 API 逆向）   |
+| -------- | ----------------- | ----------------- | ------------------------------- |
+| DeepSeek | chat.deepseek.com | 1,048,576 (1<<20) | ✅ 已实现 + 真机验过            |
+| ChatGPT  | chatgpt.com       | 131,072 (1<<17)   | ✅ 已实现（实测）               |
+| Gemini   | gemini.google.com | 1,048,576 (1<<20) | ✅ DOM 兜底（实测，无可用 API） |
+| Kimi     | www.kimi.com      | 262,144 (1<<18)   | ✅ 已实现（实测）               |
+| Qwen     | chat.qwen.ai      | 1,048,576 (1<<20) | ✅ 已实现（实测）               |
+| 通义千问 | www.qianwen.com   | 1,048,576 (1<<20) | ✅ 已实现（实测）               |
+| 豆包     | www.doubao.com    | 262,144 (1<<18)   | ✅ 已实现（实测）               |
 
 > 7 家 DOM 选择器 + API host/path 均经真机实测确认（2026-06）。001 的**验收里程碑以 DeepSeek 验通为准**；其余 6 家 adapter 字段就绪，深度 runtime 验收见 004。
 

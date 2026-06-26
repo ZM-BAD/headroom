@@ -8,7 +8,7 @@ union 对账引擎 + 增量上云 + 删除联动（本地 + 云端 DEL）+ 本�
 
 ## Summary
 
-**真值 = 平台历史的文本内容；token = 我们的估算**（001 引擎）。打开对话 → 从平台拉完整历史 → 逐条估 token → 与 Upstash 现有记录按 round-n **union 合并** → **先在面板显示，再后台同步到 Redis**。平台服务器存历史文本，Upstash 是跨设备汇聚层，`browser.storage.local` 是加速缓存。增量拦截（001）在本 spec 里降级为"两次全量之间的即时反馈"。
+**真值 = 平台历史的文本内容；token = 我们的估算**（001 引擎）。打开对话 → 从平台拉完整历史 → 逐条估 token → 与 Upstash 现有记录按**稳定 messageId** union 合并（位置 `n` 仅作显示序，合并后按时间重排） → **先在面板显示，再后台同步到 Redis**。平台服务器存历史文本，Upstash 是跨设备汇聚层，`browser.storage.local` 是加速缓存。增量拦截（001）在本 spec 里降级为"两次全量之间的即时反馈"。
 
 四个同步动作（产品交互，以 DeepSeek 为例）：
 
@@ -27,7 +27,11 @@ union 对账引擎 + 增量上云 + 删除联动（本地 + 云端 DEL）+ 本�
 
 ### 为什么 union 合并，不覆盖写
 
-token 永远是从文本现估的，每次对账都把所有轮次重估一遍——只要"保留曾见过的所有轮次"即可。**union（by round-n）**：平台还返回的轮以平台文本为准重估；平台不再返回的旧轮保留旧估算。这扛得住平台历史分页/截断（通义千问就是分页列表），也正好匹配"补上缺失轮次"的语义。覆盖写会在平台截断时丢掉旧轮。
+token 永远是从文本现估的，每次对账都把所有轮次重估一遍——只要"保留曾见过的所有轮次"即可。**union（by 稳定 messageId）**：平台每条消息/每轮都有一个**稳定身份**（DeepSeek `message_id`、ChatGPT mapping 节点 id、Kimi msg `id`、Qwen 对象 map 键、豆包 `index_in_conv`，均 2026-06 真机实测确认）。合并**按 messageId 配对**：平台还返回的轮以平台文本为准重估；平台不再返回的旧轮保留旧估算。
+
+> **为什么不用位置 round-n 作合并 key**：位置 `n` 是"本次返回数组的下标"，不是稳定身份。当平台返回的轮集**变化**（截断、分页走取失败、单条删除、重生成移位）时，位置 `n` 整体漂移，把不同真实轮错配到同一 `n` → `totalTokens` 静默算错。实测复现（真实 `unionRounds`/`upsertRound`）：50 轮对话、设备 B 只拿到后 30 轮被重排成 `n=1..30`，合并后 `totalTokens` 算成 **1875 而非真实 1275**（后 20 轮重复计、前 20 轮丢失）。故 `n` 仅作**显示序**，合并后按时间重排分配；合并 key 必须是稳定 messageId。
+
+> **截断的实际情况（2026-06 实测 7 平台）**：正常情况下**都不截断**——DeepSeek/Kimi/Qwen 一次返回全量；ChatGPT 返回整棵 mapping 树；豆包/通义千问分页但**走完全部页**。union"保留旧轮"的价值存在于边缘情形：超长会话撞分页上限（豆包/通义千问 50 页 cap）、分页走取中断、单条删除/重生成改变轮集。覆盖写在这些情形下会丢轮。
 
 ### 为什么不要 outbox / alarms drain
 
@@ -90,7 +94,7 @@ sequenceDiagram
 **新增**：
 
 - **打开即全量对账（核心）**：content script `PAGE_READY` → background `fetchHistory` → 平台完整历史 → 逐条用 001 引擎估 token → union 合并 → 覆盖写本地缓存 + Upstash → 重投影仪表盘。
-- **union 合并（by round-n）**：`getDialogue` → `union(cloudRounds, historyRounds)` → `setDialogue`。002 的 `setDialogue` 是纯覆盖写；合并编排在本 spec。
+- **union 合并（by messageId）**：`getDialogue` → `union(cloudRounds, historyRounds)` → `setDialogue`。002 的 `setDialogue` 是纯覆盖写；合并编排在本 spec。
 - **僵尸清理（事件触发，非轮询）**：打开平台首页 → `fetchConversationList` → 对比 Upstash keys → 删差集。
 - **移动端删除懒清理**：打开已被删对话 → 平台 404/空 → `detectDeletedPage` → `delDialogue`。
 - **本地多对话缓存 + LRU 淘汰**。
@@ -103,7 +107,7 @@ sequenceDiagram
 ### P0 — 核心
 
 - [x] **打开即全量对账引擎**：`PAGE_READY` → `fetchHistory` → 逐条估 token → union 合并本地+Upstash → **先显示后同步**。
-- [x] **union 合并语义（by round-n）**：平台有的轮以平台为准；平台不再返回的旧轮保留；`totalTokens`/`roundCount` 重算为合并后真实累计。
+- [x] **union 合并语义（by messageId）**：平台有的轮以平台为准；平台不再返回的旧轮保留；`totalTokens`/`roundCount` 重算为合并后真实累计。
 - [x] **本地多对话缓存**：`headroom:conv:{p}:{id}` 存最近一次对账/增量结果；仪表盘从缓存秒开（GET_STATE 投影）。LRU 淘汰见 P1。
 - [x] **增量上云**：本轮历史落地后（`onCompleted` → `fetchHistory` → `applyHistory`）→ best-effort 推 Upstash（覆盖写整条）；失败只 warn，下次打开重算补回。
 - [x] **删除联动（存储效果）**：webRequest 命中 `deleteUrl` → `parseDelete` 取 id → 删本地缓存 + Upstash `DEL`（best-effort）。
@@ -143,24 +147,25 @@ headroom:conv:{p}:{id}      → DialogueRecord（最近一次对账/增量结果
 headroom:conv-index         → { <full-key>: updatedAt } 元数据（LRU 淘汰用，免全量扫描）
 ```
 
-### union 合并（by round-n）
+### union 合并（by messageId）
 
 ```
 对账一次：
-  cloudRecord = getDialogue(key)            // 可能为空
-  historyMsgs = fetchHistory(dialogueId)    // 平台全量历史（文本）
-  newRounds   = historyMsgs.map(msg => 估算(msg))   // 每条 → RoundRecord，用 001 引擎
-  mergedRounds = union(cloudRecord.rounds, newRounds)   // by n
+  cloudRecord  = getDialogue(key)                     // 可能为空
+  historyRounds = fetchHistory(dialogueId)            // 平台全量历史，每轮带稳定 messageId
+  newRounds = historyRounds.map(h => ({ messageId: h.messageId, ...估算(h) }))
+  mergedRounds = union(cloudRecord.rounds, newRounds)  // by messageId：history 胜；cloud-only messageId 保留
+  mergedRounds.sort(by 时间序).forEach((r,i)=> r.n = i+1)   // n 仅显示序，合并后按时间重排
   record = { ...cloudRecord,
              rounds: mergedRounds,
-             totalTokens: Σ mergedRounds.total,      // 真实累计重算
-             roundCount: max(mergedRounds 各 r.n),   // 合并集最高轮号;空集=0(抗截断,不用 length)
+             totalTokens: Σ mergedRounds.total,        // 真实累计重算
+             roundCount: mergedRounds.length,          // = 合并集中不同 messageId 的数量
              updatedAt: now }
 ```
 
 - **平台还返回的轮** → 用平台文本重估，覆盖旧估算（平台是文本真值）。
 - **平台不再返回的轮**（截断/分页遗漏）→ 保留 `cloudRecord` 里的旧估算，不丢。
-- **`totalTokens` / `roundCount`** 从合并集重算：`totalTokens = Σ mergedRounds.total`；`roundCount = 合并集中的最高轮号 n`（**不用任一侧的 length**——截断时 `length` 会偏小）。两者均不受 `rounds[]` 裁剪影响（见 001 不变式）。
+- **`totalTokens` / `roundCount`** 从合并集重算：`totalTokens = Σ mergedRounds.total`；`roundCount = 合并集中不同 messageId 的数量`（稳定身份去重后计数，天然抗截断/抗重复）。两者均不受 `rounds[]` 裁剪影响（见 001 不变式）。
 
 > **常态 = 全量覆盖写**：平台返回完整历史时，每一轮都以重估值胜出、云端旧值整体被替换——故系数升级（分词器换代 / 004 校准 / 用户覆盖）能被每次打开刷新，旧估算不会卡住。union 的"选择性"仅在平台**截断/分页**时体现：被丢的早期轮保留云端旧估算；代价是这些轮停留在当初那套系数上（`DialogueRecord` 只存计数不存文本，无文本则无法重估），收益是不丢这些轮的累计。DeepSeek 全量返回、无分页（见 001），此限制不存在。
 
@@ -221,6 +226,8 @@ headroom:conv-index         → { <full-key>: updatedAt } 元数据（LRU 淘汰
 
 > **文本全部可取**——这是对账的前提（估 token 靠文本）。服务端 token 列仅作 [004](./004-optimizations.md) 校准参考，**不计入核心路径**（产品形态按"文本 → 估算"设计）。通义千问的分页需翻页取全。
 
+> **稳定 messageId 来源（union 合并 key，2026-06 真机实测，7/7 全部确认）**：DeepSeek `message_id` · ChatGPT mapping 节点 id · Kimi msg `id` · Qwen(chat.qwen.ai) 对象 map 键 · 豆包 `index_in_conv` · 通义千问 `req_id`（逐轮请求 id，list 项字段）· Gemini turn wrapper `<div id>`（16 位 hex，跨 reload 稳定，与 Angular `_ngcontent-ng-c…` build 哈希无关）。order（显示序）：DeepSeek/豆包/通义千问用各自的 create_time/created_at，ChatGPT `create_time`，Kimi `createTime`，Qwen `timestamp`，Gemini DOM 序。适配器解析时大多已读到这些 id（配对/建树用）；旧实现发轮时丢弃改发位置 `n`——本变更改为透传 messageId 作合并 key。
+
 ### Browser APIs
 
 `webRequest`（已有，send + 删除监听）。`fetchHistory` / `fetchConversationList` 用普通 `fetch`（同源，吃平台 cookie 会话）。**无需 `alarms` 权限**（无 alarms drain）。
@@ -240,7 +247,7 @@ headroom:conv-index         → { <full-key>: updatedAt } 元数据（LRU 淘汰
 - [ ] **跨设备续聊**：设备 A 聊 5 轮 → 设备 B 打开同对话 → B 显示 5 轮累计（不是 0，不覆盖丢 A 的）
 - [ ] **移动端轮次**：手机聊 3 轮 → 网页打开同对话 → 仪表盘含那 3 轮（平台历史里有，对账纳入）
 - [ ] **断网不丢**：断网聊几轮（增量推失败 warn）→ 恢复后打开对话 → 对账补回（不需 outbox）
-- [ ] **union 抗截断**：平台历史短于 Upstash 记录时，旧轮不丢（保留旧估算）
+- [ ] **union 按稳定 messageId 合并**：平台返回的轮集变化（截断 / 单条删除 / 重生成移位）时，`totalTokens` 仍正确——不重复计、不丢早期轮（回归测试：50 轮截断到 30 轮 → `totalTokens` 不变；旧实现会算成 1875≠1275）
 - [ ] 网页端删对话 → 本地缓存 + Upstash 对应 key 都消失
 - [ ] 移动端删对话 → 网页端打开该对话（404）→ Upstash 记录被懒清理
 - [ ] 切 tab / 开面板读本地缓存（秒开），不阻塞网络

@@ -7,7 +7,7 @@ function sampleSettings(): Settings {
     thresholds: { yellow: 0.5, red: 0.7 },
     language: "auto",
     upstash: { url: "https://x.upstash.io", token: "secret" },
-    contextLimits: { deepseek: 1_000_000 },
+    contextLimits: { deepseek: 1_048_576 },
   };
 }
 
@@ -17,7 +17,7 @@ describe("toCloudSettings", () => {
     expect(cloud).toEqual({
       thresholds: { yellow: 0.5, red: 0.7 },
       language: "auto",
-      contextLimits: { deepseek: 1_000_000 },
+      contextLimits: { deepseek: 1_048_576 },
       updatedAt: 12345,
     });
   });

@@ -10,7 +10,7 @@ done（交互层 + 结构锁定 + 探针 + 单测）；真机验收 pending。
 
 把 Upstash 作为云端传输层接进扩展：锁定 Redis 上的数据结构，把所有 Upstash 交互（GET/SET/DEL × 对话/设置）做好并解耦。
 
-**关键边界**：002 的写原语是**纯覆盖写**（`setDialogue` = PUT 整条 record）。"读 → 合并 → 写"的编排、合并语义（对话按 round-n union），归 003。002 不关心调用时机和合并逻辑。
+**关键边界**：002 的写原语是**纯覆盖写**（`setDialogue` = PUT 整条 record）。"读 → 合并 → 写"的编排、合并语义（对话按 messageId union），归 003。002 不关心调用时机和合并逻辑。
 
 ## Motivation
 
@@ -25,7 +25,7 @@ README 把 BYO Upstash 当产品核心（"your data stays in your own private st
 - **凭证只在本地**（`Settings.upstash`，是 REST API 对：`UPSTASH_REDIS_REST_URL` + `_TOKEN`，不是 Redis 密码）；调试探针读 `.env`（gitignored）。
 - **合并语义不在本层**：
   - 设置：LWW（last-write-wins，按 `updatedAt`）——设置是无状态的，LWW 安全。`mergeCloudSettings` 提供合并原语。
-  - 对话：**union by round-n**（003）。002 的 `setDialogue` 只是覆盖写整条 record；"读旧 record → union 合并 → 写新 record"的编排是 003 的职责。
+  - 对话：**union by messageId**（003）。002 的 `setDialogue` 只是覆盖写整条 record；"读旧 record → union 合并 → 写新 record"的编排是 003 的职责。
 
 ## Requirements
 

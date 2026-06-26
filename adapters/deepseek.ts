@@ -52,18 +52,21 @@ export function parseDeepSeekHistory(resp: unknown): HistoryRound[] {
   const rounds: HistoryRound[] = [];
   for (const m of messages) {
     if (m?.role !== "ASSISTANT") continue;
+    if (typeof m.message_id !== "number") continue;
     const parent =
       m.parent_id != null && typeof m.parent_id === "number"
         ? byId.get(m.parent_id)
         : undefined;
     if (!parent) continue; // orphan assistant (no user prompt to pair) — skip
+    // messageId = the assistant's stable message_id (the round's identity across
+    // fetches); order = message_id (monotonic per conversation = chronological).
     rounds.push({
-      n: 0,
+      messageId: String(m.message_id),
+      order: m.message_id,
       promptText: joinFragments(parent.fragments, "REQUEST"),
       answerText: joinFragments(m.fragments, "RESPONSE"),
     });
   }
-  rounds.forEach((r, i) => (r.n = i + 1));
   return rounds;
 }
 
@@ -123,7 +126,7 @@ export const deepseekAdapter: PlatformAdapter = {
   host: "chat.deepseek.com",
   completionUrl: "*://chat.deepseek.com/api/v0/chat/completion",
   matchPattern: "*://chat.deepseek.com/*",
-  contextLimit: 1_000_000,
+  contextLimit: 1_048_576, // 1M (1 << 20); overridable
   tokenCoefficients: DEFAULT_COEFFICIENTS, // v1 reference (cjk 0.6 / latin 0.5); calibrate in spec 004
   // Delete endpoint: CONFIRMED live (2026-06, Playwright → delete a throwaway
   // chat). POST /api/v0/chat_session/delete with body {"chat_session_id":"<id>"}

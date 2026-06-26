@@ -457,11 +457,13 @@ export default defineBackground(() => {
       // stored/displayed count must be an integer. estimateTokens stays a
       // precise float so its unit tests + 004 coefficient calibration hold.
       return {
-        n: h.n,
+        messageId: h.messageId,
+        order: h.order,
+        n: 0, // display position — assigned by unionRounds post-merge
         promptTokens,
         answerTokens,
         total: promptTokens + answerTokens,
-        ts: 0, // history rounds carry no per-round ts; ordering is by n
+        ts: 0, // history rounds carry no per-round ts; ordering is by order
       };
     });
 
@@ -487,6 +489,8 @@ export default defineBackground(() => {
         dialogueId,
         contextLimit,
         {
+          messageId: r.messageId,
+          order: r.order,
           n: r.n,
           promptTokens: r.promptTokens,
           answerTokens: r.answerTokens,

@@ -16,8 +16,10 @@ import type { TokenCoefficients } from "./estimate";
  * counts (if any) are ignored per spec ("token 永远估算").
  */
 export interface HistoryRound {
-  /** 1-based round number, ascending (oldest first). */
-  n: number;
+  /** Stable platform identity for this round — the spec 003 union-merge key. */
+  messageId: string;
+  /** Chronological order key (ascending = oldest first). Display `n` is derived post-merge, NOT set here. */
+  order: number;
   promptText: string;
   answerText: string;
 }

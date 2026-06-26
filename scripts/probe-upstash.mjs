@@ -58,7 +58,7 @@ try {
     const rec = {
       platformId: "testplatform",
       dialogueId: "test123",
-      contextLimit: 1_000_000,
+      contextLimit: 1_048_576,
       totalTokens: 42,
       roundCount: 1,
       rounds: [{ n: 1, promptTokens: 10, answerTokens: 32, total: 42, ts: 1 }],
@@ -88,7 +88,7 @@ try {
     const cloud = {
       thresholds: { yellow: 0.5, red: 0.7 },
       language: "auto",
-      contextLimits: { deepseek: 1_000_000 },
+      contextLimits: { deepseek: 1_048_576 },
       updatedAt: 12345,
     };
     const json = JSON.stringify(cloud);

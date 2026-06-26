@@ -6,7 +6,7 @@
 
 ## Decisions (locked with user, 2026-06-18)
 
-1. **Drop the mode distinction.** DeepSeek context = 1,000,000 regardless of
+1. **Drop the mode distinction.** DeepSeek context = 1,048,576 (1<<20) regardless of
    快速/专家 (both V4-flash and V4-pro are 1M). `model_type` detection adds
    nothing to the token/context ratio. `utils/models.ts` + mode label removed.
    The `webRequest` infra STAYS — it's the foundation for reading request bodies

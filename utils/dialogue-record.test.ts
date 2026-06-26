@@ -24,6 +24,8 @@ import {
  */
 
 const round = (n: number, promptTokens: number, answerTokens: number) => ({
+  messageId: `m${n}`,
+  order: n,
   n,
   promptTokens,
   answerTokens,
@@ -36,12 +38,12 @@ describe("upsertRound — first round", () => {
       null,
       "deepseek",
       "d1",
-      1_000_000,
+      1_048_576,
       round(1, 100, 50),
     );
     expect(rec.platformId).toBe("deepseek");
     expect(rec.dialogueId).toBe("d1");
-    expect(rec.contextLimit).toBe(1_000_000);
+    expect(rec.contextLimit).toBe(1_048_576);
     expect(rec.roundCount).toBe(1);
     expect(rec.totalTokens).toBe(150);
     expect(rec.rounds).toHaveLength(1);
@@ -55,18 +57,26 @@ describe("upsertRound — first round", () => {
 
   it("uses an existing record as the base when non-null", () => {
     const base: DialogueRecord = {
-      ...emptyDialogue("deepseek", "d1", 1_000_000),
+      ...emptyDialogue("deepseek", "d1", 1_048_576),
       roundCount: 1,
       totalTokens: 150,
       rounds: [
-        { n: 1, promptTokens: 100, answerTokens: 50, total: 150, ts: 1 },
+        {
+          messageId: "m1",
+          order: 1,
+          n: 1,
+          promptTokens: 100,
+          answerTokens: 50,
+          total: 150,
+          ts: 1,
+        },
       ],
     };
     const rec = upsertRound(
       base,
       "deepseek",
       "d1",
-      1_000_000,
+      1_048_576,
       round(2, 200, 100),
     );
     expect(rec.roundCount).toBe(2);
@@ -92,9 +102,9 @@ describe("upsertRound — re-emit dedup (the over-count fix)", () => {
   it("re-emitting the SAME n REPLACES the round, never appends", () => {
     // Simulates one assistant message settling in bursts: round 1 emitted with
     // growing token estimates as more text streams in.
-    let rec = upsertRound(null, "deepseek", "d1", 1_000_000, round(1, 100, 50));
-    rec = upsertRound(rec, "deepseek", "d1", 1_000_000, round(1, 200, 100));
-    rec = upsertRound(rec, "deepseek", "d1", 1_000_000, round(1, 300, 150));
+    let rec = upsertRound(null, "deepseek", "d1", 1_048_576, round(1, 100, 50));
+    rec = upsertRound(rec, "deepseek", "d1", 1_048_576, round(1, 200, 100));
+    rec = upsertRound(rec, "deepseek", "d1", 1_048_576, round(1, 300, 150));
     expect(rec.rounds).toHaveLength(1); // still ONE round, not three
     expect(rec.roundCount).toBe(1);
     expect(rec.totalTokens).toBe(450); // latest (300+150), NOT 150+300+450
@@ -151,7 +161,17 @@ describe("upsertRound — purity", () => {
       ...emptyDialogue("p", "d", 100_000),
       roundCount: 1,
       totalTokens: 30,
-      rounds: [{ n: 1, promptTokens: 10, answerTokens: 20, total: 30, ts: 1 }],
+      rounds: [
+        {
+          messageId: "m1",
+          order: 1,
+          n: 1,
+          promptTokens: 10,
+          answerTokens: 20,
+          total: 30,
+          ts: 1,
+        },
+      ],
     };
     const snapshot = JSON.parse(JSON.stringify(base)) as DialogueRecord;
     upsertRound(base, "p", "d", 100_000, round(2, 5, 5));
@@ -161,6 +181,8 @@ describe("upsertRound — purity", () => {
 
 describe("upsertRoundInto — array-level replace/append (record + panel)", () => {
   const r = (n: number, promptTokens: number, answerTokens: number) => ({
+    messageId: `m${n}`,
+    order: n,
     n,
     promptTokens,
     answerTokens,
@@ -168,7 +190,17 @@ describe("upsertRoundInto — array-level replace/append (record + panel)", () =
   });
   it("appends a new round n", () => {
     const out = upsertRoundInto(
-      [{ n: 1, promptTokens: 10, answerTokens: 20, total: 30, ts: 1 }],
+      [
+        {
+          messageId: "m1",
+          order: 1,
+          n: 1,
+          promptTokens: 10,
+          answerTokens: 20,
+          total: 30,
+          ts: 1,
+        },
+      ],
       r(2, 5, 5),
     );
     expect(out).toHaveLength(2);
@@ -176,14 +208,34 @@ describe("upsertRoundInto — array-level replace/append (record + panel)", () =
   });
   it("replaces an existing round n (streaming re-emit)", () => {
     const out = upsertRoundInto(
-      [{ n: 1, promptTokens: 10, answerTokens: 20, total: 30, ts: 1 }],
+      [
+        {
+          messageId: "m1",
+          order: 1,
+          n: 1,
+          promptTokens: 10,
+          answerTokens: 20,
+          total: 30,
+          ts: 1,
+        },
+      ],
       r(1, 100, 100),
     );
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ n: 1, promptTokens: 100, total: 200 });
   });
   it("does not mutate the input array", () => {
-    const base = [{ n: 1, promptTokens: 1, answerTokens: 1, total: 2, ts: 1 }];
+    const base = [
+      {
+        messageId: "m1",
+        order: 1,
+        n: 1,
+        promptTokens: 1,
+        answerTokens: 1,
+        total: 2,
+        ts: 1,
+      },
+    ];
     const snap = JSON.parse(JSON.stringify(base));
     upsertRoundInto(base, r(1, 9, 9));
     expect(base).toEqual(snap);
@@ -218,12 +270,16 @@ describe("projectUsage — gauge projection from a record", () => {
       n: 1,
       promptTokens: 10,
       answerTokens: 20,
+      messageId: "m1",
+      order: 1,
       ts: 1,
     });
     const r2 = upsertRound(rec, "p", "d", 100_000, {
       n: 2,
       promptTokens: 30,
       answerTokens: 40,
+      messageId: "m2",
+      order: 2,
       ts: 2,
     });
     const proj = projectUsage(r2);
@@ -242,8 +298,24 @@ describe("projectUsage — gauge projection from a record", () => {
       totalTokens: 1000, // true lifetime sum
       roundCount: 500, // true round count
       rounds: [
-        { n: 499, promptTokens: 1, answerTokens: 1, total: 2, ts: 499 },
-        { n: 500, promptTokens: 1, answerTokens: 1, total: 2, ts: 500 },
+        {
+          messageId: "m499",
+          order: 499,
+          n: 499,
+          promptTokens: 1,
+          answerTokens: 1,
+          total: 2,
+          ts: 499,
+        },
+        {
+          messageId: "m500",
+          order: 500,
+          n: 500,
+          promptTokens: 1,
+          answerTokens: 1,
+          total: 2,
+          ts: 500,
+        },
       ], // array sum would be only 4 — WRONG for the gauge
       updatedAt: 1,
     };
@@ -269,6 +341,8 @@ describe("projectUsage — gauge projection from a record", () => {
     promptTokens: number,
     answerTokens: number,
   ): RoundRecord => ({
+    messageId: `m${n}`,
+    order: n,
     n,
     promptTokens,
     answerTokens,
@@ -322,31 +396,38 @@ describe("projectUsage — gauge projection from a record", () => {
   });
 
   describe("unionRounds — ordering and gaps", () => {
-    it("result is ascending by n", () => {
+    it("result is ascending by order (display n reassigned 1..k)", () => {
       const cloud = [rr(5, 1, 1), rr(2, 1, 1)];
       const history = [rr(3, 1, 1), rr(1, 1, 1)];
       const out = unionRounds(cloud, history);
-      expect(out.map((r) => r.n)).toEqual([1, 2, 3, 5]);
+      expect(out.map((r) => r.messageId)).toEqual(["m1", "m2", "m3", "m5"]);
+      expect(out.map((r) => r.n)).toEqual([1, 2, 3, 4]); // display n contiguous
     });
-    it("does not fill gaps (non-contiguous n survives as-is)", () => {
+    it("does not fill gaps (only the rounds present survive)", () => {
       const cloud = [rr(1, 1, 1)];
       const history = [rr(5, 1, 1)]; // rounds 2,3,4 missing entirely
       const out = unionRounds(cloud, history);
-      expect(out.map((r) => r.n)).toEqual([1, 5]); // no fabricated rounds
+      expect(out.map((r) => r.messageId)).toEqual(["m1", "m5"]); // no fabricated rounds
+      expect(out.map((r) => r.n)).toEqual([1, 2]); // display n contiguous
     });
   });
 
   describe("unionRounds — trim to MAX_RETAINED_ROUNDS", () => {
-    it("keeps only the last MAX_RETAINED_ROUNDS (newest by n)", () => {
-      // Build cloud with rounds 1..MAX+5; history empty. Union result should be
-      // trimmed to the last MAX (rounds 6..MAX+5).
+    it("keeps only the last MAX_RETAINED_ROUNDS (newest by order)", () => {
+      // Build cloud with rounds 1..MAX+5; history empty. Union result is trimmed
+      // to the last MAX (messageIds m6..m{MAX+5}); display n is reassigned 1..MAX.
       const cloud: RoundRecord[] = [];
       for (let n = 1; n <= MAX_RETAINED_ROUNDS + 5; n++) {
         cloud.push(rr(n, 1, 1));
       }
       const out = unionRounds(cloud, []);
       expect(out).toHaveLength(MAX_RETAINED_ROUNDS);
-      expect(out[0].n).toBe(6); // first 5 dropped
+      expect(out[0].messageId).toBe("m6"); // first 5 dropped
+      // n is assigned to the FULL set before slicing, so the retained tail keeps
+      // its true position (6..MAX+5) — this is what lets roundCount (= max n)
+      // survive trimming.
+      expect(out[0].n).toBe(6);
+      expect(out[out.length - 1].messageId).toBe(`m${MAX_RETAINED_ROUNDS + 5}`);
       expect(out[out.length - 1].n).toBe(MAX_RETAINED_ROUNDS + 5);
     });
   });
@@ -360,6 +441,45 @@ describe("projectUsage — gauge projection from a record", () => {
       unionRounds(cloud, history);
       expect(cloud).toEqual(cloudSnap);
       expect(history).toEqual(historySnap);
+    });
+  });
+
+  /**
+   * C1 REGRESSION: union must merge by a STABLE messageId, not positional n.
+   * Real rounds R1..R50 (messageId m1..m50). Device B's platform history
+   * TRUNCATES to the recent 30 (R21..R50); the adapter renumbers them to
+   * POSITIONAL n=1..30, but their stable messageId (m21..m50) + real order
+   * (21..50) survive. Merging by n would collide different real rounds onto the
+   * same n and corrupt the totals (proven: 1875 instead of 1275). Merging by
+   * messageId keeps all 50 distinct rounds. (Cast through `any` until
+   * RoundRecord carries messageId/order natively.)
+   */
+  describe("unionRounds — C1: merge by stable messageId, not positional n", () => {
+    it("truncated history with shifted positional n keeps all rounds via messageId", () => {
+      const cloud: RoundRecord[] = Array.from({ length: 50 }, (_, i) => ({
+        messageId: `m${i + 1}`,
+        order: i + 1,
+        n: i + 1,
+        promptTokens: i + 1,
+        answerTokens: 0,
+        total: i + 1,
+        ts: i + 1,
+      }));
+      const history: RoundRecord[] = Array.from({ length: 30 }, (_, i) => ({
+        messageId: `m${21 + i}`, // STABLE — the real identity
+        order: 21 + i, // real chronological order
+        n: i + 1, // POSITIONAL — shifted! (real round is 21+i)
+        promptTokens: 21 + i,
+        answerTokens: 0,
+        total: 21 + i,
+        ts: 21 + i,
+      }));
+      const out = unionRounds(cloud, history);
+      const ids = out
+        .map((r) => r.messageId)
+        .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+      expect(ids).toEqual(Array.from({ length: 50 }, (_, i) => `m${i + 1}`));
+      expect(out.reduce((s, r) => s + r.total, 0)).toBe(1275); // Σ(1..50)
     });
   });
 });

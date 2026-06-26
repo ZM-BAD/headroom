@@ -5,7 +5,11 @@
  */
 
 export interface RoundRecord {
-  /** 1-based round number within the dialogue. */
+  /** Stable platform identity for this round (spec 003 union-merge key). */
+  messageId: string;
+  /** Chronological order key (ascending = oldest first); display `n` is derived from this post-merge. */
+  order: number;
+  /** 1-based DISPLAY position within the dialogue (assigned post-merge, ascending by `order`). Not a merge key. */
   n: number;
   promptTokens: number;
   answerTokens: number;
@@ -64,10 +68,13 @@ export const MAX_RETAINED_ROUNDS = 200;
  */
 export function upsertRoundInto(
   rounds: RoundRecord[],
-  round: Pick<RoundRecord, "n" | "promptTokens" | "answerTokens" | "ts">,
+  round: Pick<
+    RoundRecord,
+    "messageId" | "order" | "n" | "promptTokens" | "answerTokens" | "ts"
+  >,
 ): RoundRecord[] {
   const total = round.promptTokens + round.answerTokens;
-  const idx = rounds.findIndex((r) => r.n === round.n);
+  const idx = rounds.findIndex((r) => r.messageId === round.messageId);
   if (idx >= 0) {
     const copy = rounds.slice();
     copy[idx] = { ...round, total };
@@ -77,33 +84,40 @@ export function upsertRoundInto(
 }
 
 /**
- * Merge cloud-retained rounds with history-derived rounds, keyed by round `n`
- * (spec 003 union merge). Array-level pure function — does NOT touch
- * totalTokens/roundCount; the caller rebuilds those by feeding the result
- * through upsertRound (which recomputes the running-sum invariant).
+ * Merge cloud-retained rounds with history-derived rounds, keyed by stable
+ * `messageId` (spec 003 union merge). Array-level pure function — does NOT
+ * touch totalTokens/roundCount; the caller rebuilds those by feeding the
+ * result through upsertRound (which recomputes the running-sum invariant).
  *
  * Conflict rule: history WINS. History is the platform's live truth, freshly
  * re-estimated, so its token count overwrites the cloud's stale value for the
- * same round n.
+ * same messageId.
  *
- * Survival rule: cloud-only rounds (n present in cloud but absent from history
- * because the platform's history API paginated/truncated them) are RETAINED
- * with their stored estimate. This is the anti-data-loss guarantee — a long
- * conversation's old rounds don't vanish when only the tail is re-fetched.
+ * Survival rule: cloud-only rounds (messageId present in cloud but absent from
+ * history because the platform's history API paginated/truncated them) are
+ * RETAINED with their stored estimate — the anti-data-loss guarantee.
  *
- * Result is ascending by n, trimmed to MAX_RETAINED_ROUNDS. Pure: neither
- * input array is mutated.
+ * Why messageId, not positional n: positional `n` is "this fetch's array
+ * index", not a stable identity — when the platform's returned round set
+ * changes (truncation / pagination-walk failure / single-message delete /
+ * regenerate), positional n shifts and merges different real rounds onto the
+ * same n, silently corrupting totals. messageId is the platform's stable
+ * per-round id, so the same real round keys the same across fetches.
+ *
+ * Result is ascending by `order`, display `n` reassigned 1..k, trimmed to
+ * MAX_RETAINED_ROUNDS. Pure: neither input array is mutated.
  */
 export function unionRounds(
   cloud: RoundRecord[],
   history: RoundRecord[],
 ): RoundRecord[] {
-  const byN = new Map<number, RoundRecord>();
-  // Cloud first (lower priority), then history overwrites on same n.
-  for (const r of cloud) byN.set(r.n, r);
-  for (const r of history) byN.set(r.n, r);
-  return [...byN.values()]
-    .sort((a, b) => a.n - b.n)
+  const byId = new Map<string, RoundRecord>();
+  // Cloud first (lower priority), then history overwrites on same messageId.
+  for (const r of cloud) byId.set(r.messageId, r);
+  for (const r of history) byId.set(r.messageId, r);
+  return [...byId.values()]
+    .sort((a, b) => a.order - b.order)
+    .map((r, i) => ({ ...r, n: i + 1 })) // display n, ascending by order
     .slice(-MAX_RETAINED_ROUNDS);
 }
 
@@ -112,14 +126,17 @@ export function upsertRound(
   platformId: string,
   dialogueId: string,
   contextLimit: number,
-  round: Pick<RoundRecord, "n" | "promptTokens" | "answerTokens" | "ts">,
+  round: Pick<
+    RoundRecord,
+    "messageId" | "order" | "n" | "promptTokens" | "answerTokens" | "ts"
+  >,
 ): DialogueRecord {
   const base = record ?? emptyDialogue(platformId, dialogueId, contextLimit);
   const total = round.promptTokens + round.answerTokens;
-  const idx = base.rounds.findIndex((r) => r.n === round.n);
-  // Replace the existing round: subtract its old total, add the new one. Keeps
-  // the running-sum invariant intact (totalTokens is the true lifetime sum even
-  // when older rounds are trimmed out of the retained array).
+  const idx = base.rounds.findIndex((r) => r.messageId === round.messageId);
+  // Replace the existing round (same messageId): subtract its old total, add
+  // the new one. Keeps the running-sum invariant intact (totalTokens is the
+  // true lifetime sum even when older rounds are trimmed out of the array).
   const totalTokens =
     idx >= 0
       ? base.totalTokens - base.rounds[idx].total + total
@@ -132,8 +149,8 @@ export function upsertRound(
     platformId,
     dialogueId,
     contextLimit,
-    // True round count = the highest round number seen (monotonic in `n`),
-    // independent of how many rounds are retained.
+    // True round count = the highest display n seen (monotonic), independent of
+    // how many rounds are retained.
     roundCount: Math.max(base.roundCount, round.n),
     totalTokens,
     rounds,

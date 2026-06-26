@@ -37,7 +37,12 @@ describe("parseDeepSeekHistory", () => {
       },
     };
     expect(parseDeepSeekHistory(resp)).toEqual([
-      { n: 1, promptText: "你好,这是测试", answerText: "你好！收到。" },
+      {
+        messageId: "2",
+        order: 2,
+        promptText: "你好,这是测试",
+        answerText: "你好！收到。",
+      },
     ]);
   });
 
@@ -75,8 +80,8 @@ describe("parseDeepSeekHistory", () => {
       },
     };
     expect(parseDeepSeekHistory(resp)).toEqual([
-      { n: 1, promptText: "Q1", answerText: "A1" },
-      { n: 2, promptText: "Q2", answerText: "A2" },
+      { messageId: "2", order: 2, promptText: "Q1", answerText: "A1" },
+      { messageId: "4", order: 4, promptText: "Q2", answerText: "A2" },
     ]);
   });
 
@@ -103,7 +108,12 @@ describe("parseDeepSeekHistory", () => {
       },
     };
     const [round] = parseDeepSeekHistory(resp);
-    expect(round).toEqual({ n: 1, promptText: "p", answerText: "a" });
+    expect(round).toEqual({
+      messageId: "2",
+      order: 2,
+      promptText: "p",
+      answerText: "a",
+    });
     expect(round).not.toHaveProperty("accumulated_token_usage");
   });
 
