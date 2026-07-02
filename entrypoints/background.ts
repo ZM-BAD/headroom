@@ -19,6 +19,10 @@ import {
   pickOldestKeys,
   HARD_LIMIT_BYTES,
   SOFT_LIMIT_BYTES,
+  CLEANUP_STATE_KEY,
+  shouldRunCleanup,
+  cleanupStateAfterRun,
+  type CleanupState,
   type ConvIndex,
 } from "../utils/local-cache";
 import {
@@ -282,6 +286,18 @@ async function projectForTab(
 export default defineBackground(() => {
   void enableSidePanelOnActionClick();
 
+  // ── Zombie cleanup alarm (spec 003) ─────────────────────────────────
+  // 10-min periodic alarm iterates all platforms; for each that has an open
+  // home-page tab, sends FETCH_CONVERSATION_LIST to trigger a cleanup run.
+  // Falls back to the last-seen list (cached per platform) when no tab is
+  // available — best-effort, stale is acceptable for zombie sweeping.
+  browser.alarms.create("zombie-cleanup", { periodInMinutes: 10 });
+  const lastConversationList = new Map<string, string[]>();
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name !== "zombie-cleanup") return;
+    void runZombieCleanupFromAlarm(lastConversationList);
+  });
+
   // Gray out the toolbar action on non-platform tabs so Headroom is only
   // clickable where it can do something. The gauge (projectForTab) follows the
   // active tab's platform + conversation independently of this scoping.
@@ -412,6 +428,9 @@ export default defineBackground(() => {
         case "CONVERSATION_LIST":
           // Home page: diff the live conversation list against cloud keys and
           // DEL orphans (spec 003 zombie cleanup). Fire-and-forget.
+          // Cache the list so the alarm fallback can use it when no home-page
+          // tab is open.
+          lastConversationList.set(message.platformId, message.ids);
           void cleanupZombies(message.platformId, message.ids);
           return;
       }
@@ -573,11 +592,9 @@ export default defineBackground(() => {
   }
 
   /**
-   * spec 003 zombie cleanup: the home page shipped the platform's live
-   * conversation list. Diff it against the platform's cloud keys (SCAN) and
-   * DEL the orphans — conversations deleted elsewhere (e.g. mobile) that left
-   * dangling Upstash keys. Best-effort: a failure warns and leaves orphans for
-   * the next open-home. Local cache is untouched (LRU manages it separately).
+   * spec 003 zombie cleanup: diff the platform's live conversation list against
+   * cloud keys (SCAN) and DEL orphans. Throttled per platform: skip if ran
+   * < 5 min ago (shared between home-page trigger and alarm trigger).
    */
   async function cleanupZombies(
     platformId: string,
@@ -585,15 +602,69 @@ export default defineBackground(() => {
   ): Promise<void> {
     const { upstash: creds } = await getSettings();
     if (!creds.url || !creds.token) return; // no cloud → nothing to clean
+    const state = await getCleanupState();
+    if (!shouldRunCleanup(state, platformId, Date.now())) return;
     try {
       const cloudKeys = await kvScan(creds, `headroom:conv:${platformId}:*`);
       const zombies = selectZombieKeys(cloudKeys, new Set(liveIds), platformId);
       await Promise.all(zombies.map((k) => kvDel(creds, k).catch(() => {})));
+      // Stamp successful run for throttle.
+      const state = await getCleanupState();
+      await setCleanupState(
+        cleanupStateAfterRun(state, platformId, Date.now()),
+      );
     } catch (e) {
       console.warn("[Headroom] zombie cleanup failed for", platformId, e);
     }
   }
+
+  /**
+   * Alarm-triggered zombie cleanup: for each platform, try to send
+   * FETCH_CONVERSATION_LIST to an open home-page tab. If no tab is available,
+   * fall back to the last-seen conversation list (best-effort).
+   */
+  async function runZombieCleanupFromAlarm(
+    cachedLists: Map<string, string[]>,
+  ): Promise<void> {
+    for (const adapter of ADAPTERS) {
+      if (!adapter.fetchConversationList) continue;
+      try {
+        const pattern = adapter.matchPattern;
+        const tabs = await browser.tabs.query({ url: pattern });
+        const tabId = tabs[0]?.id;
+        if (tabId != null) {
+          // Found an open tab — ask its content script to fetch & ship.
+          // The content script sends CONVERSATION_LIST, which triggers
+          // cleanupZombies with throttle.
+          void browser.tabs
+            .sendMessage(tabId, {
+              type: "FETCH_CONVERSATION_LIST",
+            } satisfies HeadroomMessage)
+            .catch(() => {});
+        } else {
+          // No tab open — use cached list as fallback.
+          const cached = cachedLists.get(adapter.platformId);
+          if (cached && cached.length > 0) {
+            void cleanupZombies(adapter.platformId, cached);
+          }
+        }
+      } catch {
+        // tab query or send failed — skip this platform
+      }
+    }
+  }
 });
+
+// ── Zombie cleanup throttle storage ──────────────────────────────────
+
+async function getCleanupState(): Promise<CleanupState> {
+  const raw = await browser.storage.local.get(CLEANUP_STATE_KEY);
+  return (raw[CLEANUP_STATE_KEY] as CleanupState | undefined) ?? {};
+}
+
+async function setCleanupState(state: CleanupState): Promise<void> {
+  await browser.storage.local.set({ [CLEANUP_STATE_KEY]: state });
+}
 
 /** Project the gauge for whatever tab is currently active (SW start / GET_STATE). */
 async function getActiveTabState(): Promise<UsageState> {

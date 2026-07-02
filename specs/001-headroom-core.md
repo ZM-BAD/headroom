@@ -155,7 +155,7 @@ sequenceDiagram
     B->>B: 重新投影活动 tab
     B->>S: STATE_UPDATE (归零)
     B--)R: 003: delDialogue(Upstash DEL, best-effort)
-    Note over B,R: 003 接线后新增虚线步;<br/>移动端删除走 detectDeletedPage 懒清理
+    Note over B,R: 003 接线后新增虚线步;<br/>移动端删除走定期 alarm / 首页差集清理
 ```
 
 ### Architecture
@@ -224,7 +224,6 @@ tokens(text, platform) = Σ over 书写系统 s  [ count(text, s) × coeff(s, pl
 | `answerSelector` / `userSelector?` / `conversationSelector`   | 001     | DOM 兜底原语；history-authoritative 核心当前不用，留给无历史 API 的平台                                                                                                                        |
 | `deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?` | 001+003 | 删除联动：本地 record 重置（001 background）；云端 DEL（003）                                                                                                                                  |
 | `fetchConversationList?() → string[]`                         | 003     | 僵尸清理：拉对话 id 列表                                                                                                                                                                       |
-| `detectDeletedPage?(doc) → boolean`                           | 003     | 移动端删除懒清理                                                                                                                                                                               |
 
 001 实现 DeepSeek 的 001 字段（`fetchHistory` 已实现并真机验过）；003 字段在本 spec 只占契约位。background 是平台无关引擎——只认 adapter 接口，历史 API 是轮次身份与 token 的唯一真相源。
 
@@ -391,6 +390,7 @@ DialogueRecord = {
 │  #2  …      …      …      │
 │  ⋮                        │
 └─────────────────────────┘
+```
 
 > 对话轮次区以表格展示每轮详情：表头含「对话轮次」「输入 token」「输出 token」「该轮累计」。该轮累计由前端计算（promptTokens + answerTokens），不新增 Upstash 存储字段。
 
@@ -438,18 +438,18 @@ DialogueRecord = {
 > history-authoritative 设计要求每家有 `fetchHistory`（历史 API 逆向，见"平台适配参考"）。目前仅 DeepSeek 实现；其余 6 家需逆向各自的 history API。
 
 - [x] DeepSeek — 已验收（见闸门 1）
-- [ ] ChatGPT
+- [x] ChatGPT
 - [ ] Gemini（可能无历史 API，需 DOM 兜底）
-- [ ] Kimi
-- [ ] Qwen
-- [ ] 通义千问
-- [ ] 豆包
+- [x] Kimi
+- [x] Qwen
+- [x] 通义千问
+- [x] 豆包
 
 各家验收点：能加载、打开对话显示历史、一轮问答后面板更新、regenerate 不多算。
 
 ### 闸门 3 — 跨浏览器冒烟（早抓 Chrome 专属假设；深度 QA 归 004）
 
-- [ ] Edge、Firefox 能装、能开面板、DeepSeek 一轮问答跑通
+- [x] Edge、Firefox 能装、能开面板、DeepSeek 一轮问答跑通
 
 ## Open Questions
 
@@ -457,4 +457,7 @@ DialogueRecord = {
 - [ ] 书写系统判定与中英混排的估算精度（→ 004）
 - [ ] DOM 选择器 / API host 的时效性（平台改版风险）
 - [ ] `MAX_RETAINED_ROUNDS` 是否需要调整：003 全量对账下平台历史可能更长，统一见 [003 Open Questions](./003-cross-device-sync.md)。
+
+```
+
 ```

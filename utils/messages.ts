@@ -73,6 +73,15 @@ export interface ConversationListMessage {
   ids: string[];
 }
 
+/**
+ * Background → content script: the alarm fired and wants a fresh conversation
+ * list for zombie cleanup. The content script fetches and replies with
+ * CONVERSATION_LIST (separate message). No response payload — fire-and-forget.
+ */
+export interface FetchConversationListMessage {
+  type: "FETCH_CONVERSATION_LIST";
+}
+
 /** Background → content script: return the current dialogue title synchronously. */
 export interface GetTitleMessage {
   type: "GET_TITLE";
@@ -85,7 +94,8 @@ export type HeadroomMessage =
   | StateUpdateMessage
   | RefreshHistoryMessage
   | HistoryParsedMessage
-  | ConversationListMessage;
+  | ConversationListMessage
+  | FetchConversationListMessage;
 
 /**
  * Live usage state rendered by the side panel — a pure DISPLAY projection of

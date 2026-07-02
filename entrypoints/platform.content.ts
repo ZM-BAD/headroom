@@ -101,6 +101,8 @@ export default defineContentScript({
     browser.runtime.onMessage.addListener(
       (message: HeadroomMessage, _sender, sendResponse) => {
         if (message.type === "REFRESH_HISTORY") void fetchAndShipHistory();
+        if (message.type === "FETCH_CONVERSATION_LIST")
+          void fetchAndShipConversationList();
         if (message.type === "GET_TITLE") {
           sendResponse({
             dialogueTitle: adapter.dialogueTitleFromDoc?.(document) ?? null,

@@ -19,7 +19,7 @@ export default defineConfig({
     default_locale: "en",
     // Persisted settings (warning thresholds, later Upstash creds) live in
     // local storage; the side panel + background both read/write them.
-    permissions: ["storage", "webRequest"],
+    permissions: ["storage", "webRequest", "alarms"],
     // Host access for every supported platform's page (content script) AND
     // send-request host (webRequest body read). 通义千问 serves its page from
     // www.qianwen.com but POSTs to chat2.qianwen.com — both needed.

@@ -51,3 +51,39 @@ export function pickOldestKeys(index: ConvIndex, count: number): string[] {
     .slice(0, count)
     .map(([k]) => k);
 }
+
+// ── Zombie cleanup throttle state (spec 003) ──────────────────────────
+
+/** `headroom:cleanup-state` → `{ [platformId]: lastCleanupTimestamp }`. */
+export type CleanupState = Record<string, number>;
+
+/** Storage key for the zombie-cleanup throttle state. */
+export const CLEANUP_STATE_KEY = "headroom:cleanup-state";
+
+/** Shared throttle window: skip if last run was less than this many ms ago. */
+export const CLEANUP_THROTTLE_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Check whether a cleanup for `platformId` should run or be throttled.
+ * Returns `true` if enough time has passed (or never ran). Pure — does not
+ * mutate `state`.
+ */
+export function shouldRunCleanup(
+  state: CleanupState,
+  platformId: string,
+  now: number,
+): boolean {
+  const last = state[platformId];
+  return last == null || now - last >= CLEANUP_THROTTLE_MS;
+}
+
+/**
+ * New state with `platformId` stamped at `now` (pure; input untouched).
+ */
+export function cleanupStateAfterRun(
+  state: CleanupState,
+  platformId: string,
+  now: number,
+): CleanupState {
+  return { ...state, [platformId]: now };
+}

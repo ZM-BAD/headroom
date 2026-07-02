@@ -30,6 +30,7 @@ Thumbs.db
 
 # AI agent local config
 .claude/settings.local.json
+.mimocode/
 
 # Playwright MCP — generated browser artifacts
 .playwright-mcp/
