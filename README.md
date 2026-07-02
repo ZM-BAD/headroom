@@ -46,6 +46,14 @@ This is **not** a token cost calculator. AI models are getting cheaper by the mo
 
 Yes for any realistic personal use. Upstash's free tier ([pricing](https://upstash.com/pricing/redis)) includes **256 MB storage** and **500,000 commands/month**. Each chat round costs ~2 commands (one read + one write), so 500K/month covers roughly 250,000 rounds — far beyond what a single user generates. Headroom stores only token counts per round (no conversation text), so storage is a non-issue (~4 KB per 50-round conversation ≈ 65,000 conversations in 256 MB).
 
+## Contributing
+
+We welcome bug reports, feature requests, and code contributions!
+
+- **Found a bug?** → [Report an issue](https://github.com/badlogic/headroom/issues/new/choose)
+- **Want to contribute?** → Read our [Contributing Guide](./CONTRIBUTING.md)
+- **Testing help needed?** → See [open issues](https://github.com/badlogic/headroom/issues) labeled `needs-test`
+
 ## Browser Support
 
 Headroom is **Manifest V3 only** (MV2 is not supported) and requires a recent browser version:

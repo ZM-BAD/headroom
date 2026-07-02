@@ -46,6 +46,14 @@ Headroom 显示在浏览器的原生侧边栏中，实时可视化你的 context
 
 对任何合理的个人使用都免费。Upstash 免费层（[定价](https://upstash.com/pricing/redis)）包含 **256 MB 存储**和**每月 50 万次命令**。每轮问答约消耗 2 次命令（一次读 + 一次写），50 万/月约可支撑 25 万轮——远超单用户实际产生量。Headroom 每轮只存 token 计数（不存对话文本），存储完全不构成瓶颈（50 轮对话约 4 KB，256 MB 可存约 6.5 万个对话）。
 
+## 参与贡献
+
+欢迎 Bug 反馈、功能建议和代码贡献！
+
+- **遇到问题？** → [提交 issue](https://github.com/badlogic/headroom/issues/new/choose)
+- **想要贡献代码？** → 阅读 [贡献指南](./CONTRIBUTING.md)
+- **帮忙测试？** → 查看标记了 `needs-test` 的 [开放 issue](https://github.com/badlogic/headroom/issues)
+
 ## 浏览器支持
 
 Headroom **仅支持 Manifest V3**（不支持 MV2），需要较新的浏览器版本：
