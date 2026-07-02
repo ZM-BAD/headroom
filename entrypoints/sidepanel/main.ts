@@ -139,20 +139,20 @@ function applyI18n(root: ParentNode = document.body): void {
 
 // ---------- main view rendering ----------
 
-/** Format a context limit: 1M+ → "1M context", else "NK context". */
+/** Format a context limit: 1M+ → "1M context", else "NK context" (binary K/M). */
 function formatContext(limit: number): string {
   const suffix = t("contextSuffix");
-  if (limit >= 1_000_000) {
-    const m = limit / 1_000_000;
+  if (limit >= 1_048_576) {
+    const m = limit / 1_048_576;
     return `${Number.isInteger(m) ? m : m.toFixed(1)}M ${suffix}`;
   }
-  return `${Math.round(limit / 1000)}K ${suffix}`;
+  return `${Math.round(limit / 1024)}K ${suffix}`;
 }
 
 function render(state: UsageState, th: Thresholds): void {
   const limit = state.contextLimit ?? 0;
   const used = state.totalTokens;
-  const ratio = limit > 0 ? Math.min(used / limit, 1) : 0;
+  const ratio = limit > 0 ? used / limit : 0;
   const level: Level = limit > 0 ? levelFromRatio(ratio, th) : "idle";
 
   els.modelName.textContent = state.platformId
@@ -193,7 +193,7 @@ function render(state: UsageState, th: Thresholds): void {
   renderRounds(state.rounds);
 }
 
-/** Render the per-round input/output breakdown (↑prompt / ↓answer tokens). */
+/** Render the per-round input/output breakdown (↑prompt / ↓answer tokens + cumulative). */
 function renderRounds(rounds: UsageState["rounds"]): void {
   const list = els.roundsList;
   list.replaceChildren();
@@ -205,11 +205,15 @@ function renderRounds(rounds: UsageState["rounds"]): void {
     n.textContent = `#${r.n}`;
     const pin = document.createElement("span");
     pin.className = "hd-round-in";
-    pin.textContent = `↑${r.promptTokens}`;
+    pin.textContent = `↑${r.promptTokens.toLocaleString()}`;
     const pout = document.createElement("span");
     pout.className = "hd-round-out";
-    pout.textContent = `↓${r.answerTokens}`;
-    row.append(n, pin, pout);
+    pout.textContent = `↓${r.answerTokens.toLocaleString()}`;
+    const cum = document.createElement("span");
+    cum.className = "hd-round-cum";
+    // Cumulative = prompt + answer, computed locally — no extra Upstash field.
+    cum.textContent = (r.promptTokens + r.answerTokens).toLocaleString();
+    row.append(n, pin, pout, cum);
     list.append(row);
   }
 }
@@ -287,10 +291,10 @@ els.langSelect.addEventListener("change", () => {
 
 const ctxInputs: Record<string, HTMLInputElement> = {};
 
-// Context limits are authored in K tokens (the unit shown beside each input);
-// the stored value is raw tokens, so convert on display and on edit.
-const toKilo = (tokens: number): number => Math.round(tokens / 1000);
-const fromKilo = (k: number): number => Math.round(k * 1000);
+// Context limits are authored in K tokens (1K = 1024) — the unit shown beside
+// each input; the stored value is raw tokens, so convert on display and on edit.
+const toKilo = (tokens: number): number => Math.round(tokens / 1024);
+const fromKilo = (k: number): number => Math.round(k * 1024);
 
 /**
  * Render one number-input row per adapter, seeded from currentContextLimits.
@@ -318,17 +322,46 @@ function buildContextLimitRows(): void {
     input.value = String(
       toKilo(currentContextLimits[a.platformId] ?? a.contextLimit),
     );
+    const errSpan = document.createElement("span");
+    errSpan.className = "hd-input-err";
+    errSpan.textContent = t("ctxLimitInvalid");
+    errSpan.hidden = true;
+    const syncSave = () => {
+      const anyInvalid = Object.values(ctxInputs).some(
+        (inp) => inp.dataset.invalid,
+      );
+      if (anyInvalid) {
+        els.settingsSave.classList.add("hd-btn--has-errors");
+      } else {
+        els.settingsSave.classList.remove("hd-btn--has-errors");
+      }
+    };
+    const markInvalid = () => {
+      input.dataset.invalid = "true";
+      errSpan.hidden = false;
+      syncSave();
+    };
+    const clearInvalid = () => {
+      delete input.dataset.invalid;
+      errSpan.hidden = true;
+      syncSave();
+    };
     input.addEventListener("input", () => {
       const n = Number(input.value);
-      // Only commit valid positives — a half-typed value can't zero the gauge;
-      // invalid input is simply not saved.
-      if (Number.isFinite(n) && n > 0)
+      if (Number.isFinite(n) && n > 0) {
         currentContextLimits[a.platformId] = fromKilo(n);
+        clearInvalid();
+      } else {
+        markInvalid();
+      }
     });
+    const field = document.createElement("span");
+    field.className = "hd-input-field";
+    field.append(input, errSpan);
     const unit = document.createElement("span");
     unit.className = "hd-context-unit";
     unit.textContent = "K tokens";
-    row.append(label, input, unit);
+    row.append(label, field, unit);
     list.append(row);
     ctxInputs[a.platformId] = input;
   }
@@ -488,6 +521,18 @@ els.settingsSave.addEventListener("click", () => {
     if (currentUpstash.url && !currentUpstash.url.startsWith("https://")) {
       setUpstashStatus("err", t("upstashErrNotHttps"));
       return;
+    }
+    // Refuse to save if any context-limit input is still invalid — flash the
+    // save button red so the user sees why nothing happened.
+    for (const inp of Object.values(ctxInputs)) {
+      if (inp.dataset.invalid) {
+        els.settingsSave.classList.add("hd-btn--error-flash");
+        window.setTimeout(
+          () => els.settingsSave.classList.remove("hd-btn--error-flash"),
+          600,
+        );
+        return;
+      }
     }
     const settings: Settings = {
       thresholds: currentThresholds,

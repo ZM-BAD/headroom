@@ -247,8 +247,27 @@ async function projectForTab(
   const dialogueId = adapter.dialogueIdFromUrl?.(url) ?? null;
   const key = dialogueId ? dialogueKey(adapter.platformId, dialogueId) : null;
   const record = key ? await getLocalDialogue(key) : null;
-  const dialogueTitle =
+  // Cached title from prior PAGE_READY / HISTORY_PARSED (may be stale if the
+  // SPA updated document.title after injection). The GET_TITLE query below
+  // asks the content script for the current title — light, synchronous, and
+  // gives tab-switch instant accuracy without waiting for the 1.5s poll.
+  let dialogueTitle =
     tabId != null ? (tabDialogueTitle.get(tabId) ?? null) : null;
+  if (tabId != null) {
+    try {
+      const response = (await browser.tabs.sendMessage(tabId, {
+        type: "GET_TITLE",
+      } satisfies HeadroomMessage)) as
+        | { dialogueTitle?: string | null }
+        | undefined;
+      if (response?.dialogueTitle) {
+        dialogueTitle = response.dialogueTitle;
+        tabDialogueTitle.set(tabId, dialogueTitle); // refresh cache
+      }
+    } catch {
+      // content script not injected / context invalidated — keep cached title
+    }
+  }
   const state = buildState(
     adapter,
     contextLimit,
@@ -370,12 +389,13 @@ export default defineBackground(() => {
     ): Promise<UsageState | undefined> => {
       switch (message.type) {
         case "PAGE_READY": {
-          // Only project if the page that loaded is the active tab — a
-          // background-tab load must not clobber the active tab's gauge.
-          if (!(await isTabActive(sender?.tab?.id))) return;
+          // Store the title unconditionally (same as HISTORY_PARSED) — a
+          // background-tab load must not clobber the active tab's gauge, but
+          // the title must survive so switching to this tab later shows it.
           if (sender?.tab?.id != null) {
             tabDialogueTitle.set(sender.tab.id, message.dialogueTitle);
           }
+          if (!(await isTabActive(sender?.tab?.id))) return;
           await projectForTab(message.url, sender?.tab?.id);
           return;
         }
@@ -463,7 +483,7 @@ export default defineBackground(() => {
         promptTokens,
         answerTokens,
         total: promptTokens + answerTokens,
-        ts: 0, // history rounds carry no per-round ts; ordering is by order
+        createdAt: h.createdAt ?? 0,
       };
     });
 
@@ -494,7 +514,7 @@ export default defineBackground(() => {
           n: r.n,
           promptTokens: r.promptTokens,
           answerTokens: r.answerTokens,
-          ts: r.ts,
+          createdAt: r.createdAt,
         },
       );
     }
@@ -600,7 +620,7 @@ async function projectForTabUrlOf(tabId: number): Promise<void> {
   } catch {
     return; // tab gone — nothing to project
   }
-  await projectForTab(url);
+  await projectForTab(url, tabId);
 }
 
 async function enableSidePanelOnActionClick(): Promise<void> {
@@ -650,9 +670,17 @@ async function applyPanelScope(
     try {
       url = (await browser.tabs.get(tabId)).url;
     } catch {
-      return; // tab gone — nothing to scope
+      // Tab gone or URL unavailable — still disable the action so a stale
+      // "enabled" state from a previous platform tab doesn't leak here.
+      try {
+        await browser.action.disable(tabId);
+      } catch {
+        // Non-fatal — browser may not support action (Firefox) or tab is gone.
+      }
+      return;
     }
   }
+  // url is undefined for tabs without host-permission — treat as unsupported.
   const supported = url ? isSupportedPlatformUrl(url) : false;
 
   try {

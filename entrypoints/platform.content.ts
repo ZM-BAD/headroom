@@ -96,9 +96,18 @@ export default defineContentScript({
 
     // Background asks us to re-fetch history when the SSE completion stream
     // closes (a round finished). The new round is already in history by then.
-    browser.runtime.onMessage.addListener((message: HeadroomMessage) => {
-      if (message.type === "REFRESH_HISTORY") void fetchAndShipHistory();
-    });
+    // GET_TITLE: lightweight query — respond with the current dialogue title
+    // so tab-switch shows the right title instantly (no polling delay).
+    browser.runtime.onMessage.addListener(
+      (message: HeadroomMessage, _sender, sendResponse) => {
+        if (message.type === "REFRESH_HISTORY") void fetchAndShipHistory();
+        if (message.type === "GET_TITLE") {
+          sendResponse({
+            dialogueTitle: adapter.dialogueTitleFromDoc?.(document) ?? null,
+          });
+        }
+      },
+    );
 
     // Initial load.
     sendPageReady();
@@ -112,12 +121,18 @@ export default defineContentScript({
     // AUTO-CLEARS when the context is invalidated (extension reload) — otherwise
     // the dead context throws "Extension context invalidated" every tick.
     let lastHref = location.href;
+    let lastTitle = document.title;
     ctx.setInterval(() => {
-      if (location.href === lastHref) return;
-      lastHref = location.href;
-      sendPageReady();
-      void fetchAndShipHistory();
-      void fetchAndShipConversationList();
+      if (location.href !== lastHref) {
+        lastHref = location.href;
+        lastTitle = document.title;
+        sendPageReady();
+        void fetchAndShipHistory();
+        void fetchAndShipConversationList();
+      } else if (document.title !== lastTitle) {
+        lastTitle = document.title;
+        sendPageReady(); // title-only — rename detected, no history refetch needed
+      }
     }, 1500);
   },
 });

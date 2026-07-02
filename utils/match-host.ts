@@ -5,10 +5,11 @@ import { ADAPTERS } from "../adapters";
  * whether the toolbar action is enabled (colored) or disabled (grayed) on a
  * given tab — Headroom only acts on its supported platforms.
  *
- * Host matching mirrors the content script's adapter lookup: the page host must
- * equal the adapter's matchPattern host OR be a subdomain of it (so
- * `chat.deepseek.com` matches its pattern, and a future `m.chat.deepseek.com`
- * would too).
+ * Host matching mirrors the content script's injection scope: the page host must
+ * EXACTLY equal the adapter's matchPattern host. Subdomains are intentionally NOT
+ * matched — the content script's MV3 `matches` patterns (bare `*://host/*` without
+ * `*.`) do not inject on subdomains, so enabling the action on them would open a
+ * panel with no content script to feed it data.
  *
  * Pure + string-in → unit-testable without any browser API.
  */
@@ -34,6 +35,6 @@ export function adapterForUrl(
     const m = a.matchPattern.match(/^\*:\/\/([^/]+)/);
     const patternHost = m?.[1];
     if (!patternHost) return false;
-    return host === patternHost || host.endsWith(`.${patternHost}`);
+    return host === patternHost;
   });
 }

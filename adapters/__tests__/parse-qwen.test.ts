@@ -36,6 +36,7 @@ describe("parseQwenHistory", () => {
       {
         messageId: "a1",
         order: 1719500000,
+        createdAt: 1719500000000,
         promptText: "你好,这是测试",
         answerText: "你好！收到。",
       },
@@ -98,12 +99,14 @@ describe("parseQwenHistory", () => {
       {
         messageId: "a1",
         order: 1719500000,
+        createdAt: 1719500000000,
         promptText: "Q1",
         answerText: "A1",
       },
       {
         messageId: "a2",
         order: 1719500100,
+        createdAt: 1719500100000,
         promptText: "Q2",
         answerText: "A2",
       },
@@ -155,7 +158,13 @@ describe("parseQwenHistory", () => {
       },
     };
     expect(parseQwenHistory(resp)).toEqual([
-      { messageId: "a1", order: 1, promptText: "q", answerText: "" },
+      {
+        messageId: "a1",
+        order: 1,
+        promptText: "q",
+        answerText: "",
+        createdAt: 1000,
+      },
     ]);
   });
 

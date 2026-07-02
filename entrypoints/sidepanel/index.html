@@ -11,7 +11,98 @@
       <div id="view-main" class="hd-view">
         <header class="hd-header">
           <div class="hd-brand">
-            <span class="hd-logo" aria-hidden="true">↥</span>
+            <span class="hd-logo" aria-hidden="true">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 128 128"
+                width="32"
+                height="32"
+              >
+                <defs>
+                  <linearGradient
+                    id="hlogo"
+                    x1="0"
+                    y1="108"
+                    x2="0"
+                    y2="28"
+                    gradientUnits="userSpaceOnUse"
+                  >
+                    <stop offset="0%" stop-color="#22c55e" />
+                    <stop offset="40%" stop-color="#22c55e" />
+                    <stop offset="65%" stop-color="#eab308" />
+                    <stop offset="88%" stop-color="#ef4444" />
+                    <stop offset="100%" stop-color="#ef4444" />
+                  </linearGradient>
+                </defs>
+                <rect
+                  x="4"
+                  y="4"
+                  width="120"
+                  height="120"
+                  rx="24"
+                  fill="#1e3a5f"
+                  stroke="#2d4a7a"
+                  stroke-width="2"
+                />
+                <line
+                  x1="16"
+                  y1="20"
+                  x2="112"
+                  y2="20"
+                  stroke="#e0f2fe"
+                  stroke-width="4"
+                  stroke-linecap="round"
+                />
+                <rect
+                  x="18"
+                  y="78"
+                  width="11"
+                  height="30"
+                  rx="3"
+                  fill="url(#hlogo)"
+                />
+                <rect
+                  x="34"
+                  y="64"
+                  width="11"
+                  height="44"
+                  rx="3"
+                  fill="url(#hlogo)"
+                />
+                <rect
+                  x="50"
+                  y="46"
+                  width="11"
+                  height="62"
+                  rx="3"
+                  fill="url(#hlogo)"
+                />
+                <rect
+                  x="66"
+                  y="28"
+                  width="11"
+                  height="80"
+                  rx="3"
+                  fill="url(#hlogo)"
+                />
+                <rect
+                  x="82"
+                  y="52"
+                  width="11"
+                  height="56"
+                  rx="3"
+                  fill="url(#hlogo)"
+                />
+                <rect
+                  x="98"
+                  y="70"
+                  width="11"
+                  height="38"
+                  rx="3"
+                  fill="url(#hlogo)"
+                />
+              </svg>
+            </span>
             <div>
               <h1 class="hd-title">Headroom</h1>
               <p class="hd-subtitle" data-i18n="subtitle">
@@ -82,6 +173,16 @@
 
         <section class="hd-card hd-rounds">
           <div class="hd-rounds-head" data-i18n="roundsTitle">Rounds</div>
+          <div class="hd-rounds-header">
+            <span class="hd-round-n" data-i18n="roundHeaderN">Round</span>
+            <span class="hd-round-in" data-i18n="roundHeaderInput">Input</span>
+            <span class="hd-round-out" data-i18n="roundHeaderOutput"
+              >Output</span
+            >
+            <span class="hd-round-cum" data-i18n="roundHeaderCumulative"
+              >Total</span
+            >
+          </div>
           <div class="hd-rounds-list" id="rounds-list"></div>
         </section>
       </div>
@@ -206,40 +307,42 @@
           <div class="hd-settings-title" data-i18n="upstashTitle">
             Upstash sync
           </div>
-          <div class="hd-settings-row hd-settings-row--field">
-            <label class="hd-settings-label" for="upstash-url">
-              <span data-i18n="upstashUrlLabel">REST URL</span>
-            </label>
-            <input
-              class="hd-input"
-              id="upstash-url"
-              type="url"
-              inputmode="url"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="https://xxx-xxxx.upstash.io"
-            />
-          </div>
-          <div class="hd-settings-row hd-settings-row--field">
-            <label class="hd-settings-label" for="upstash-token">
-              <span data-i18n="upstashTokenLabel">REST Token</span>
-            </label>
-            <div class="hd-token-field">
+          <div class="hd-upstash-fields">
+            <div class="hd-settings-row hd-settings-row--field">
+              <label class="hd-settings-label" for="upstash-url">
+                <span data-i18n="upstashUrlLabel">REST URL</span>
+              </label>
               <input
                 class="hd-input"
-                id="upstash-token"
-                type="password"
+                id="upstash-url"
+                type="url"
+                inputmode="url"
                 autocomplete="off"
                 spellcheck="false"
-                placeholder="AxXX…"
+                placeholder="https://xxx-xxxx.upstash.io"
               />
-              <button
-                id="upstash-toggle"
-                class="hd-icon-btn hd-icon-btn--toggle"
-                type="button"
-                aria-label="Show token"
-                data-i18n-aria-label="showToken"
-              ></button>
+            </div>
+            <div class="hd-settings-row hd-settings-row--field">
+              <label class="hd-settings-label" for="upstash-token">
+                <span data-i18n="upstashTokenLabel">REST Token</span>
+              </label>
+              <div class="hd-token-field">
+                <input
+                  class="hd-input"
+                  id="upstash-token"
+                  type="password"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="AxXX…"
+                />
+                <button
+                  id="upstash-toggle"
+                  class="hd-icon-btn hd-icon-btn--toggle"
+                  type="button"
+                  aria-label="Show token"
+                  data-i18n-aria-label="showToken"
+                ></button>
+              </div>
             </div>
           </div>
           <div class="hd-upstash-actions">

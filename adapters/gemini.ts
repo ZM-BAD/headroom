@@ -128,6 +128,25 @@ export const geminiAdapter: PlatformAdapter = {
       return [];
     }
   },
+  // DOM-only: scrape conversation IDs from sidebar <a href="/app/<id>"> links.
+  // Gemini SSR-renders the recent conversation list into the HTML; no dedicated
+  // API endpoint. Virtual-list caveat: only ~12 most recent conversations are
+  // in the DOM; scroll-to-load-more is NOT triggered. Consistent with Gemini's
+  // DOM-only fetchHistory approach.
+  async fetchConversationList() {
+    try {
+      const links =
+        document.querySelectorAll<HTMLAnchorElement>('a[href^="/app/"]');
+      const ids: string[] = [];
+      for (const a of links) {
+        const m = a.getAttribute("href")?.match(/^\/app\/([a-f0-9]+)$/);
+        if (m) ids.push(m[1]);
+      }
+      return ids;
+    } catch {
+      return [];
+    }
+  },
   answerSelector: "model-response .markdown",
   userSelector: "user-query .query-text-line",
   conversationSelector: "chat-window",

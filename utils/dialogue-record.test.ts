@@ -29,7 +29,7 @@ const round = (n: number, promptTokens: number, answerTokens: number) => ({
   n,
   promptTokens,
   answerTokens,
-  ts: 1_000,
+  createdAt: 1_000,
 });
 
 describe("upsertRound — first round", () => {
@@ -68,7 +68,7 @@ describe("upsertRound — first round", () => {
           promptTokens: 100,
           answerTokens: 50,
           total: 150,
-          ts: 1,
+          createdAt: 1,
         },
       ],
     };
@@ -100,7 +100,7 @@ describe("upsertRound — accumulation correctness", () => {
 
 describe("upsertRound — re-emit dedup (the over-count fix)", () => {
   it("re-emitting the SAME n REPLACES the round, never appends", () => {
-    // Simulates one assistant message settling in bursts: round 1 emitted with
+    // Simulates one assistant message settling in burscreatedAt: round 1 emitted with
     // growing token estimates as more text streams in.
     let rec = upsertRound(null, "deepseek", "d1", 1_048_576, round(1, 100, 50));
     rec = upsertRound(rec, "deepseek", "d1", 1_048_576, round(1, 200, 100));
@@ -169,7 +169,7 @@ describe("upsertRound — purity", () => {
           promptTokens: 10,
           answerTokens: 20,
           total: 30,
-          ts: 1,
+          createdAt: 1,
         },
       ],
     };
@@ -186,7 +186,7 @@ describe("upsertRoundInto — array-level replace/append (record + panel)", () =
     n,
     promptTokens,
     answerTokens,
-    ts: 1,
+    createdAt: 1,
   });
   it("appends a new round n", () => {
     const out = upsertRoundInto(
@@ -198,7 +198,7 @@ describe("upsertRoundInto — array-level replace/append (record + panel)", () =
           promptTokens: 10,
           answerTokens: 20,
           total: 30,
-          ts: 1,
+          createdAt: 1,
         },
       ],
       r(2, 5, 5),
@@ -216,7 +216,7 @@ describe("upsertRoundInto — array-level replace/append (record + panel)", () =
           promptTokens: 10,
           answerTokens: 20,
           total: 30,
-          ts: 1,
+          createdAt: 1,
         },
       ],
       r(1, 100, 100),
@@ -233,7 +233,7 @@ describe("upsertRoundInto — array-level replace/append (record + panel)", () =
         promptTokens: 1,
         answerTokens: 1,
         total: 2,
-        ts: 1,
+        createdAt: 1,
       },
     ];
     const snap = JSON.parse(JSON.stringify(base));
@@ -272,7 +272,7 @@ describe("projectUsage — gauge projection from a record", () => {
       answerTokens: 20,
       messageId: "m1",
       order: 1,
-      ts: 1,
+      createdAt: 1,
     });
     const r2 = upsertRound(rec, "p", "d", 100_000, {
       n: 2,
@@ -280,7 +280,7 @@ describe("projectUsage — gauge projection from a record", () => {
       answerTokens: 40,
       messageId: "m2",
       order: 2,
-      ts: 2,
+      createdAt: 2,
     });
     const proj = projectUsage(r2);
     expect(proj.totalTokens).toBe(100); // (10+20)+(30+40)
@@ -305,7 +305,7 @@ describe("projectUsage — gauge projection from a record", () => {
           promptTokens: 1,
           answerTokens: 1,
           total: 2,
-          ts: 499,
+          createdAt: 499,
         },
         {
           messageId: "m500",
@@ -314,7 +314,7 @@ describe("projectUsage — gauge projection from a record", () => {
           promptTokens: 1,
           answerTokens: 1,
           total: 2,
-          ts: 500,
+          createdAt: 500,
         },
       ], // array sum would be only 4 — WRONG for the gauge
       updatedAt: 1,
@@ -347,7 +347,7 @@ describe("projectUsage — gauge projection from a record", () => {
     promptTokens,
     answerTokens,
     total: promptTokens + answerTokens,
-    ts: n * 100,
+    createdAt: n * 100,
   });
 
   describe("unionRounds — empty inputs", () => {
@@ -463,7 +463,7 @@ describe("projectUsage — gauge projection from a record", () => {
         promptTokens: i + 1,
         answerTokens: 0,
         total: i + 1,
-        ts: i + 1,
+        createdAt: i + 1,
       }));
       const history: RoundRecord[] = Array.from({ length: 30 }, (_, i) => ({
         messageId: `m${21 + i}`, // STABLE — the real identity
@@ -472,7 +472,7 @@ describe("projectUsage — gauge projection from a record", () => {
         promptTokens: 21 + i,
         answerTokens: 0,
         total: 21 + i,
-        ts: 21 + i,
+        createdAt: 21 + i,
       }));
       const out = unionRounds(cloud, history);
       const ids = out

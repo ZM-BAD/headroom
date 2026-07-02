@@ -88,6 +88,43 @@ export const kimiAdapter: PlatformAdapter = {
       return [];
     }
   },
+  // POST /apiv2/kimi.chat.v1.ChatService/ListChats → {chats, nextPageToken}.
+  // Token-based pagination. Used by zombie cleanup (spec 003).
+  async fetchConversationList() {
+    const token = readKimiToken();
+    if (!token) return [];
+    try {
+      const ids: string[] = [];
+      let pageToken = "";
+      while (true) {
+        const res = await fetch(
+          "https://www.kimi.com/apiv2/kimi.chat.v1.ChatService/ListChats",
+          {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              "content-type": "application/json",
+              authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(pageToken ? { page_token: pageToken } : {}),
+          },
+        );
+        if (!res.ok) break;
+        const json = (await res.json()) as {
+          chats?: Array<{ id?: string }>;
+          nextPageToken?: string;
+        };
+        for (const c of json.chats ?? []) {
+          if (typeof c.id === "string") ids.push(c.id);
+        }
+        pageToken = json.nextPageToken ?? "";
+        if (!pageToken) break;
+      }
+      return ids;
+    } catch {
+      return [];
+    }
+  },
   answerSelector: '.chat-content-item-assistant [class*="markdown"]',
   userSelector: ".chat-content-item-user",
   conversationSelector: "[role='main'], main",
@@ -171,12 +208,16 @@ export function parseKimiHistory(resp: unknown): HistoryRound[] {
   // string → lexicographic compare = chronological.
   staged.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
   // messageId = the assistant message's stable id; order = createTime epoch ms.
-  return staged.map(({ assistantId, ts, promptText, answerText }) => ({
-    messageId: assistantId,
-    order: Date.parse(ts) || 0,
-    promptText,
-    answerText,
-  }));
+  return staged.map(({ assistantId, ts, promptText, answerText }) => {
+    const createdAt = Date.parse(ts) || 0;
+    return {
+      messageId: assistantId,
+      order: createdAt,
+      promptText,
+      answerText,
+      createdAt,
+    };
+  });
 }
 
 /**

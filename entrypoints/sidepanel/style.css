@@ -79,10 +79,11 @@ body {
   width: 32px;
   height: 32px;
   border-radius: 9px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 18px;
-  font-weight: 700;
+}
+.hd-logo svg {
+  width: 32px;
+  height: 32px;
+  display: block;
 }
 .hd-title {
   margin: 0;
@@ -208,6 +209,7 @@ body {
 .hd-bar-fill {
   height: 100%;
   width: 0%;
+  max-width: 100%;
   border-radius: 999px;
   background: var(--idle);
   transition:
@@ -441,6 +443,16 @@ body {
   grid-template-columns: auto 1fr;
   gap: 12px;
 }
+/* Upstash field rows share one grid so label columns auto-size to the widest
+   label — URL and Token inputs align without a hardcoded width. */
+.hd-upstash-fields {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
+}
+.hd-upstash-fields > .hd-settings-row--field {
+  display: contents;
+}
 /* Upstash action row (test + clear side by side). */
 .hd-upstash-actions {
   display: flex;
@@ -478,6 +490,10 @@ body {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
 }
+.hd-input[data-invalid] {
+  border-color: var(--red);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--red) 20%, transparent);
+}
 
 /* Token field: input + show/hide toggle on the right. */
 .hd-token-field {
@@ -499,12 +515,22 @@ body {
   align-items: center;
 }
 .hd-context-list .hd-input {
-  width: auto;
-  min-width: 4.5rem;
+  width: 5.5rem;
   text-align: right;
 }
+.hd-input-field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.hd-input-err {
+  font-size: 10px;
+  color: var(--red);
+  white-space: nowrap;
+}
 .hd-context-unit {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--fg-muted);
   white-space: nowrap;
 }
@@ -529,26 +555,44 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+/* Table header row — same column layout as data rows. */
+.hd-rounds-header {
+  display: grid;
+  grid-template-columns: 2.5rem 1fr 1fr 1fr;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
 .hd-rounds-list {
   display: flex;
   flex-direction: column;
   gap: 3px;
 }
 .hd-round-row {
-  display: flex;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: 2.5rem 1fr 1fr 1fr;
+  gap: 6px;
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+  align-items: baseline;
 }
 .hd-round-n {
   color: var(--fg-muted);
-  min-width: 2rem;
 }
 .hd-round-in {
   color: var(--accent);
 }
 .hd-round-out {
   color: var(--fg);
+}
+.hd-round-cum {
+  color: var(--fg);
+  font-weight: 600;
+  text-align: right;
 }
 .hd-icon-btn--toggle {
   position: absolute;
@@ -592,8 +636,9 @@ body {
   border-color: var(--accent);
 }
 .hd-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 .hd-btn--secondary {
   background: var(--bg);
@@ -609,6 +654,35 @@ body {
 }
 .hd-btn--block {
   width: 100%;
+}
+/* Save button has invalid inputs — persistent red pulse. */
+.hd-btn--has-errors {
+  border-color: var(--red) !important;
+  animation: hd-error-pulse 1.5s ease-in-out infinite;
+}
+/* One-shot intense flash when save is clicked while inputs are invalid. */
+.hd-btn--error-flash {
+  animation: hd-error-flash 0.6s ease-out;
+  border-color: var(--red) !important;
+}
+@keyframes hd-error-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--red) 35%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--red) 0%, transparent);
+  }
+}
+@keyframes hd-error-flash {
+  0% {
+    background: var(--red);
+    color: #fff;
+  }
+  100% {
+    background: var(--accent);
+    color: #fff;
+  }
 }
 
 /* Test-connection result text. */

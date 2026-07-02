@@ -33,6 +33,7 @@ describe("parseDoubaoHistory", () => {
       {
         messageId: "db:1",
         order: 1719500001,
+        createdAt: 1719500001000,
         promptText: "你好,这是测试",
         answerText: "你好！收到。",
       },
@@ -60,6 +61,7 @@ describe("parseDoubaoHistory", () => {
       {
         messageId: "db:1",
         order: 101,
+        createdAt: 101000,
         promptText: "old user prompt",
         answerText: "old bot reply",
       },
@@ -98,12 +100,14 @@ describe("parseDoubaoHistory", () => {
       {
         messageId: "db:t101",
         order: 101,
+        createdAt: 101000,
         promptText: "Q1 old",
         answerText: "A1 old",
       },
       {
         messageId: "db:t201",
         order: 201,
+        createdAt: 201000,
         promptText: "Q2 new",
         answerText: "A2 new",
       },
@@ -138,8 +142,20 @@ describe("parseDoubaoHistory", () => {
       },
     ];
     expect(parseDoubaoHistory(messages)).toEqual([
-      { messageId: "db:t101", order: 101, promptText: "Q1", answerText: "A1" },
-      { messageId: "db:t201", order: 201, promptText: "Q2", answerText: "A2" },
+      {
+        messageId: "db:t101",
+        order: 101,
+        createdAt: 101000,
+        promptText: "Q1",
+        answerText: "A1",
+      },
+      {
+        messageId: "db:t201",
+        order: 201,
+        createdAt: 201000,
+        promptText: "Q2",
+        answerText: "A2",
+      },
     ]);
   });
 
@@ -170,6 +186,7 @@ describe("parseDoubaoHistory", () => {
       {
         messageId: "db:t102",
         order: 102,
+        createdAt: 102000,
         promptText: "Q2 real",
         answerText: "A2",
       },
@@ -223,6 +240,7 @@ describe("parseDoubaoHistory", () => {
       {
         messageId: "db:t101",
         order: 101,
+        createdAt: 101000,
         promptText: "real q",
         answerText: "real a",
       },

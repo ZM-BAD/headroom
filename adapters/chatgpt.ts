@@ -80,6 +80,40 @@ export const chatgptAdapter: PlatformAdapter = {
       return [];
     }
   },
+  // GET /backend-api/conversations?offset=0&limit=28&order=updated → {items,
+  // total}. Paginated; fetch all pages until offset ≥ total. Used by zombie
+  // cleanup (spec 003).
+  async fetchConversationList() {
+    const token = await readChatGptToken();
+    if (!token) return [];
+    try {
+      const ids: string[] = [];
+      let offset = 0;
+      const limit = 28;
+      while (true) {
+        const res = await fetch(
+          `https://chatgpt.com/backend-api/conversations?offset=${offset}&limit=${limit}&order=updated&is_archived=false&is_starred=false`,
+          {
+            credentials: "include",
+            headers: { authorization: `Bearer ${token}` },
+          },
+        );
+        if (!res.ok) break;
+        const json = (await res.json()) as {
+          items?: Array<{ id?: string }>;
+          total?: number;
+        };
+        for (const item of json.items ?? []) {
+          if (typeof item.id === "string") ids.push(item.id);
+        }
+        offset += limit;
+        if (offset >= (json.total ?? 0)) break;
+      }
+      return ids;
+    } catch {
+      return [];
+    }
+  },
   answerSelector: '[data-message-author-role="assistant"] .markdown',
   userSelector: '[data-message-author-role="user"]',
   conversationSelector: "main",
@@ -168,6 +202,8 @@ export function parseChatGptHistory(resp: unknown): HistoryRound[] {
     order: ts,
     promptText,
     answerText,
+    // ChatGPT create_time is epoch seconds → ms.
+    createdAt: ts > 0 ? ts * 1000 : undefined,
   }));
 }
 

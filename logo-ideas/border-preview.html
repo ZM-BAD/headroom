@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Border Preview</title>
+    <style>
+      body {
+        font-family: -apple-system, sans-serif;
+        background: #f8fafc;
+        padding: 24px;
+      }
+      h2 {
+        margin-top: 24px;
+      }
+      .row {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .card {
+        text-align: center;
+        font-size: 12px;
+        color: #64748b;
+      }
+      .card img {
+        width: 128px;
+        height: 128px;
+        border-radius: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Logo Border — light bg (#f8fafc)</h1>
+    <div class="row">
+      <div class="card">
+        <img src="border-now.png" /><br />now — stroke:#d4d4d8 2px
+      </div>
+      <div class="card">
+        <img src="border-border-3-gray.png" /><br />stroke:#9ca3af 3px
+      </div>
+      <div class="card">
+        <img src="border-border-4-slate.png" /><br />stroke:#64748b 4px
+      </div>
+      <div class="card">
+        <img src="border-border-3-dark.png" /><br />stroke:#374151 3px
+      </div>
+    </div>
+  </body>
+</html>
+<div
+  style="
+    margin-top: 32px;
+    padding: 16px;
+    background: #0f172a;
+    border-radius: 12px;
+  "
+>
+  <h2 style="color: #e2e8f0; margin-top: 0">Dark bg comparison</h2>
+  <div class="row">
+    <div class="card">
+      <img src="border-now.png" /><br /><span style="color: #94a3b8">now</span>
+    </div>
+    <div class="card">
+      <img src="border-border-3-gray.png" /><br /><span style="color: #94a3b8"
+        >#9ca3af 3px</span
+      >
+    </div>
+    <div class="card">
+      <img src="border-border-4-slate.png" /><br /><span style="color: #94a3b8"
+        >#64748b 4px</span
+      >
+    </div>
+    <div class="card">
+      <img src="border-border-3-dark.png" /><br /><span style="color: #94a3b8"
+        >#374151 3px</span
+      >
+    </div>
+  </div>
+</div>

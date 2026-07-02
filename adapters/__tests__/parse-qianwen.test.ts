@@ -56,8 +56,20 @@ describe("parseQianwenHistory — pairing + identity", () => {
       ]),
     ];
     expect(parseQianwenHistory(list)).toEqual([
-      { messageId: "r2", order: 2000, promptText: "Q2", answerText: "A2" },
-      { messageId: "r1", order: 1000, promptText: "Q1", answerText: "A1" },
+      {
+        messageId: "r2",
+        order: 2000,
+        createdAt: 2000,
+        promptText: "Q2",
+        answerText: "A2",
+      },
+      {
+        messageId: "r1",
+        order: 1000,
+        createdAt: 1000,
+        promptText: "Q1",
+        answerText: "A1",
+      },
     ]);
   });
 

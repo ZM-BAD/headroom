@@ -124,6 +124,35 @@ export const doubaoAdapter: PlatformAdapter = {
     }
     return parseDoubaoHistory(messages);
   },
+  // POST /im/chain/recent_conv (cookie auth, same IM gateway as fetchHistory).
+  // Used by zombie cleanup (spec 003).
+  async fetchConversationList() {
+    try {
+      const res = await fetch(
+        `https://www.doubao.com/im/chain/recent_conv?${DOUBAO_IM_QUERY}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "content-type": "application/json; encoding=utf-8",
+            "agw-js-conv": "str",
+          },
+        },
+      );
+      if (!res.ok) return [];
+      const json = await res.json();
+      const cells: Array<{
+        id?: string;
+        conversation?: { conversation_id?: string };
+      }> =
+        json?.downlink_body?.pull_recent_conv_chain_downlink_body?.cells ?? [];
+      return cells
+        .map((c) => c.conversation?.conversation_id ?? c.id)
+        .filter((id): id is string => typeof id === "string");
+    } catch {
+      return [];
+    }
+  },
   answerSelector: ".md-box-root",
   userSelector: "[class*='whitespace-pre-wrap']",
   conversationSelector: "[class*='message-list'], main",
@@ -274,6 +303,8 @@ export function parseDoubaoHistory(messages: DoubaoMessage[]): HistoryRound[] {
         order: answer.ts,
         promptText,
         answerText: answer.text,
+        // doubao create_time is epoch seconds → ms.
+        createdAt: answer.ts > 0 ? answer.ts * 1000 : undefined,
       });
     }
   }

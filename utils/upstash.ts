@@ -94,8 +94,12 @@ export async function kvScan(
       "100",
     ]);
     if (res == null) break; // unconfigured → command returned null
+    if (!Array.isArray(res) || res.length < 2) {
+      console.warn("[Headroom] unexpected SCAN response shape:", res);
+      break;
+    }
     const [next, batch] = res as [string, string[]];
-    cursor = next;
+    cursor = String(next);
     if (Array.isArray(batch)) keys.push(...batch);
   } while (cursor && cursor !== "0");
   return keys;

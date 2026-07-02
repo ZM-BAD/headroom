@@ -23,9 +23,10 @@ describe("isSupportedPlatformUrl — every registered platform host", () => {
     expect(isSupportedPlatformUrl(`https://${host}/some/chat/path`)).toBe(true);
   });
 
-  it.each(PLATFORM_HOSTS)("returns true for a subdomain of %s", (host) => {
-    // m.chat.deepseek.com should match the deepseek pattern (suffix match).
-    expect(isSupportedPlatformUrl(`https://m.${host}/`)).toBe(true);
+  it.each(PLATFORM_HOSTS)("returns false for a subdomain of %s", (host) => {
+    // Subdomains are NOT matched — content script injection (bare *://host/*
+    // without *.) doesn't cover subdomains, so the action must stay grayed.
+    expect(isSupportedPlatformUrl(`https://m.${host}/`)).toBe(false);
   });
 });
 

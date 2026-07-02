@@ -73,9 +73,15 @@ export interface ConversationListMessage {
   ids: string[];
 }
 
+/** Background → content script: return the current dialogue title synchronously. */
+export interface GetTitleMessage {
+  type: "GET_TITLE";
+}
+
 export type HeadroomMessage =
   | PageReadyMessage
   | GetStateMessage
+  | GetTitleMessage
   | StateUpdateMessage
   | RefreshHistoryMessage
   | HistoryParsedMessage

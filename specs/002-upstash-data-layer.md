@@ -18,9 +18,15 @@ README 把 BYO Upstash 当产品核心（"your data stays in your own private st
 
 ## Decisions
 
-- **只两个 value 类型上 Redis**：
+- **只两个 value 类型上 Redis**，均用 **String 类型**存储：
   - `headroom:conv:{platform}:{dialogueId}` → `DialogueRecord` JSON（结构见 [001](./001-headroom-core.md) Data Model；携带 `updatedAt`）。
   - `headroom:settings` → `{ thresholds, language, contextLimits, updatedAt }`。**凭证永不入云**——没有凭证就读不了 Redis，存它既无用又泄漏。
+- **Value 类型选 String（序列化 JSON），不选 Redis JSON**。理由：
+  1. **去重要求全量读**——每轮写入前必须检查 `messageId` 是否已存在（防止重新生成重复计数），这一步绕不过去。既然必然读全量 `rounds[]`，JSON 类型的部分更新优势就消失了。
+  2. **不变式原子性**——`totalTokens` 必须恒等于 `sum(rounds[].total)`。String 的 GET→内存修改→SET 在逻辑上是一个连贯的 read-modify-write，两个值同步更新。JSON 类型分散为多条命令（`JSON.ARRAPPEND` + `JSON.SET totalTokens` + `JSON.SET roundCount`），命令之间 service worker 可能被 evict，数据会脏。
+  3. **内存**——JSON 类型的内部树结构相比序列化字符串有 2–5× 的内存放大。200 轮对话从 ~4 KB 变 8–20 KB。
+  4. **依赖**——String 是 Redis 内置类型，JSON 需要 RedisJSON 模块（Upstash 虽支持，但增加平台耦合）。
+  5. **序列化开销不关键**——4 KB 文档在浏览器端 `JSON.parse`/`stringify` 是微秒级，不是瓶颈。真正的成本是网络往返，两种类型命令数相同。
 - **client 分层**：通用原语 `kvGet` / `kvSet` / `kvDel`（shape 无关的传输层）+ 每个域一个 typed 包装（`getDialogue`/`setDialogue`/`delDialogue`、`getCloudSettings`/`setCloudSettings`/`delCloudSettings`）。新增 Redis 值类型 = 新增一个薄包装，**不是第四条 fetch 路径**。
 - **凭证只在本地**（`Settings.upstash`，是 REST API 对：`UPSTASH_REDIS_REST_URL` + `_TOKEN`，不是 Redis 密码）；调试探针读 `.env`（gitignored）。
 - **合并语义不在本层**：

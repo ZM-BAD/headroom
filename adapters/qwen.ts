@@ -52,8 +52,12 @@ export const qwenAdapter: PlatformAdapter = {
   // conversation title. The real title lives in GET /api/v2/chats/<id> →
   // data.title, but that is an API value, not reachable from the doc in a
   // build-stable way, so return null — the panel falls back to dialogueId.
-  dialogueTitleFromDoc() {
-    return null;
+  // Qwen doesn't put the conversation title in document.title — read it from
+  // the sidebar's active chat link (.chat-item-drag-active, the highlighted row).
+  dialogueTitleFromDoc(doc) {
+    const el = doc.querySelector<HTMLElement>(".chat-item-drag-active");
+    const text = el?.textContent?.trim();
+    return text || null;
   },
   // History API: CONFIRMED live (2026-06, Playwright). GET /api/v2/chats/<id>
   // → data.chat.history.messages (an object map, tree-linked). Pair each
@@ -70,6 +74,34 @@ export const qwenAdapter: PlatformAdapter = {
       return parseQwenHistory(await res.json());
     } catch {
       // network/parse failure — the next open / switch / round-completion re-fetches
+      return [];
+    }
+  },
+  // GET /api/v2/chats/?page=1&exclude_project=true → {data:[{id,title}]}.
+  // Cookie-based auth. Page-based pagination; stops when data is empty.
+  async fetchConversationList() {
+    try {
+      const ids: string[] = [];
+      let page = 1;
+      while (true) {
+        const res = await fetch(
+          `https://chat.qwen.ai/api/v2/chats/?page=${page}&exclude_project=true`,
+          { credentials: "include" },
+        );
+        if (!res.ok) break;
+        const json = (await res.json()) as {
+          success?: boolean;
+          data?: Array<{ id?: string }>;
+        };
+        const data = json.data ?? [];
+        for (const c of data) {
+          if (typeof c.id === "string") ids.push(c.id);
+        }
+        if (data.length === 0) break;
+        page++;
+      }
+      return ids;
+    } catch {
       return [];
     }
   },
@@ -142,6 +174,8 @@ export function parseQwenHistory(resp: unknown): HistoryRound[] {
     order: ts,
     promptText,
     answerText,
+    // Qwen timestamp is epoch seconds → ms.
+    createdAt: ts > 0 ? ts * 1000 : undefined,
   }));
 }
 

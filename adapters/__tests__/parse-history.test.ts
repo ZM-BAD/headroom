@@ -203,4 +203,68 @@ describe("parseDeepSeekHistory", () => {
     };
     expect(parseDeepSeekHistory(resp)).toEqual([]);
   });
+
+  it("dedup by parent USER — keeps only the highest message_id (regenerate)", () => {
+    // When a SAME parent USER has multiple ASSISTANT children (direct retry
+    // without intermediate regenerate USER), only the highest message_id wins.
+    const resp = {
+      data: {
+        biz_data: {
+          chat_messages: [
+            {
+              message_id: 1,
+              parent_id: null,
+              role: "USER",
+              fragments: [{ type: "REQUEST", content: "hello" }],
+            },
+            {
+              message_id: 2,
+              parent_id: 1,
+              role: "ASSISTANT",
+              status: "FINISHED",
+              fragments: [{ type: "RESPONSE", content: "old answer" }],
+            },
+            {
+              message_id: 3,
+              parent_id: 1,
+              role: "ASSISTANT",
+              status: "FINISHED",
+              fragments: [{ type: "RESPONSE", content: "new answer" }],
+            },
+          ],
+        },
+      },
+    };
+    const rounds = parseDeepSeekHistory(resp);
+    expect(rounds).toHaveLength(1);
+    expect(rounds[0].messageId).toBe("3"); // highest message_id wins
+    expect(rounds[0].answerText).toBe("new answer");
+  });
+
+  it("skips non-FINISHED ASSISTANT (stopped mid-generation)", () => {
+    // A message stopped mid-generation should NOT count as a round.
+    // When the user continues, it flips to FINISHED → counted then.
+    const resp = {
+      data: {
+        biz_data: {
+          chat_messages: [
+            {
+              message_id: 1,
+              parent_id: null,
+              role: "USER",
+              fragments: [{ type: "REQUEST", content: "long question" }],
+            },
+            {
+              message_id: 2,
+              parent_id: 1,
+              role: "ASSISTANT",
+              status: "CANCELLED",
+              fragments: [{ type: "RESPONSE", content: "partial a" }],
+            },
+          ],
+        },
+      },
+    };
+    expect(parseDeepSeekHistory(resp)).toEqual([]);
+  });
 });

@@ -61,7 +61,7 @@ try {
       contextLimit: 1_048_576,
       totalTokens: 42,
       roundCount: 1,
-      rounds: [{ n: 1, promptTokens: 10, answerTokens: 32, total: 42, ts: 1 }],
+      rounds: [{ messageId: "test-msg", order: 1, n: 1, promptTokens: 10, answerTokens: 32, total: 42, createdAt: 1 }],
       updatedAt: 1,
     };
     await cmd(["SET", CONV_KEY, JSON.stringify(rec)]);

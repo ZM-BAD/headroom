@@ -15,8 +15,8 @@ export interface RoundRecord {
   answerTokens: number;
   /** promptTokens + answerTokens. */
   total: number;
-  /** epoch ms */
-  ts: number;
+  /** Wall-clock epoch ms when this round was created on the platform. */
+  createdAt: number;
 }
 
 export interface DialogueRecord {
@@ -70,7 +70,7 @@ export function upsertRoundInto(
   rounds: RoundRecord[],
   round: Pick<
     RoundRecord,
-    "messageId" | "order" | "n" | "promptTokens" | "answerTokens" | "ts"
+    "messageId" | "order" | "n" | "promptTokens" | "answerTokens" | "createdAt"
   >,
 ): RoundRecord[] {
   const total = round.promptTokens + round.answerTokens;
@@ -128,7 +128,7 @@ export function upsertRound(
   contextLimit: number,
   round: Pick<
     RoundRecord,
-    "messageId" | "order" | "n" | "promptTokens" | "answerTokens" | "ts"
+    "messageId" | "order" | "n" | "promptTokens" | "answerTokens" | "createdAt"
   >,
 ): DialogueRecord {
   const base = record ?? emptyDialogue(platformId, dialogueId, contextLimit);

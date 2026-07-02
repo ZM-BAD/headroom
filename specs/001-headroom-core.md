@@ -2,7 +2,7 @@
 
 ## Status
 
-DeepSeek 单设备端到端已实现并真机验收通过（闸门 1 ✅，2026-06）；其余 6 家 adapter 字段就绪、`fetchHistory` 待逆向（闸门 2）；Edge/Firefox 冒烟待验（闸门 3）。
+DeepSeek 单设备端到端已实现并真机验收通过（闸门 1 ✅，2026-06）；其余 6 家 adapter + `fetchHistory` 已实现（parse 形状经 Playwright 实测确认），真机端到端验收 pending（闸门 2）；Edge/Firefox 冒烟待验（闸门 3）。
 
 **范围定位**：单设备即时层。仪表盘纯本地工作，不依赖云端，**可独立发布**。Upstash 传输管道归 [002](./002-upstash-data-layer.md)；跨设备同步、对账、删除联动归 [003](./003-cross-device-sync.md)。
 
@@ -212,19 +212,19 @@ tokens(text, platform) = Σ over 书写系统 s  [ count(text, s) × coeff(s, pl
 
 新增一个 AI 平台 = 注册 + 写一个 `adapters/<platform>.ts`。完整契约（**归属**列说明哪个 spec 定义/使用该字段）：
 
-| 字段                                                          | 归属    | 说明                                                                                                                                                             |
-| ------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `platformId` / `displayName` / `host` / `matchPattern`        | 001     | 平台 id + 展示名；content 注入 + host 匹配                                                                                                                       |
-| `completionUrl`                                               | 001     | webRequest `onCompleted` 过滤 = 回答完毕（SSE 流关闭，根因；非 DOM 启发式）                                                                                      |
-| `contextLimit`                                                | 001     | 默认 context window，用户可覆盖                                                                                                                                  |
-| `tokenCoefficients { cjk, latin }`                            | 001     | 默认估算系数，用户可覆盖                                                                                                                                         |
-| `dialogueIdFromUrl?(url)`                                     | 001     | URL 派生对话 id（切对话 → gauge 重置）                                                                                                                           |
-| `dialogueTitleFromDoc?(doc) → string \| null`                 | 001     | 对话标题（content-script 从 DOM 抓）；**仅面板展示，不写入 `DialogueRecord`、不上云**（标题可能含敏感信息）                                                      |
-| `fetchHistory?(dialogueId) → HistoryRound[]`                  | 001     | **核心真相源**：拉平台完整历史；`HistoryRound` 携带**稳定 messageId**（003 union 合并 key）+ `n`（仅显示序）。打开 / 切对话 / 回答完成都走它，token 永远由它估算 |
-| `answerSelector` / `userSelector?` / `conversationSelector`   | 001     | DOM 兜底原语；history-authoritative 核心当前不用，留给无历史 API 的平台                                                                                          |
-| `deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?` | 001+003 | 删除联动：本地 record 重置（001 background）；云端 DEL（003）                                                                                                    |
-| `fetchConversationList?() → string[]`                         | 003     | 僵尸清理：拉对话 id 列表                                                                                                                                         |
-| `detectDeletedPage?(doc) → boolean`                           | 003     | 移动端删除懒清理                                                                                                                                                 |
+| 字段                                                          | 归属    | 说明                                                                                                                                                                                           |
+| ------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `platformId` / `displayName` / `host` / `matchPattern`        | 001     | 平台 id + 展示名；content 注入 + host 匹配                                                                                                                                                     |
+| `completionUrl`                                               | 001     | webRequest `onCompleted` 过滤 = 回答完毕（SSE 流关闭，根因；非 DOM 启发式）                                                                                                                    |
+| `contextLimit`                                                | 001     | 默认 context window，用户可覆盖                                                                                                                                                                |
+| `tokenCoefficients { cjk, latin }`                            | 001     | 默认估算系数，用户可覆盖                                                                                                                                                                       |
+| `dialogueIdFromUrl?(url)`                                     | 001     | URL 派生对话 id（切对话 → gauge 重置）                                                                                                                                                         |
+| `dialogueTitleFromDoc?(doc) → string \| null`                 | 001     | 对话标题（content-script 从 DOM 抓）；**仅面板展示，不写入 `DialogueRecord`、不上云**（标题可能含敏感信息）                                                                                    |
+| `fetchHistory?(dialogueId) → HistoryRound[]`                  | 001     | **核心真相源**：拉平台完整历史；`HistoryRound` 携带**稳定 messageId**（003 union 合并 key）+ `order`（时序键） + `promptText`/`answerText`。打开 / 切对话 / 回答完成都走它，token 永远由它估算 |
+| `answerSelector` / `userSelector?` / `conversationSelector`   | 001     | DOM 兜底原语；history-authoritative 核心当前不用，留给无历史 API 的平台                                                                                                                        |
+| `deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?` | 001+003 | 删除联动：本地 record 重置（001 background）；云端 DEL（003）                                                                                                                                  |
+| `fetchConversationList?() → string[]`                         | 003     | 僵尸清理：拉对话 id 列表                                                                                                                                                                       |
+| `detectDeletedPage?(doc) → boolean`                           | 003     | 移动端删除懒清理                                                                                                                                                                               |
 
 001 实现 DeepSeek 的 001 字段（`fetchHistory` 已实现并真机验过）；003 字段在本 spec 只占契约位。background 是平台无关引擎——只认 adapter 接口，历史 API 是轮次身份与 token 的唯一真相源。
 
@@ -350,7 +350,14 @@ headroom:conv:{p}:{id}       → DialogueRecord（当前活动对话）
 **`DialogueRecord` / `RoundRecord` 只存 token 计数，绝不存对话文本**（隐私设计）：
 
 ```
-RoundRecord    = { n, promptTokens, answerTokens, total, ts }
+RoundRecord    = {
+  messageId: string,           // 003 union-merge key — 平台稳定的本轮标识
+  order: number,               // 时序键（升序=旧→新），由 adapter 从 API 派生
+  n: number,                   // 展示序号（1-based，合并后按 order 重排）
+  promptTokens, answerTokens,
+  total,                       // promptTokens + answerTokens
+  ts: number,                  // wall-clock epoch ms（当前未填充，恒为 0；预留展示/调试）
+}
 DialogueRecord = {
   platformId, dialogueId, contextLimit,
   rounds: RoundRecord[],       // 滚动裁剪，上限 MAX_RETAINED_ROUNDS
@@ -360,9 +367,10 @@ DialogueRecord = {
 }
 ```
 
-**不变式**：`rounds[]` 按上限滚动裁剪，但 `totalTokens` / `roundCount` 始终是真实累计值——裁剪数组不等于丢失累计。这是最易出 bug 的地方，由不变式测试守护。
-
-**仪表盘从 `DialogueRecord` 投影**：累计 = `totalTokens`，轮次 = `roundCount`，最近轮 = `rounds[last].total`，占比 = `totalTokens / contextLimit`。
+- **`messageId`** 是平台赋予本轮的唯一稳定标识（DeepSeek 的 `message_id`、ChatGPT 的 mapping node id、豆包的 `index_in_conv` 等），跨次抓取不变——它是 003 union merge 的去重 key，positional `n` 不可替代。
+- **`order`** 是时序键，不同平台语义不同但保证单调（DeepSeek=raw message_id，ChatGPT/Kimi/Qwen=epoch ms，Gemini=位置索引）。`unionRounds` 按 `order` 升序排列后重赋 display `n`。
+- **`ts`** 是标准化的 wall-clock 时间（epoch ms），当前各 adapter 未填充（恒为 0），字段保留给未来展示/调试。填充它不会增加 Upstash 存储开销——字段已在 schema 中。
+- **`n`** 纯展示，`unionRounds` 合并后按 `order` 升序赋 1..k，不参与 merge 逻辑。
 
 > 001 只维护**当前活动对话**的本地 record（切对话时加载/新建）。多对话本地缓存 + LRU 淘汰归 [003](./003-cross-device-sync.md)。`DialogueRecord` 结构由 001 定义，003 在其上加云端生命（持久化 / 对账 / 缓存），结构不变。
 
@@ -377,9 +385,14 @@ DialogueRecord = {
 │  Context: 1M            │    │  Context 覆盖 [按平台]       │
 │  ██░░░░░░  5.0%         │    │  语言 [自动 ▾]               │
 │  🟢 空间充足             │    │  Upstash URL/Token/测试/清空 │
-│  Round: 12  Last: 1,520 │    │  [保存设置]                  │
-└─────────────────────────┘    └─────────────────────────────┘
-```
+│  轮次: 12  本轮: 1,520    │    │  [保存设置]                  │
+│  对话轮次                  │    └─────────────────────────────┘
+│  #1 ↑1,520 ↓3,048 Σ4,568  │
+│  #2  …      …      …      │
+│  ⋮                        │
+└─────────────────────────┘
+
+> 对话轮次区以表格展示每轮详情：表头含「对话轮次」「输入 token」「输出 token」「该轮累计」。该轮累计由前端计算（promptTokens + answerTokens），不新增 Upstash 存储字段。
 
 - 第一行显示**平台名**（v1 不检测具体模型；context limit 取 adapter 默认或用户覆盖）。
 - **Upstash 字段是输入控件**；「测试连接」「保存」的云端动作由 002（传输）/ 003（同步）接线。未配 Upstash 时这些控件 inert，仪表盘照常工作。
@@ -444,3 +457,4 @@ DialogueRecord = {
 - [ ] 书写系统判定与中英混排的估算精度（→ 004）
 - [ ] DOM 选择器 / API host 的时效性（平台改版风险）
 - [ ] `MAX_RETAINED_ROUNDS` 是否需要调整：003 全量对账下平台历史可能更长，统一见 [003 Open Questions](./003-cross-device-sync.md)。
+```

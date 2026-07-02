@@ -12,6 +12,10 @@ interface DsMessage {
   parent_id?: number | null;
   role?: string;
   fragments?: DsFragment[];
+  /** epoch float seconds (e.g. 1782741816.158). */
+  inserted_at?: number;
+  /** "FINISHED" for complete messages; absent/other for mid-stop or in-progress. */
+  status?: string;
 }
 /** The GET /api/v0/chat/history_messages response shape (the parts we read). */
 interface DsHistoryResponse {
@@ -34,11 +38,20 @@ function joinFragments(
 /**
  * Parse a `GET /api/v0/chat/history_messages?chat_session_id=<id>` response into
  * ASCENDING rounds (CONFIRMED shape, 2026-06 Playwright). Each ASSISTANT message
- * is paired with its parent USER (parent_id) → one round; rounds stay in message
- * order (oldest first, 1-based n). Returns TEXT only — the platform's own
- * `accumulated_token_usage` is dropped (spec: tokens are always estimated, the
- * platform's count is 004 calibration only). Defensive: a missing/foreign shape
- * → []; never throws.
+ * with status "FINISHED" is paired with its parent USER (parent_id) → one round.
+ * Rounds stay in message_id order (oldest first).
+ *
+ * Dedup: when multiple ASSISTANT messages share the same parent USER (regenerate),
+ * only the one with the highest message_id is kept — that's the latest revision.
+ *
+ * Incomplete/stopped messages (status != "FINISHED") are skipped entirely — a
+ * partial answer after stop isn't a real round; it will be counted when the user
+ * continues and the status flips to FINISHED (same message_id → onCompleted →
+ * REFRESH_HISTORY → token updated).
+ *
+ * Returns TEXT only — the platform's own `accumulated_token_usage` is dropped
+ * (spec: tokens are always estimated, the platform's count is 004 calibration
+ * only). Defensive: a missing/foreign shape → []; never throws.
  */
 export function parseDeepSeekHistory(resp: unknown): HistoryRound[] {
   const messages =
@@ -49,25 +62,33 @@ export function parseDeepSeekHistory(resp: unknown): HistoryRound[] {
   for (const m of messages) {
     if (m && typeof m.message_id === "number") byId.set(m.message_id, m);
   }
-  const rounds: HistoryRound[] = [];
+  // Build candidate rounds, deduped by parent_id → keep highest message_id.
+  // messageId = the assistant's stable message_id (cross-fetch merge key);
+  // order = message_id (monotonic per conversation = chronological).
+  const byParent = new Map<number, HistoryRound>();
   for (const m of messages) {
     if (m?.role !== "ASSISTANT") continue;
     if (typeof m.message_id !== "number") continue;
-    const parent =
-      m.parent_id != null && typeof m.parent_id === "number"
-        ? byId.get(m.parent_id)
-        : undefined;
-    if (!parent) continue; // orphan assistant (no user prompt to pair) — skip
-    // messageId = the assistant's stable message_id (the round's identity across
-    // fetches); order = message_id (monotonic per conversation = chronological).
-    rounds.push({
+    // Skip incomplete/stopped messages — they aren't real rounds (ROUND-4).
+    if (m.status && m.status !== "FINISHED") continue;
+    const parentId = m.parent_id;
+    if (parentId == null || typeof parentId !== "number") continue;
+    const parent = byId.get(parentId);
+    if (!parent) continue; // orphan assistant — no user prompt to pair
+    const existing = byParent.get(parentId);
+    if (existing && (existing.order as number) >= m.message_id) continue;
+    byParent.set(parentId, {
       messageId: String(m.message_id),
       order: m.message_id,
       promptText: joinFragments(parent.fragments, "REQUEST"),
       answerText: joinFragments(m.fragments, "RESPONSE"),
+      createdAt:
+        typeof m.inserted_at === "number"
+          ? Math.round(m.inserted_at * 1000)
+          : undefined,
     });
   }
-  return rounds;
+  return [...byParent.values()].sort((a, b) => a.order - b.order);
 }
 
 /**
@@ -183,6 +204,29 @@ export const deepseekAdapter: PlatformAdapter = {
       return parseDeepSeekHistory(await res.json());
     } catch {
       // network/parse failure — the next open / switch / round-completion re-fetches
+      return [];
+    }
+  },
+  // GET /api/v0/chat_session/fetch_page?lte_cursor.pinned=false → chat_sessions[]
+  // (id = dialogue UUID). Used by zombie cleanup (spec 003) to diff live
+  // conversations against cloud keys. Runs in content script (same-origin).
+  async fetchConversationList() {
+    const token = readDsUserToken();
+    try {
+      const url =
+        "https://chat.deepseek.com/api/v0/chat_session/fetch_page?lte_cursor.pinned=false";
+      const res = await fetch(url, {
+        credentials: "include",
+        headers: token ? dsApiHeaders(token) : {},
+      });
+      if (!res.ok) return [];
+      const json = await res.json();
+      const sessions: Array<{ id?: string }> =
+        json?.data?.biz_data?.chat_sessions ?? [];
+      return sessions
+        .map((s) => s.id)
+        .filter((id): id is string => typeof id === "string");
+    } catch {
       return [];
     }
   },

@@ -22,6 +22,8 @@ export interface HistoryRound {
   order: number;
   promptText: string;
   answerText: string;
+  /** Wall-clock epoch ms when this round was created on the platform. Optional — DOM-only platforms may omit (defaults to 0). */
+  createdAt?: number;
 }
 
 export interface PlatformAdapter {

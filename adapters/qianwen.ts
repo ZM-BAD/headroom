@@ -63,8 +63,13 @@ export const qianwenAdapter: PlatformAdapter = {
   // the conversation title (unlike DeepSeek). The real title lives in the
   // sidebar and in the session/get API, neither reachable from doc alone in a
   // build-stable way, so return null — the panel falls back to dialogueId.
-  dialogueTitleFromDoc() {
-    return null;
+  // 通义千问 doesn't put the conversation title in document.title. The sidebar
+  // highlights the active conversation row with `!bg-option` (Tailwind important
+  // class) — inactive rows lack it. Verified live 2026-07 Playwright.
+  dialogueTitleFromDoc(doc) {
+    const active = doc.querySelector<HTMLElement>('[class*="!bg-option"]');
+    const text = active?.textContent?.trim();
+    return text || null;
   },
   // History API: CONFIRMED live (2026-06, Playwright). Paginated GET — walk
   // pages until have_next_page is false, then reverse to ascending. Runs in the
@@ -100,6 +105,51 @@ export const qianwenAdapter: PlatformAdapter = {
       return [];
     }
     return parseQianwenHistory(all);
+  },
+  // POST /api/v2/session/page/list (cookie auth + query params: ut, biz_id,
+  // etc.). Token-based pagination via next_token in body/response. Used by
+  // zombie cleanup (spec 003).
+  async fetchConversationList() {
+    const ut = readQianwenUt();
+    if (!ut) return [];
+    try {
+      const ids: string[] = [];
+      let nextToken = "";
+      const qs = `biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=${encodeURIComponent(ut)}&la=zh-CN&tz=Asia%2FShanghai&wv=2.13.5&ve=2.13.5`;
+      while (true) {
+        const res = await fetch(
+          `https://chat2-api.qianwen.com/api/v2/session/page/list?${qs}`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              "content-type": "application/json",
+              "x-platform": "pc_tongyi",
+            },
+            body: JSON.stringify({
+              limit: 50,
+              next_token: nextToken,
+              sort_field: "modifiedTime",
+              need_filter_tag: true,
+            }),
+          },
+        );
+        if (!res.ok) break;
+        const json = (await res.json()) as {
+          success?: boolean;
+          data?: Array<{ id?: string }>;
+          next_token?: string;
+        };
+        for (const s of json.data ?? []) {
+          if (typeof s.id === "string") ids.push(s.id);
+        }
+        nextToken = (json as { next_token?: string }).next_token ?? "";
+        if (!nextToken) break;
+      }
+      return ids;
+    } catch {
+      return [];
+    }
   },
   answerSelector: "[class*='message-select-wrapper-answer'] .qk-markdown",
   userSelector:
@@ -176,6 +226,7 @@ export function parseQianwenHistory(
         order: createdAt,
         promptText,
         answerText,
+        createdAt: createdAt || undefined,
       });
     }
   }
