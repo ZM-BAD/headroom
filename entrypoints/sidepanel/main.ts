@@ -587,8 +587,23 @@ void (async () => {
   els.upstashUrl.value = currentUpstash.url;
   els.upstashToken.value = currentUpstash.token;
   buildContextLimitRows();
-  // Preload both tables so a manual override applies without a flash.
-  await Promise.all([loadLocaleTable("en"), loadLocaleTable("zh_CN")]);
+  // Preload tables for all supported locales so manual override is instant.
+  await Promise.all(
+    (
+      [
+        "en",
+        "zh_CN",
+        "ja",
+        "ko",
+        "ru",
+        "es",
+        "pt_BR",
+        "fr",
+        "de",
+        "id",
+      ] as const
+    ).map((l) => loadLocaleTable(l)),
+  );
   applyI18n();
   applyThresholdsToSliders(currentThresholds);
   render(currentState, currentThresholds);

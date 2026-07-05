@@ -1,0 +1,64 @@
+{
+  "extDescription": {
+    "message": "Surveillez l'utilisation de la fenêtre de contexte de votre chat IA dans un panneau latéral natif."
+  },
+  "subtitle": { "message": "Moniteur de fenêtre de contexte" },
+  "openSettings": { "message": "Paramètres" },
+  "detectingPlatform": { "message": "Détection de la plateforme…" },
+  "noContext": { "message": "— contexte" },
+  "untitledDialogue": { "message": "Conversation sans titre" },
+  "contextSuffix": { "message": "contexte" },
+  "tokensUnit": { "message": "tokens" },
+  "round": { "message": "Tour" },
+  "lastRound": { "message": "Tour actuel" },
+  "statusIdle": { "message": "En attente de conversation…" },
+  "statusGreen": { "message": "Sûr · beaucoup d'espace" },
+  "statusYellow": { "message": "Modéré · surveillez l'utilisation" },
+  "statusRed": { "message": "Critique · démarrez un nouveau chat" },
+  "settingsTitle": { "message": "Paramètres" },
+  "back": { "message": "Retour" },
+  "thresholdsTitle": { "message": "Seuils d'alerte" },
+  "yellowLabel": { "message": "Jaune (modéré)" },
+  "redLabel": { "message": "Rouge (critique)" },
+  "legendGreen": { "message": "Espace suffisant" },
+  "legendYellow": { "message": "Se remplit" },
+  "legendRed": { "message": "Risque d'oubli" },
+  "resetDefaults": { "message": "Réinitialiser par défaut" },
+  "contextLimitsTitle": { "message": "Limites de fenêtre de contexte" },
+  "contextLimitsHint": {
+    "message": "Détecté automatiquement par plateforme — vous pouvez modifier n'importe quelle valeur."
+  },
+  "resetContextLimits": { "message": "Réinitialiser par défaut" },
+  "ctxLimitInvalid": { "message": "Entrez un nombre entier ≥ 1" },
+  "roundsTitle": { "message": "Tours" },
+  "roundHeaderN": { "message": "Tour" },
+  "roundHeaderInput": { "message": "Entrée" },
+  "roundHeaderOutput": { "message": "Sortie" },
+  "roundHeaderCumulative": { "message": "Total" },
+  "languageLabel": { "message": "Langue" },
+  "langAuto": { "message": "Auto (suivre le navigateur)" },
+  "upstashTitle": { "message": "Synchronisation Upstash" },
+  "upstashUrlLabel": { "message": "REST URL" },
+  "upstashTokenLabel": { "message": "REST Token" },
+  "showToken": { "message": "Afficher le token" },
+  "hideToken": { "message": "Masquer le token" },
+  "upstashHint": {
+    "message": "Utilisez les identifiants API REST de la console Upstash — pas le mot de passe Redis."
+  },
+  "testConnection": { "message": "Tester la connexion" },
+  "clearUpstash": { "message": "Effacer" },
+  "testingConnection": { "message": "Test en cours…" },
+  "saveSettings": { "message": "Enregistrer les paramètres" },
+  "settingsSaved": { "message": "Enregistré" },
+  "upstashOk": { "message": "Connecté ✓" },
+  "upstashErrMissing": { "message": "Saisissez d'abord l'URL et le token." },
+  "upstashErrAuth": {
+    "message": "Non autorisé — vérifiez le token (REST token ≠ mot de passe Redis)."
+  },
+  "upstashErrUnexpected": { "message": "Connecté, mais réponse inattendue." },
+  "upstashErrStatus": { "message": "Échec de la requête" },
+  "upstashErrNetwork": { "message": "Erreur réseau" },
+  "upstashErrNotHttps": {
+    "message": "L'URL Upstash doit utiliser https:// — http exposerait votre token."
+  }
+}

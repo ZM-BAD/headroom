@@ -1,0 +1,64 @@
+{
+  "extDescription": {
+    "message": "Отслеживайте использование контекстного окна AI-чата в боковой панели браузера."
+  },
+  "subtitle": { "message": "Монитор контекстного окна" },
+  "openSettings": { "message": "Настройки" },
+  "detectingPlatform": { "message": "Определение платформы…" },
+  "noContext": { "message": "— контекст" },
+  "untitledDialogue": { "message": "Диалог без названия" },
+  "contextSuffix": { "message": "контекст" },
+  "tokensUnit": { "message": "токенов" },
+  "round": { "message": "Раунд" },
+  "lastRound": { "message": "Текущий раунд" },
+  "statusIdle": { "message": "Ожидание диалога…" },
+  "statusGreen": { "message": "Норма · много места" },
+  "statusYellow": { "message": "Умеренно · следите за расходом" },
+  "statusRed": { "message": "Мало · начните новый чат" },
+  "settingsTitle": { "message": "Настройки" },
+  "back": { "message": "Назад" },
+  "thresholdsTitle": { "message": "Пороги предупреждений" },
+  "yellowLabel": { "message": "Жёлтый (умеренно)" },
+  "redLabel": { "message": "Красный (мало)" },
+  "legendGreen": { "message": "Достаточно места" },
+  "legendYellow": { "message": "Заполняется" },
+  "legendRed": { "message": "Риск потери контекста" },
+  "resetDefaults": { "message": "Сбросить по умолчанию" },
+  "contextLimitsTitle": { "message": "Лимиты контекстного окна" },
+  "contextLimitsHint": {
+    "message": "Автоопределение по платформе —— можно переопределить любое значение."
+  },
+  "resetContextLimits": { "message": "Сбросить по умолчанию" },
+  "ctxLimitInvalid": { "message": "Введите целое число ≥ 1" },
+  "roundsTitle": { "message": "Раунды" },
+  "roundHeaderN": { "message": "Раунд" },
+  "roundHeaderInput": { "message": "Ввод" },
+  "roundHeaderOutput": { "message": "Вывод" },
+  "roundHeaderCumulative": { "message": "Итого" },
+  "languageLabel": { "message": "Язык" },
+  "langAuto": { "message": "Авто (как в браузере)" },
+  "upstashTitle": { "message": "Синхронизация Upstash" },
+  "upstashUrlLabel": { "message": "REST URL" },
+  "upstashTokenLabel": { "message": "REST Token" },
+  "showToken": { "message": "Показать токен" },
+  "hideToken": { "message": "Скрыть токен" },
+  "upstashHint": {
+    "message": "Используйте учётные данные REST API из консоли Upstash — не пароль Redis."
+  },
+  "testConnection": { "message": "Проверить соединение" },
+  "clearUpstash": { "message": "Очистить" },
+  "testingConnection": { "message": "Проверка…" },
+  "saveSettings": { "message": "Сохранить настройки" },
+  "settingsSaved": { "message": "Сохранено" },
+  "upstashOk": { "message": "Подключено ✓" },
+  "upstashErrMissing": { "message": "Сначала введите URL и токен." },
+  "upstashErrAuth": {
+    "message": "Ошибка авторизации — проверьте токен (REST токен ≠ пароль Redis)."
+  },
+  "upstashErrUnexpected": { "message": "Подключено, но неожиданный ответ." },
+  "upstashErrStatus": { "message": "Ошибка запроса" },
+  "upstashErrNetwork": { "message": "Ошибка сети" },
+  "upstashErrNotHttps": {
+    "message": "URL Upstash должен использовать https:// — http раскроет ваш токен."
+  }
+}

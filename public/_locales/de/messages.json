@@ -1,0 +1,64 @@
+{
+  "extDescription": {
+    "message": "Überwachen Sie die Kontextfenster-Nutzung Ihres KI-Chats in einem nativen Seitenpanel."
+  },
+  "subtitle": { "message": "Kontextfenster-Monitor" },
+  "openSettings": { "message": "Einstellungen" },
+  "detectingPlatform": { "message": "Plattform wird erkannt…" },
+  "noContext": { "message": "— Kontext" },
+  "untitledDialogue": { "message": "Unbenannte Unterhaltung" },
+  "contextSuffix": { "message": "Kontext" },
+  "tokensUnit": { "message": "Tokens" },
+  "round": { "message": "Runde" },
+  "lastRound": { "message": "Aktuelle Runde" },
+  "statusIdle": { "message": "Warte auf Unterhaltung…" },
+  "statusGreen": { "message": "Sicher · viel Platz" },
+  "statusYellow": { "message": "Mäßig · Nutzung beobachten" },
+  "statusRed": { "message": "Kritisch · neuen Chat starten" },
+  "settingsTitle": { "message": "Einstellungen" },
+  "back": { "message": "Zurück" },
+  "thresholdsTitle": { "message": "Warnschwellen" },
+  "yellowLabel": { "message": "Gelb (mäßig)" },
+  "redLabel": { "message": "Rot (kritisch)" },
+  "legendGreen": { "message": "Ausreichend Platz" },
+  "legendYellow": { "message": "Wird knapp" },
+  "legendRed": { "message": "Vergessensrisiko" },
+  "resetDefaults": { "message": "Auf Standard zurücksetzen" },
+  "contextLimitsTitle": { "message": "Kontextfenster-Limits" },
+  "contextLimitsHint": {
+    "message": "Automatisch pro Plattform erkannt — beliebige Werte können überschrieben werden."
+  },
+  "resetContextLimits": { "message": "Auf Standard zurücksetzen" },
+  "ctxLimitInvalid": { "message": "Ganzzahl ≥ 1 eingeben" },
+  "roundsTitle": { "message": "Runden" },
+  "roundHeaderN": { "message": "Runde" },
+  "roundHeaderInput": { "message": "Eingabe" },
+  "roundHeaderOutput": { "message": "Ausgabe" },
+  "roundHeaderCumulative": { "message": "Gesamt" },
+  "languageLabel": { "message": "Sprache" },
+  "langAuto": { "message": "Auto (Browser folgen)" },
+  "upstashTitle": { "message": "Upstash-Synchronisation" },
+  "upstashUrlLabel": { "message": "REST URL" },
+  "upstashTokenLabel": { "message": "REST Token" },
+  "showToken": { "message": "Token anzeigen" },
+  "hideToken": { "message": "Token ausblenden" },
+  "upstashHint": {
+    "message": "Verwenden Sie die REST-API-Anmeldedaten aus der Upstash-Konsole — nicht das Redis-Passwort."
+  },
+  "testConnection": { "message": "Verbindung testen" },
+  "clearUpstash": { "message": "Löschen" },
+  "testingConnection": { "message": "Teste…" },
+  "saveSettings": { "message": "Einstellungen speichern" },
+  "settingsSaved": { "message": "Gespeichert" },
+  "upstashOk": { "message": "Verbunden ✓" },
+  "upstashErrMissing": { "message": "Zuerst URL und Token eingeben." },
+  "upstashErrAuth": {
+    "message": "Nicht autorisiert — Token prüfen (REST-Token ≠ Redis-Passwort)."
+  },
+  "upstashErrUnexpected": { "message": "Verbunden, aber unerwartete Antwort." },
+  "upstashErrStatus": { "message": "Anfrage fehlgeschlagen" },
+  "upstashErrNetwork": { "message": "Netzwerkfehler" },
+  "upstashErrNotHttps": {
+    "message": "Upstash-URL muss https:// verwenden — http würde Ihren Token offenlegen."
+  }
+}

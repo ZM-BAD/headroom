@@ -1,0 +1,66 @@
+{
+  "extDescription": {
+    "message": "AI チャットのコンテキストウィンドウ使用量をネイティブサイドパネルで監視します。"
+  },
+  "subtitle": { "message": "コンテキストウィンドウモニター" },
+  "openSettings": { "message": "設定" },
+  "detectingPlatform": { "message": "プラットフォームを検出中…" },
+  "noContext": { "message": "— コンテキスト" },
+  "untitledDialogue": { "message": "無題の会話" },
+  "contextSuffix": { "message": "コンテキスト" },
+  "tokensUnit": { "message": "tokens" },
+  "round": { "message": "ラウンド" },
+  "lastRound": { "message": "現在のラウンド" },
+  "statusIdle": { "message": "会話待機中…" },
+  "statusGreen": { "message": "安全 · 十分な余裕あり" },
+  "statusYellow": { "message": "注意 · 使用量に注意" },
+  "statusRed": { "message": "逼迫 · 新しいチャットを推奨" },
+  "settingsTitle": { "message": "設定" },
+  "back": { "message": "戻る" },
+  "thresholdsTitle": { "message": "警告しきい値" },
+  "yellowLabel": { "message": "黄（注意）" },
+  "redLabel": { "message": "赤（逼迫）" },
+  "legendGreen": { "message": "十分な余裕あり" },
+  "legendYellow": { "message": "やや逼迫" },
+  "legendRed": { "message": "忘却の可能性あり" },
+  "resetDefaults": { "message": "デフォルトに戻す" },
+  "contextLimitsTitle": { "message": "コンテキストウィンドウ上限" },
+  "contextLimitsHint": {
+    "message": "プラットフォームごとに自動検出 —— 任意の値を上書きできます。"
+  },
+  "resetContextLimits": { "message": "デフォルトに戻す" },
+  "ctxLimitInvalid": { "message": "1 以上の整数を入力してください" },
+  "roundsTitle": { "message": "ラウンド一覧" },
+  "roundHeaderN": { "message": "ラウンド" },
+  "roundHeaderInput": { "message": "入力" },
+  "roundHeaderOutput": { "message": "出力" },
+  "roundHeaderCumulative": { "message": "累計" },
+  "languageLabel": { "message": "言語" },
+  "langAuto": { "message": "自動（ブラウザに従う）" },
+  "upstashTitle": { "message": "Upstash 同期" },
+  "upstashUrlLabel": { "message": "REST URL" },
+  "upstashTokenLabel": { "message": "REST Token" },
+  "showToken": { "message": "トークンを表示" },
+  "hideToken": { "message": "トークンを隠す" },
+  "upstashHint": {
+    "message": "Upstash コンソールの REST API 認証情報を使用してください —— Redis パスワードではありません。"
+  },
+  "testConnection": { "message": "接続テスト" },
+  "clearUpstash": { "message": "クリア" },
+  "testingConnection": { "message": "テスト中…" },
+  "saveSettings": { "message": "設定を保存" },
+  "settingsSaved": { "message": "保存済み" },
+  "upstashOk": { "message": "接続成功 ✓" },
+  "upstashErrMissing": { "message": "先に URL とトークンを入力してください。" },
+  "upstashErrAuth": {
+    "message": "認証エラー —— トークンを確認してください（REST トークン ≠ Redis パスワード）。"
+  },
+  "upstashErrUnexpected": {
+    "message": "接続されましたが、予期しない応答です。"
+  },
+  "upstashErrStatus": { "message": "リクエスト失敗" },
+  "upstashErrNetwork": { "message": "ネットワークエラー" },
+  "upstashErrNotHttps": {
+    "message": "Upstash URL は https:// を使用する必要があります —— http ではトークンが露出します。"
+  }
+}

@@ -1,0 +1,64 @@
+{
+  "extDescription": {
+    "message": "AI 채팅의 컨텍스트 윈도우 사용량을 네이티브 사이드 패널에서 모니터링합니다."
+  },
+  "subtitle": { "message": "컨텍스트 윈도우 모니터" },
+  "openSettings": { "message": "설정" },
+  "detectingPlatform": { "message": "플랫폼 감지 중…" },
+  "noContext": { "message": "— 컨텍스트" },
+  "untitledDialogue": { "message": "제목 없는 대화" },
+  "contextSuffix": { "message": "컨텍스트" },
+  "tokensUnit": { "message": "tokens" },
+  "round": { "message": "라운드" },
+  "lastRound": { "message": "현재 라운드" },
+  "statusIdle": { "message": "대화 대기 중…" },
+  "statusGreen": { "message": "안전 · 여유充足" },
+  "statusYellow": { "message": "주의 · 사용량 확인" },
+  "statusRed": { "message": "위험 · 새 채팅 권장" },
+  "settingsTitle": { "message": "설정" },
+  "back": { "message": "뒤로" },
+  "thresholdsTitle": { "message": "경고 임계값" },
+  "yellowLabel": { "message": "노랑 (주의)" },
+  "redLabel": { "message": "빨강 (위험)" },
+  "legendGreen": { "message": "여유 충분" },
+  "legendYellow": { "message": "다소 부족" },
+  "legendRed": { "message": "정보 손실 우려" },
+  "resetDefaults": { "message": "기본값으로 초기화" },
+  "contextLimitsTitle": { "message": "컨텍스트 윈도우 한도" },
+  "contextLimitsHint": {
+    "message": "플랫폼별 자동 감지 —— 값을 직접 재정의할 수 있습니다."
+  },
+  "resetContextLimits": { "message": "기본값으로 초기화" },
+  "ctxLimitInvalid": { "message": "1 이상의 정수를 입력하세요" },
+  "roundsTitle": { "message": "라운드 목록" },
+  "roundHeaderN": { "message": "라운드" },
+  "roundHeaderInput": { "message": "입력" },
+  "roundHeaderOutput": { "message": "출력" },
+  "roundHeaderCumulative": { "message": "누계" },
+  "languageLabel": { "message": "언어" },
+  "langAuto": { "message": "자동 (브라우저 따름)" },
+  "upstashTitle": { "message": "Upstash 동기화" },
+  "upstashUrlLabel": { "message": "REST URL" },
+  "upstashTokenLabel": { "message": "REST Token" },
+  "showToken": { "message": "토큰 표시" },
+  "hideToken": { "message": "토큰 숨기기" },
+  "upstashHint": {
+    "message": "Upstash 콘솔의 REST API 자격 증명을 사용하세요 —— Redis 비밀번호가 아닙니다."
+  },
+  "testConnection": { "message": "연결 테스트" },
+  "clearUpstash": { "message": "초기화" },
+  "testingConnection": { "message": "테스트 중…" },
+  "saveSettings": { "message": "설정 저장" },
+  "settingsSaved": { "message": "저장됨" },
+  "upstashOk": { "message": "연결 성공 ✓" },
+  "upstashErrMissing": { "message": "먼저 URL과 토큰을 모두 입력하세요." },
+  "upstashErrAuth": {
+    "message": "인증 실패 —— 토큰을 확인하세요 (REST 토큰 ≠ Redis 비밀번호)."
+  },
+  "upstashErrUnexpected": { "message": "연결되었으나 예상치 못한 응답입니다." },
+  "upstashErrStatus": { "message": "요청 실패" },
+  "upstashErrNetwork": { "message": "네트워크 오류" },
+  "upstashErrNotHttps": {
+    "message": "Upstash URL은 https:// 를 사용해야 합니다 —— http는 토큰을 노출시킵니다."
+  }
+}

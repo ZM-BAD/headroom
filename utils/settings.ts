@@ -5,8 +5,19 @@ import type { UpstashCreds } from "./upstash";
 /** Storage key follows the spec's settings-key scheme. */
 export const STORAGE_KEY = "headroom:settings";
 
-/** "auto" follows the browser UI locale; en/zh_CN force a language. */
-export type Language = "auto" | "en" | "zh_CN";
+/** "auto" follows the browser UI locale; any other value forces a language. */
+export type Language =
+  | "auto"
+  | "en"
+  | "zh_CN"
+  | "ja"
+  | "ko"
+  | "ru"
+  | "es"
+  | "pt_BR"
+  | "fr"
+  | "de"
+  | "id";
 
 /**
  * Per-platform context-window limits in tokens, keyed by platformId. Defaults
