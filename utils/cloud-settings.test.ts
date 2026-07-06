@@ -8,16 +8,20 @@ function sampleSettings(): Settings {
     language: "auto",
     upstash: { url: "https://x.upstash.io", token: "secret" },
     contextLimits: { deepseek: 1_048_576 },
+    tokenCoefficients: {},
   };
 }
 
 describe("toCloudSettings", () => {
   it("copies syncable fields and stamps updatedAt", () => {
-    const cloud = toCloudSettings(sampleSettings(), 12345);
+    const local = sampleSettings();
+    local.tokenCoefficients = { deepseek: { cjk: 0.8 } };
+    const cloud = toCloudSettings(local, 12345);
     expect(cloud).toEqual({
       thresholds: { yellow: 0.5, red: 0.7 },
       language: "auto",
       contextLimits: { deepseek: 1_048_576 },
+      tokenCoefficients: { deepseek: { cjk: 0.8 } },
       updatedAt: 12345,
     });
   });
@@ -32,6 +36,16 @@ describe("toCloudSettings", () => {
     expect(json).not.toContain("secret");
     expect(json).not.toContain("upstash");
   });
+
+  it("carries tokenCoefficients without credentials", () => {
+    const local = sampleSettings();
+    local.tokenCoefficients = { deepseek: { cjk: 0.8 } };
+    const cloud = toCloudSettings(local, 1);
+    expect(cloud.tokenCoefficients).toEqual({ deepseek: { cjk: 0.8 } });
+    // tokenCoefficients does NOT contain upstash creds (same separator as other fields)
+    const json = JSON.stringify(cloud);
+    expect(json).not.toContain("secret");
+  });
 });
 
 describe("mergeCloudSettings (last-write-wins by updatedAt)", () => {
@@ -43,6 +57,7 @@ describe("mergeCloudSettings (last-write-wins by updatedAt)", () => {
         thresholds: { yellow: 0.6, red: 0.8 },
         language: "zh_CN",
         contextLimits: { deepseek: 2_000_000 },
+        tokenCoefficients: { deepseek: { kana: 0.4 } },
         updatedAt: 100,
       },
       10,
@@ -50,6 +65,7 @@ describe("mergeCloudSettings (last-write-wins by updatedAt)", () => {
     expect(merged.thresholds).toEqual({ yellow: 0.6, red: 0.8 });
     expect(merged.language).toBe("zh_CN");
     expect(merged.contextLimits).toEqual({ deepseek: 2_000_000 });
+    expect(merged.tokenCoefficients).toEqual({ deepseek: { kana: 0.4 } });
     // credentials survive untouched
     expect(merged.upstash).toEqual({
       url: "https://x.upstash.io",
@@ -59,18 +75,21 @@ describe("mergeCloudSettings (last-write-wins by updatedAt)", () => {
 
   it("keeps local when cloud is older or equal", () => {
     const local = sampleSettings();
+    local.tokenCoefficients = { deepseek: { cjk: 0.6 } };
     const merged = mergeCloudSettings(
       local,
       {
         thresholds: { yellow: 0.9, red: 0.99 },
         language: "zh_CN",
         contextLimits: {},
+        tokenCoefficients: { deepseek: { cjk: 0.9 } },
         updatedAt: 5,
       },
       10,
     );
     expect(merged.thresholds).toEqual({ yellow: 0.5, red: 0.7 });
     expect(merged.language).toBe("auto");
+    expect(merged.tokenCoefficients).toEqual({ deepseek: { cjk: 0.6 } });
   });
 
   it("keeps local when cloud is null", () => {
@@ -86,6 +105,7 @@ describe("mergeCloudSettings (last-write-wins by updatedAt)", () => {
         thresholds: { yellow: 0.6, red: 0.8 },
         language: "en",
         contextLimits: {},
+        tokenCoefficients: {},
         updatedAt: 100,
       },
       1,

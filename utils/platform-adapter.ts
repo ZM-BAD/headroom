@@ -43,12 +43,12 @@ export interface PlatformAdapter {
   /** Context window limit in tokens. */
   contextLimit: number;
   /**
-   * Per-platform token-estimation coefficients (spec 001 估算引擎). Absent ⇒
-   * the v1 reference `DEFAULT_COEFFICIENTS`; each adapter overrides with its
-   * own calibrated values in spec 004. Callers resolve via
-   * `adapter.tokenCoefficients ?? DEFAULT_COEFFICIENTS`.
+   * Per-platform token-estimation coefficients (spec 004 — six writing
+   * systems, all required). Every adapter must provide its own set; the
+   * runtime resolution chain is user override → adapter default, with no
+   * third-tier global fallback.
    */
-  tokenCoefficients?: TokenCoefficients;
+  tokenCoefficients: TokenCoefficients;
   /**
    * Extract the dialogue id from a platform chat URL (pathname regex). The
    * background uses it to detect when the user starts / switches a conversation

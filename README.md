@@ -68,13 +68,13 @@ Headroom is **Manifest V3 only** (MV2 is not supported) and requires a recent br
 
 | Platform      | Send request | Context (default) |
 | ------------- | ------------ | ----------------- |
-| DeepSeek      | ✅ confirmed | 1,048,576         |
-| ChatGPT       | ✅ confirmed | 131,072           |
-| Gemini        | ✅ confirmed | 1,048,576         |
-| Kimi          | ✅ confirmed | 262,144           |
-| Qwen          | ✅ confirmed | 1,048,576         |
-| 通义千问      | ✅ confirmed | 1,048,576         |
-| 豆包 (Doubao) | ✅ confirmed | 262,144           |
+| DeepSeek      | ✅ confirmed | 1M                |
+| ChatGPT       | ✅ confirmed | 128K              |
+| Gemini        | ✅ confirmed | 1M                |
+| Kimi          | ✅ confirmed | 256K              |
+| Qwen          | ✅ confirmed | 1M                |
+| 通义千问      | ✅ confirmed | 1M                |
+| 豆包 (Doubao) | ✅ confirmed | 256K              |
 
 Send-request parsing, delete-request parsing, and DOM selectors for all seven
 platforms were captured live (2026-06). Built with a platform-agnostic adapter

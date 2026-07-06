@@ -60,5 +60,25 @@
   "upstashErrNetwork": { "message": "Network error" },
   "upstashErrNotHttps": {
     "message": "Upstash URL must use https:// — http would expose your token."
+  },
+  "advancedSettings": { "message": "Advanced" },
+  "advancedSettingsHint": {
+    "message": "Override token estimation coefficients per platform. Changes require refreshing the AI platform page."
+  },
+  "resetAllCoefficients": { "message": "Reset all to defaults" },
+  "coeffReset": { "message": "Reset" },
+  "coeffRefreshHint": {
+    "message": "Coefficient changes saved — refresh the AI platform page for them to take effect."
+  },
+  "coeffCjk": { "message": "CJK" },
+  "coeffKana": { "message": "Kana" },
+  "coeffHangul": { "message": "Hangul" },
+  "coeffCyrillic": { "message": "Cyrillic" },
+  "coeffArabic": { "message": "Arabic" },
+  "coeffLatin": { "message": "Latin" },
+  "coeffUnitChar": { "message": "tok/ch" },
+  "coeffUnitWord": { "message": "tok/wd" },
+  "coeffDescription": {
+    "message": "Estimate tokens per character (CJK/Kana/Hangul) or per word (Cyrillic/Arabic/Latin). Higher = more tokens for that script."
   }
 }

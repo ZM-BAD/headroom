@@ -5,7 +5,7 @@ import type {
 } from "../utils/messages";
 import type { PlatformAdapter } from "../utils/platform-adapter";
 import { ADAPTERS } from "../adapters";
-import { DEFAULT_COEFFICIENTS, estimateTokens } from "../utils/estimate";
+import { estimateTokens, type TokenCoefficients } from "../utils/estimate";
 import {
   emptyDialogue,
   projectUsage,
@@ -483,8 +483,18 @@ export default defineBackground(() => {
     const dialogueId = adapter.dialogueIdFromUrl?.(m.url) ?? null;
     if (!dialogueId) return;
 
-    const coeff = adapter.tokenCoefficients ?? DEFAULT_COEFFICIENTS;
     const settings = await getSettings();
+    const overrides = settings.tokenCoefficients?.[adapter.platformId];
+    const coeff: TokenCoefficients = overrides
+      ? {
+          cjk: overrides.cjk ?? adapter.tokenCoefficients.cjk,
+          kana: overrides.kana ?? adapter.tokenCoefficients.kana,
+          hangul: overrides.hangul ?? adapter.tokenCoefficients.hangul,
+          cyrillic: overrides.cyrillic ?? adapter.tokenCoefficients.cyrillic,
+          arabic: overrides.arabic ?? adapter.tokenCoefficients.arabic,
+          latin: overrides.latin ?? adapter.tokenCoefficients.latin,
+        }
+      : adapter.tokenCoefficients;
     const contextLimit = effectiveLimit(settings, adapter);
     const key = dialogueKey(adapter.platformId, dialogueId);
 

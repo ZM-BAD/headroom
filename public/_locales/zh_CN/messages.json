@@ -58,5 +58,25 @@
   "upstashErrNetwork": { "message": "网络错误" },
   "upstashErrNotHttps": {
     "message": "Upstash 地址必须使用 https:// —— http 会暴露你的 Token。"
+  },
+  "advancedSettings": { "message": "高级设置" },
+  "advancedSettingsHint": {
+    "message": "按平台覆盖 Token 估算系数。修改后需刷新 AI 平台页面生效。"
+  },
+  "resetAllCoefficients": { "message": "全部重置为默认值" },
+  "coeffReset": { "message": "重置" },
+  "coeffRefreshHint": {
+    "message": "系数已保存 —— 刷新 AI 平台页面后生效。"
+  },
+  "coeffCjk": { "message": "中日韩" },
+  "coeffKana": { "message": "假名" },
+  "coeffHangul": { "message": "谚文" },
+  "coeffCyrillic": { "message": "西里尔" },
+  "coeffArabic": { "message": "阿拉伯" },
+  "coeffLatin": { "message": "拉丁" },
+  "coeffUnitChar": { "message": "tok/字" },
+  "coeffUnitWord": { "message": "tok/词" },
+  "coeffDescription": {
+    "message": "字符类（中日韩/假名/谚文）按每字估算，单词类（西里尔/阿拉伯/拉丁）按每词估算。值越大，该文字系统的 token 计数越多。"
   }
 }

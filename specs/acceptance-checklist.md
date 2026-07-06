@@ -190,6 +190,40 @@
 
 ---
 
+## 跨浏览器深度 QA（Firefox 差异点）
+
+> 冒烟通过后，逐项验证 Firefox 与 Chrome 的已知差异。
+
+### Side Panel 差异
+
+- [ ] **CB-F01** Firefox 使用 `sidebarAction`（非 `sidePanel`）——面板打开/关闭生命周期与 Chrome 一致
+- [ ] **CB-F02** Firefox 侧边栏是全局的（不能像 Chrome 那样按 tab 关闭）——确认切换非平台页时面板行为合理
+
+### Service Worker 生命周期
+
+- [ ] **CB-F03** Firefox 用 event page 而非 service worker ——确认重载扩展后、浏览器重启后核心功能正常
+- [ ] **CB-F04** SW 被 evict 后重新唤醒 → 消息通道恢复、`alarms` 继续调度
+
+### webRequest 行为差异
+
+- [ ] **CB-F05** Firefox 的 `webRequest.onBeforeRequest` 支持 `requestBody`——确认删除拦截正常
+- [ ] **CB-F06** `onCompleted` / `onErrorOccurred` 触发时机与 Chrome 一致——SSE 流关闭 = 回答完毕判定准确
+
+### 存储差异
+
+- [ ] **CB-F07** Firefox `storage.local` 配额基于磁盘空间（非 Chrome 的 10 MB）——确认大量对话后无异常
+- [ ] **CB-F08** `storage.local` 读写延迟在可接受范围内
+
+### alarms 差异
+
+- [ ] **CB-F09** Firefox `alarms` 最小 interval ≥1 min（Chrome 支持 10s）——僵尸清理 10min 周期不受影响
+
+### 综合
+
+- [ ] **CB-F10** 至少一个其他平台（ChatGPT/Kimi/Qwen 任选一）完整走通"打开→聊一轮→删除→切对话"流程
+
+---
+
 ## UI 国际化
 
 - [ ] **I18N-01** 切到每种 UI 语言 → 面板文字正确（至少验证 en + zh_CN + ja）

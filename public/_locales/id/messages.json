@@ -2,65 +2,172 @@
   "extDescription": {
     "message": "Pantau penggunaan jendela konteks chat AI Anda di panel samping asli browser."
   },
-  "subtitle": { "message": "Monitor jendela konteks" },
-  "openSettings": { "message": "Pengaturan" },
-  "detectingPlatform": { "message": "Mendeteksi platform…" },
-  "noContext": { "message": "— konteks" },
-  "untitledDialogue": { "message": "Percakapan tanpa judul" },
-  "contextSuffix": { "message": "konteks" },
-  "tokensUnit": { "message": "token" },
-  "round": { "message": "Ronde" },
-  "lastRound": { "message": "Ronde saat ini" },
-  "statusIdle": { "message": "Menunggu percakapan…" },
-  "statusGreen": { "message": "Aman · ruang cukup" },
-  "statusYellow": { "message": "Sedang · awasi penggunaan" },
-  "statusRed": { "message": "Ketat · mulai chat baru" },
-  "settingsTitle": { "message": "Pengaturan" },
-  "back": { "message": "Kembali" },
-  "thresholdsTitle": { "message": "Ambang peringatan" },
-  "yellowLabel": { "message": "Kuning (sedang)" },
-  "redLabel": { "message": "Merah (ketat)" },
-  "legendGreen": { "message": "Ruang cukup" },
-  "legendYellow": { "message": "Mulai penuh" },
-  "legendRed": { "message": "Risiko lupa konteks" },
-  "resetDefaults": { "message": "Kembalikan ke default" },
-  "contextLimitsTitle": { "message": "Batas jendela konteks" },
+  "subtitle": {
+    "message": "Monitor jendela konteks"
+  },
+  "openSettings": {
+    "message": "Pengaturan"
+  },
+  "detectingPlatform": {
+    "message": "Mendeteksi platform…"
+  },
+  "noContext": {
+    "message": "— konteks"
+  },
+  "untitledDialogue": {
+    "message": "Percakapan tanpa judul"
+  },
+  "contextSuffix": {
+    "message": "konteks"
+  },
+  "tokensUnit": {
+    "message": "token"
+  },
+  "round": {
+    "message": "Ronde"
+  },
+  "lastRound": {
+    "message": "Ronde saat ini"
+  },
+  "statusIdle": {
+    "message": "Menunggu percakapan…"
+  },
+  "statusGreen": {
+    "message": "Aman · ruang cukup"
+  },
+  "statusYellow": {
+    "message": "Sedang · awasi penggunaan"
+  },
+  "statusRed": {
+    "message": "Ketat · mulai chat baru"
+  },
+  "settingsTitle": {
+    "message": "Pengaturan"
+  },
+  "back": {
+    "message": "Kembali"
+  },
+  "thresholdsTitle": {
+    "message": "Ambang peringatan"
+  },
+  "yellowLabel": {
+    "message": "Kuning (sedang)"
+  },
+  "redLabel": {
+    "message": "Merah (ketat)"
+  },
+  "legendGreen": {
+    "message": "Ruang cukup"
+  },
+  "legendYellow": {
+    "message": "Mulai penuh"
+  },
+  "legendRed": {
+    "message": "Risiko lupa konteks"
+  },
+  "resetDefaults": {
+    "message": "Kembalikan ke default"
+  },
+  "contextLimitsTitle": {
+    "message": "Batas jendela konteks"
+  },
   "contextLimitsHint": {
     "message": "Terdeteksi otomatis per platform — Anda dapat menimpa nilai apa pun."
   },
-  "resetContextLimits": { "message": "Kembalikan ke default" },
-  "ctxLimitInvalid": { "message": "Masukkan bilangan bulat ≥ 1" },
-  "roundsTitle": { "message": "Ronde" },
-  "roundHeaderN": { "message": "Ronde" },
-  "roundHeaderInput": { "message": "Masukan" },
-  "roundHeaderOutput": { "message": "Keluaran" },
-  "roundHeaderCumulative": { "message": "Total" },
-  "languageLabel": { "message": "Bahasa" },
-  "langAuto": { "message": "Auto (ikuti browser)" },
-  "upstashTitle": { "message": "Sinkronisasi Upstash" },
-  "upstashUrlLabel": { "message": "REST URL" },
-  "upstashTokenLabel": { "message": "REST Token" },
-  "showToken": { "message": "Tampilkan token" },
-  "hideToken": { "message": "Sembunyikan token" },
+  "resetContextLimits": {
+    "message": "Kembalikan ke default"
+  },
+  "ctxLimitInvalid": {
+    "message": "Masukkan bilangan bulat ≥ 1"
+  },
+  "roundsTitle": {
+    "message": "Ronde"
+  },
+  "roundHeaderN": {
+    "message": "Ronde"
+  },
+  "roundHeaderInput": {
+    "message": "Masukan"
+  },
+  "roundHeaderOutput": {
+    "message": "Keluaran"
+  },
+  "roundHeaderCumulative": {
+    "message": "Total"
+  },
+  "languageLabel": {
+    "message": "Bahasa"
+  },
+  "langAuto": {
+    "message": "Auto (ikuti browser)"
+  },
+  "upstashTitle": {
+    "message": "Sinkronisasi Upstash"
+  },
+  "upstashUrlLabel": {
+    "message": "REST URL"
+  },
+  "upstashTokenLabel": {
+    "message": "REST Token"
+  },
+  "showToken": {
+    "message": "Tampilkan token"
+  },
+  "hideToken": {
+    "message": "Sembunyikan token"
+  },
   "upstashHint": {
     "message": "Gunakan kredensial REST API dari konsol Upstash — bukan kata sandi Redis."
   },
-  "testConnection": { "message": "Uji koneksi" },
-  "clearUpstash": { "message": "Hapus" },
-  "testingConnection": { "message": "Menguji…" },
-  "saveSettings": { "message": "Simpan pengaturan" },
-  "settingsSaved": { "message": "Tersimpan" },
-  "upstashOk": { "message": "Terhubung ✓" },
-  "upstashErrMissing": { "message": "Masukkan URL dan token terlebih dahulu." },
+  "testConnection": {
+    "message": "Uji koneksi"
+  },
+  "clearUpstash": {
+    "message": "Hapus"
+  },
+  "testingConnection": {
+    "message": "Menguji…"
+  },
+  "saveSettings": {
+    "message": "Simpan pengaturan"
+  },
+  "settingsSaved": {
+    "message": "Tersimpan"
+  },
+  "upstashOk": {
+    "message": "Terhubung ✓"
+  },
+  "upstashErrMissing": {
+    "message": "Masukkan URL dan token terlebih dahulu."
+  },
   "upstashErrAuth": {
     "message": "Tidak diotorisasi — periksa token (REST token ≠ kata sandi Redis)."
   },
   "upstashErrUnexpected": {
     "message": "Terhubung, tetapi respons tidak terduga."
   },
-  "upstashErrStatus": { "message": "Permintaan gagal" },
-  "upstashErrNetwork": { "message": "Kesalahan jaringan" },
+  "upstashErrStatus": {
+    "message": "Permintaan gagal"
+  },
+  "upstashErrNetwork": {
+    "message": "Kesalahan jaringan"
+  },
   "upstashErrNotHttps": {
     "message": "URL Upstash harus menggunakan https:// — http akan mengekspos token Anda."
+  },
+  "advancedSettings": {
+    "message": "Advanced"
+  },
+  "advancedSettingsHint": {
+    "message": "Override token estimation coefficients per platform. Changes require refreshing the AI platform page."
+  },
+  "resetAllCoefficients": {
+    "message": "Reset all to defaults"
+  },
+  "coeffReset": {
+    "message": "Reset"
+  },
+  "coeffRefreshHint": {
+    "message": "Coefficient changes saved — refresh the AI platform page for them to take effect."
   }
 }

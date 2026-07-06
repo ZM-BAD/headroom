@@ -1,6 +1,7 @@
 import { ADAPTERS } from "../adapters";
 import { DEFAULT_THRESHOLDS, type Thresholds } from "./thresholds";
 import type { UpstashCreds } from "./upstash";
+import type { TokenCoefficients } from "./estimate";
 
 /** Storage key follows the spec's settings-key scheme. */
 export const STORAGE_KEY = "headroom:settings";
@@ -32,6 +33,8 @@ export interface Settings {
   language: Language;
   upstash: UpstashCreds;
   contextLimits: ContextLimits;
+  /** Per-platform user coefficient overrides (spec 004). Keys = platformId; only overridden fields stored. */
+  tokenCoefficients: Record<string, Partial<TokenCoefficients>>;
 }
 
 /** The auto-detected defaults — one entry per adapter, straight from its contextLimit. */
@@ -46,6 +49,7 @@ export const DEFAULT_SETTINGS: Settings = {
   language: "auto",
   upstash: { url: "", token: "" },
   contextLimits: defaultContextLimits(),
+  tokenCoefficients: {},
 };
 
 /** Read settings from local storage, falling back to defaults per field. */
@@ -74,6 +78,13 @@ export async function getSettings(): Promise<Settings> {
       token: stored?.upstash?.token ?? "",
     },
     contextLimits,
+    tokenCoefficients:
+      stored?.tokenCoefficients && typeof stored.tokenCoefficients === "object"
+        ? (stored.tokenCoefficients as Record<
+            string,
+            Partial<TokenCoefficients>
+          >)
+        : {},
   };
 }
 

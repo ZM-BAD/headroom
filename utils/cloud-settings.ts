@@ -1,5 +1,6 @@
 import type { ContextLimits, Language, Settings } from "./settings";
 import type { Thresholds } from "./thresholds";
+import type { TokenCoefficients } from "./estimate";
 import {
   kvDel,
   kvGet,
@@ -19,6 +20,8 @@ export interface CloudSettings {
   thresholds: Thresholds;
   language: Language;
   contextLimits: ContextLimits;
+  /** Per-platform user coefficient overrides (spec 004). */
+  tokenCoefficients: Record<string, Partial<TokenCoefficients>>;
   /** epoch ms — drives last-write-wins on read-merge. */
   updatedAt: number;
 }
@@ -33,6 +36,7 @@ export function toCloudSettings(local: Settings, now: number): CloudSettings {
     thresholds: local.thresholds,
     language: local.language,
     contextLimits: local.contextLimits,
+    tokenCoefficients: local.tokenCoefficients,
     updatedAt: now,
   };
 }
@@ -55,6 +59,7 @@ export function mergeCloudSettings(
     thresholds: cloud.thresholds,
     language: cloud.language,
     contextLimits: cloud.contextLimits,
+    tokenCoefficients: cloud.tokenCoefficients,
   };
 }
 

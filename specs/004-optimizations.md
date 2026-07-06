@@ -1,215 +1,212 @@
-# 004: 优化 — Token 系数校准 + 用户覆盖 + 跨浏览器 QA
+# 004: Token 估算体系升级 — 书写系统扩展 + 平台系数 + 用户覆盖
 
 ## Status
 
-远期 stub（主干 [001](./001-headroom-core.md) / [002](./002-upstash-data-layer.md) / [003](./003-cross-device-sync.md) 跑通后再展开）。三件事都是**非主干优化**；轮到时可拆成多个 spec。
-
-> 估算系数用户覆盖从 [001](./001-headroom-core.md) P1 迁入——它和系数校准共享同一条数据通路（`TokenCoefficients` → `estimateTokens()`），放在一起实现更自然。
+开发中。代码基础设施先行（类型扩展 + estimateTokens 升级 + Settings UI 分层 + Advanced 面板），系数标定独立推进（纯配置数据，不阻塞代码）。
 
 ## Summary
 
-三个独立优化主题，合一 spec：
+把 Token 估算从 v1 的 2 种书写系统升级到 v2 的 6 种，每平台独立系数，用户可在 Advanced Settings 按平台覆盖。
 
-1. **Token 估算体系升级（正确性 + 可控性）**：扩展书写系统 → 识别各平台分词器 → 标定默认系数矩阵 → 用户可在 Advanced Settings 按平台覆盖。
-2. **跨浏览器深度 QA（可移植性）**：开发以 Chrome 为主，Edge 基本跟随，Firefox 补齐边角交互差异。
+**不在本 spec 范围**：跨浏览器深度 QA（归 [`acceptance-checklist.md`](./acceptance-checklist.md)）。
 
-## 主题 1：Token 估算体系升级
+## Motivation
 
-### 1.1 现状
+v1 的三个问题：
 
-**v1 估算公式**（`utils/estimate.ts`）：
+1. **书写系统覆盖面窄**：日文假名、韩文 Hangul 被错误归入 Latin 桶计词，偏差显著
+2. **不区分平台分词器**：DeepSeek 和 ChatGPT 对同一汉字的 token 数不同，但 7 家平台用同一套系数
+3. **用户不可控**：代码通路已参数化（`TokenCoefficients` → `estimateTokens(text, coeff)`），但设置面板没暴露
 
-```
-tokens(text, platform) = cjkChars × coeff.cjk + latinWords × coeff.latin
-```
+## Design
 
-- 两种书写系统：CJK（汉字）按字计，Latin（英文等）按空白分隔词计
-- 其他所有书写系统（日文假名、韩文、西里尔、阿拉伯…）统统归 Latin 桶
-- 全部 7 家平台使用同一套系数 `{ cjk: 0.6, latin: 0.5 }`（未经标定的起点值）
+### 1. 书写系统扩展
 
-**问题**：
+从 2 种扩展到 6 种，每种独立系数：
 
-1. **书写系统覆盖面窄**——日语一段文本里汉字 + 假名混排，假名被当 Latin 词计，偏差显著。韩文、俄文等同理。
-2. **不区分平台分词器**——DeepSeek 和 ChatGPT 对同一个汉字的 token 数不同，但当前用同一套系数。
-3. **用户不可控**——代码通路已参数化（`TokenCoefficients` → `estimateTokens(text, coeff)`），但设置面板没有暴露。
+| 书写系统     | Unicode 范围               | 计数方式 | 优先级 |
+| ------------ | -------------------------- | -------- | ------ |
+| CJK 汉字     | `\p{Unified_Ideograph}`    | 按字     | —      |
+| 日文假名     | `\p{Hiragana}\p{Katakana}` | 按字     | 高     |
+| 韩文 Hangul  | `\p{Hangul}`               | 按字     | 高     |
+| 西里尔       | `\p{Cyrillic}`             | 按词     | 中     |
+| 阿拉伯       | `\p{Arabic}`               | 按词     | 中     |
+| Latin 及其他 | 剩余                       | 按词     | —      |
 
-### 1.2 各平台分词器
-
-系数标定的前提是知道每个平台用什么分词器——不同的分词器对同一段文本的 token 化结果不同。
-
-**核心原则**：Headroom 不需要拿到分词器本身（不打包 tok）。我们只需要知道**系数**——即该分词器下每种书写系统"平均几个字符/词换 1 个 token"。系数可以通过经验方法标定，不需要分词器开源。
-
-以下是各平台的分词器已知情况（2026-07）：
-
-| 平台     | 分词器                     | 状态                          | 标定方法                                                   |
-| -------- | -------------------------- | ----------------------------- | ---------------------------------------------------------- |
-| ChatGPT  | tiktoken `o200k_base`      | ✅ 已知（开源）               | 直接用 tiktoken 库离线精确计算系数                         |
-| DeepSeek | DeepSeek tokenizer（BPE）  | ⚠️ 模型开源，网页版变体未确认 | 服务端返回 token 数回归 + 采样对照                         |
-| Qwen     | Qwen tokenizer（BPE）      | ⚠️ 模型开源，网页版变体未确认 | 服务端返回 token 数回归 + 采样对照                         |
-| 通义千问 | 同 Qwen tokenizer          | ⚠️ 同上                       | 同上                                                       |
-| Kimi     | **未知** — Moonshot 未公开 | ❌ 未披露                     | 纯经验估算（采样文本 → 人工/半自动 token 计数 → 回归系数） |
-| Gemini   | **未知** — Google 未公开   | ❌ 未披露                     | 纯经验估算（同上）                                         |
-| 豆包     | **未知** — 字节跳动未公开  | ❌ 未披露                     | 纯经验估算（同上）                                         |
-
-> **"未知"不意味着没法做**——对未披露分词器的平台，标定方法是：取一批覆盖各书写系统的样本文本 → 通过平台 API 发送（或在前端拦截请求体）→ 对比输入文本字符数和平台实际消费的 token 数（如果平台返回此数据）→ 回归出系数。如果平台连 token 数都不返回（Gemini、豆包），则用人工标注 + 同类分词器的系数作交叉验证。
-
-**标定数据源**：
-
-| 平台     | 服务端返回 token 数                    | 标定方式                                            |
-| -------- | -------------------------------------- | --------------------------------------------------- |
-| ChatGPT  | ❌                                     | tiktoken 库离线精确计算（开源，无需网络）           |
-| DeepSeek | ✅ `accumulated_token_usage`           | 采集样本 → 服务端 token 回归                        |
-| Qwen     | ✅ `content_list[].usage.total_tokens` | 采集样本 → 服务端 token 回归                        |
-| 通义千问 | ✅ `extra_info...total_usage`          | 采集样本 → 服务端 token 回归                        |
-| Kimi     | ❌                                     | 经验估算（同类 BPE 分词器系数作参考基线）           |
-| Gemini   | ❌                                     | 经验估算（同类 SentencePiece 分词器系数作参考基线） |
-| 豆包     | ❌                                     | 经验估算（同类 BPE 分词器系数作参考基线）           |
-
-> **经验估算的可靠性**：对于"未知"平台，系数仍然比 v1 的通用兜底值更准——因为我们至少知道它是中文优化的 BPE 分词器（Kimi、豆包）还是多语言 SentencePiece（Gemini），可以用同类已知分词器的系数作为先验，再做人工抽检校准。误差会比当前所有平台用同一套 `{0.6, 0.5}` 小一个数量级。
-
-### 1.3 书写系统扩展
-
-v2 目标——从 2 种扩展到以下书写系统，每种有独立系数：
-
-| 书写系统     | Unicode 范围               | 计数方式 | v1 归属     | 优先级 |
-| ------------ | -------------------------- | -------- | ----------- | ------ |
-| CJK 汉字     | `\p{Unified_Ideograph}`    | 按字     | CJK         | —      |
-| 日文假名     | `\p{Hiragana}\p{Katakana}` | 按字     | Latin 桶 ❌ | **高** |
-| 韩文 Hangul  | `\p{Hangul}`               | 按字     | Latin 桶 ❌ | **高** |
-| 西里尔       | `\p{Cyrillic}`             | 按词     | Latin 桶    | 中     |
-| 阿拉伯       | `\p{Arabic}`               | 按词     | Latin 桶    | 中     |
-| Latin 及其他 | 剩余                       | 按词     | Latin       | —      |
-
-> **决策：按字 vs 按词**——CJK、假名、韩文按字符计（这些书写系统中一个字 ≈ 1-3 token，方差小），西里尔/阿拉伯/Latin 按词计（词长变化大，按空白分隔更稳）。这与当前 CJK/Latin 的分治逻辑一致，只是把桶拆细了。
+> **按字 vs 按词**：CJK/假名/韩文按字符计（一字 ≈ 1-3 token，方差小），西里尔/阿拉伯/Latin 按空白分隔词计（词长变化大，按词更稳）。
 
 **v2 估算公式**：
 
 ```
-tokens(text, platform) = Σ over scripts s [ count(text, s) × coeff(s, platform) ]
+tokens(text) = Σ over scripts s [ count_chars_or_words(text, s) × coeff[s] ]
 ```
 
-其中 `coeff(s, platform)` 从 adapter 的默认系数表读取。`TokenCoefficients` 类型从 2 字段扩展为按书写系统的 map：
+其中 `coeff[s]` 从 adapter 的 `tokenCoefficients` 读取。
+
+### 2. TokenCoefficients 类型
 
 ```typescript
-// v2
+// utils/estimate.ts
 interface TokenCoefficients {
   cjk: number; // CJK 汉字
   kana: number; // 日文假名
-  hangul: number; // 韩文
+  hangul: number; // 韩文 Hangul
   cyrillic: number; // 西里尔
   arabic: number; // 阿拉伯
   latin: number; // Latin 及其他（兜底桶）
 }
 ```
 
-`estimateTokens` 内部新增对应的字符分类逻辑和分桶计数。
+所有字段必填。`estimateTokens` 内部按 Unicode property escapes（`\p{...}`，`u` flag）逐字符分类 → 分桶计数 → 乘系数求和。
 
-### 1.4 默认系数矩阵（adapter）
+### 3. 系数解析链（两级）
 
-每个 adapter 提供一套默认系数。标定来源分三等：
+```
+Settings.tokenCoefficients[platformId].cjk   ← 用户覆盖（最高优先）
+  ?? adapter.tokenCoefficients.cjk            ← 平台默认（每个 adapter 必提供）
+```
 
-1. **已知分词器（ChatGPT）**：用 tiktoken 库离线精确计算——准备各书写系统的标准样本集 → 跑 `o200k_base` 编码 → 回归系数。这是精度最高的来源。
-2. **开源但网页版变体未确认（DeepSeek / Qwen / 通义千问）**：以服务端返回的 token 数为主标定源，开源 tokenizer 的系数作为交叉验证。
-3. **未知分词器（Kimi / Gemini / 豆包）**：经验估算——以同类已知分词器的系数作先验基线，再用采样文本做人工/半自动抽检校准。在系数表中标注"经验值"。
+没有第三级全局兜底——每个 adapter 的 `tokenCoefficients` 是必填字段，adapter 自己就是该平台的默认值。"重置"操作即清空用户覆盖，回到 adapter 自带值。
 
-**待标定矩阵**（标定后填入实际值；当前全部用 v1 起点值占位，"经验"标注来源为类型 3）：
+`DEFAULT_COEFFICIENTS` 常量仅用于 `estimateTokens` 单测的参考值，不参与运行时解析链。
 
-| 平台 ↓ / 书写系统 → | CJK  | Kana | Hangul | Cyrillic | Arabic | Latin | 来源          |
-| ------------------- | ---- | ---- | ------ | -------- | ------ | ----- | ------------- |
-| DeepSeek            | 0.60 | ?    | ?      | ?        | ?      | 0.50  | 服务端回归    |
-| ChatGPT             | ?    | ?    | ?      | ?        | ?      | ?     | tiktoken 精确 |
-| Qwen                | ?    | ?    | ?      | ?        | ?      | ?     | 服务端回归    |
-| 通义千问            | ?    | ?    | ?      | ?        | ?      | ?     | 服务端回归    |
-| Kimi                | ?    | ?    | ?      | ?        | ?      | ?     | **经验值**    |
-| Gemini              | ?    | ?    | ?      | ?        | ?      | ?     | **经验值**    |
-| 豆包                | ?    | ?    | ?      | ?        | ?      | ?     | **经验值**    |
+### 4. 各平台分词器与标定策略
 
-> 系数精度统一为 **2 位小数**（如 `0.60`）。这个精度对百分比仪表盘场景足够——0.01 的系数差异在 1M context window 下对应 ~200 token 的估算偏差，在百分比显示上不可见。
+**核心原则**：Headroom 不打包 tokenizer。只需要**系数**——"该分词器下每种书写系统平均几个字符/词换 1 个 token"。系数通过经验方法标定，不需要分词器开源。
 
-所有平台 v1 的 `cjk: 0.6, latin: 0.5` 先用着——即使未标定，分桶细化本身就能减少误差（假名和韩文不再被错误归入 Latin 桶）。标定工作在实施阶段逐平台完成。
+| 平台            | 分词器                              | 标定方法                                  |
+| --------------- | ----------------------------------- | ----------------------------------------- |
+| ChatGPT         | tiktoken `o200k_base`（开源）       | tiktoken 库离线精确计算                   |
+| DeepSeek        | DeepSeek tokenizer（BPE，模型开源） | 服务端 `accumulated_token_usage` 回归     |
+| Qwen / 通义千问 | Qwen tokenizer（BPE，模型开源）     | 服务端 `usage.total_tokens` 回归          |
+| Kimi            | Moonshot 未公开                     | 经验估算（同类 BPE 系数作基线）           |
+| Gemini          | Google 未公开                       | 经验估算（同类 SentencePiece 系数作基线） |
+| 豆包            | 字节跳动未公开                      | 经验估算（同类 BPE 系数作基线）           |
 
-### 1.5 Settings 分层：General vs Advanced
+> 标定工作是纯配置数据工作，不涉及代码改动。占位值先行，调研 + 社区采样后填入。
 
-当前设置面板是平铺的——阈值、语言、context limit 覆盖、Upstash 配置全部混在一起。随着系数矩阵加入（6 种书写系统 × 7 个平台 = 42 个可配置值），需要把设置拆成两层。
+### 5. 占位系数矩阵
 
-**General Settings**（常规设置，用户日常会调的）：
+标定前所有平台使用同一套占位值：
 
-| 设置项             | 说明                                       |
-| ------------------ | ------------------------------------------ |
-| 预警阈值           | 双滑块：黄阈值、红阈值（已有）             |
-| UI 语言            | Auto / en / zh_CN（已有）                  |
-| Context Limit 覆盖 | 按平台覆盖 context window 上限（已有）     |
-| Upstash 配置       | REST URL / Token / 测试连接 / 清空（已有） |
+| 平台          | CJK  | Kana | Hangul | Cyrillic | Arabic | Latin | 来源         |
+| ------------- | ---- | ---- | ------ | -------- | ------ | ----- | ------------ |
+| **全部 7 家** | 0.60 | 0.50 | 0.50   | 0.50     | 0.50   | 0.50  | 占位，待标定 |
 
-**Advanced Settings**（高阶设置，需要时才展开）：
+系数精度 **2 位小数**。0.01 差异在 1M context window 下 ≈ 200 token 估算偏差，百分比显示不可见。
 
-| 设置项         | 说明                           |
-| -------------- | ------------------------------ |
-| Token 估算系数 | 按平台覆盖书写系统系数（新增） |
+即使系数未标定，分桶细化本身就能减少误差（假名和韩文不再被错误归入 Latin 桶）。
+
+### 6. Settings 分层：General vs Advanced
+
+当前设置面板是平铺的。加入系数矩阵后拆为两层：
+
+**General Settings**（已有，不变）：
+
+| 设置项             | 说明                               |
+| ------------------ | ---------------------------------- |
+| 预警阈值           | 双滑块：黄/红阈值                  |
+| UI 语言            | Auto / en / zh_CN / …              |
+| Context Limit 覆盖 | 按平台覆盖 context window 上限     |
+| Upstash 配置       | REST URL / Token / 测试连接 / 清空 |
+
+**Advanced Settings**（新增）：
+
+| 设置项         | 说明                   |
+| -------------- | ---------------------- |
+| Token 估算系数 | 按平台覆盖书写系统系数 |
 
 **UI 交互**：
 
-- 设置面板底部加一个「Advanced」折叠区，默认收起。
-- 展开后按平台分组，每个平台一张小表：书写系统列 × 系数输入框。
-- 每个输入框右侧有一个「重置」按钮，恢复到该平台的 adapter 默认值。
-- 顶部有一个「全部重置」按钮，清空所有用户覆盖。
+- 设置面板底部「Advanced」折叠区，默认收起
+- 展开后按平台分组，每个平台一个折叠行（`<details>` 或 accordion）
+- 展开平台行 → 显示 6 个系数输入框（`<input type="number" step="0.01">`）
+- 每个平台行右侧一个「重置」按钮 → 恢复到该 adapter 默认值
+- 「全部重置」按钮 → 清空所有用户覆盖
+- 保存设置后弹提示："系数修改需刷新平台页面后生效"
 
-**存储**：
+### 7. 数据模型
+
+**Settings（本地）新增字段**：
 
 ```typescript
-// Settings 新增字段
+// utils/settings.ts
 interface Settings {
   // ... 现有字段 ...
   tokenCoefficients: Record<string, Partial<TokenCoefficients>>;
-  // 按 platformId 索引，只存用户覆盖的部分（未覆盖的字段从 adapter 默认值取）
+  // 按 platformId 索引，只存用户覆盖的部分。未覆盖字段从 adapter 默认值读取。
 }
 ```
 
-写入云端时 `tokenCoefficients` 随 `CloudSettings` 一起上云（LWW 合并），跨设备同步。
+**CloudSettings（云端）新增字段**：
 
-**读取优先级**：
-
+```typescript
+// utils/cloud-settings.ts
+interface CloudSettings {
+  // ... 现有字段 ...
+  tokenCoefficients: Record<string, Partial<TokenCoefficients>>;
+}
 ```
-用户 Settings.tokenCoefficients[platformId].cjk
-  ?? adapter.tokenCoefficients.cjk
-  ?? DEFAULT_COEFFICIENTS.cjk   // { cjk: 0.6, kana: 0.5, hangul: 0.5, cyrillic: 0.4, arabic: 0.4, latin: 0.5 }
-```
 
-### 1.6 实施步骤
+`toCloudSettings` 携带、`mergeCloudSettings` 做 LWW 合并。凭证永不包含在 `tokenCoefficients` 中（与现有字段一致的剥离逻辑）。
 
-1. **扩展 `TokenCoefficients` 类型**：加 `kana` / `hangul` / `cyrillic` / `arabic` 字段。
-2. **升级 `estimateTokens`**：新增假名、韩文、西里尔、阿拉伯的字符分类 + 分桶计数。
-3. **更新所有 adapter 的 `tokenCoefficients`**：从 `{ cjk, latin }` 升级到 v2 六字段，先用 `DEFAULT_COEFFICIENTS`。
-4. **标定默认系数**：DeepSeek/Qwen/通义千问用服务端 token 回归；ChatGPT 用 tiktoken 对照；其余手工标注。
-5. **Settings UI 分层**：重构设置面板为 General + Advanced 折叠布局。
-6. **Advanced 面板**：按平台分组的系数输入 + 重置按钮。
-7. **`Settings` 类型 + 存储 + 云端同步**：加 `tokenCoefficients` 字段 → `getSettings` 读 → `applyHistory` 取覆盖 → `CloudSettings` 带上云。
-8. **单测**：新增书写系统分桶测试 + 系数覆盖优先级测试。
+**PlatformAdapter 类型变更**：
 
-### 1.7 验收
+`tokenCoefficients` 从可选（`?`）改为必填。每个 adapter 必须提供一套默认系数。
 
-> 详细操作步骤见 [`specs/acceptance-checklist.md`](./acceptance-checklist.md)（004 部分待 spec 展开后补充）。
+### 8. 运行时生效时机
 
-- 日文/韩文/俄文/阿拉伯文混排文本的估算误差在目标范围内（具体范围待标定时定）。
-- 各平台默认系数标定完毕，矩阵表不再有 `?`。
-- 用户在 Advanced Settings 改系数后，下一轮 token 估算按新系数计算。
-- 「重置」按钮恢复到 adapter 默认值。
-- 系数覆盖跨设备同步（设备 A 改完 → 设备 B 打开设置看到相同值）。
-- 未配置 Upstash 时系数覆盖仅本地生效（不报错）。
+用户保存系数覆盖 → 设置面板弹提示"需刷新平台页面" → 用户手动 F5 → 页面重载 → content script 注入 → `PAGE_READY` → `fetchHistory` → `applyHistory` → `estimateTokens` 读取新系数。
 
----
+不追求"保存即生效"——对话历史已用旧系数估算过，改系数后需全量重估。
 
-## 主题 2：跨浏览器深度 QA
+## Implementation
 
-**现状（001 闸门 3）**：Chrome / Edge / Firefox **冒烟**（能装能开面板、DeepSeek 一轮跑通）。
+分两阶段。标定工作（阶段 B）是纯配置数据，不阻塞阶段 A。
 
-**目标**：Firefox 的边角差异查缺补漏——`sidePanel` vs `sidebarAction` 生命周期、service worker vs event page、`webRequest` 行为差异等；Edge 跟随 Chrome，只验一致。
+### 阶段 A — 代码基础设施
 
-**验收**：三端功能 / 生命周期 / 拦截行为一致。
+| 步骤 | 文件                                                         | 改动                                                                                                                                               |
+| ---- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1   | `utils/estimate.ts`                                          | `TokenCoefficients` 扩展为 6 字段；`estimateTokens` 新增假名/韩文/西里尔/阿拉伯字符分类与分桶计数；Unicode property escapes `\p{...}` 替换手动范围 |
+| A2   | `utils/estimate.test.ts`                                     | 新增 6 种书写系统分桶测试 + 混排测试                                                                                                               |
+| A3   | `utils/platform-adapter.ts`                                  | `tokenCoefficients?` → `tokenCoefficients`（必填）                                                                                                 |
+| A4   | `adapters/*.ts`（7 文件）                                    | 无需改动——已引用占位值，类型自动跟随                                                                                                               |
+| A5   | `utils/settings.ts`                                          | `Settings` 加 `tokenCoefficients` 字段；`getSettings` 读                                                                                           |
+| A6   | `utils/settings.test.ts`                                     | 加系数覆盖优先级测试                                                                                                                               |
+| A7   | `utils/cloud-settings.ts`                                    | `CloudSettings` 加 `tokenCoefficients`；`toCloudSettings` 传递；`mergeCloudSettings` LWW 合并                                                      |
+| A8   | `utils/cloud-settings.test.ts`                               | 加系数字段同步 + 凭证剥离测试                                                                                                                      |
+| A9   | `entrypoints/background.ts`                                  | `applyHistory` 解析链改为：`settings.tokenCoefficients[platformId] ?? adapter.tokenCoefficients`                                                   |
+| A10  | `entrypoints/sidepanel/main.ts` + `index.html` + `style.css` | 设置面板重构：General 区 + Advanced 折叠区；按平台分组的系数输入 + 重置按钮 + 全部重置                                                             |
+| A11  | `_locales/*/messages.json`                                   | 新增 Advanced Settings 相关文案 key                                                                                                                |
+
+### 阶段 B — 系数标定（配置数据，独立推进）
+
+| 步骤 | 内容                                                  |
+| ---- | ----------------------------------------------------- |
+| B1   | ChatGPT：tiktoken 离线计算 6 种书写系统系数           |
+| B2   | DeepSeek：采集样本 → 服务端 token 回归                |
+| B3   | Qwen / 通义千问：采集样本 → 服务端 token 回归         |
+| B4   | Kimi / Gemini / 豆包：同类分词器系数作基线 + 人工抽检 |
+| B5   | 更新 7 个 adapter 的 `tokenCoefficients` 为标定值     |
+
+> 阶段 B 产出仅为 7 个 adapter 各一行的配置数据变更，不影响代码逻辑。
+
+## Acceptance Criteria
+
+> 详细操作步骤见 [`specs/acceptance-checklist.md`](./acceptance-checklist.md)。
+
+- 日文/韩文/西里尔/阿拉伯混排文本估算误差在目标范围内（标定时确定）
+- 各平台默认系数标定完毕，矩阵表不再有占位标记
+- 用户在 Advanced Settings 改系数 → 保存 → 刷新页面 → 下一轮估算用新系数
+- 平台行「重置」恢复到该 adapter 默认值；「全部重置」清空所有覆盖
+- 保存系数后弹提示"需刷新平台页面"
+- 系数覆盖跨设备同步
+- 未配置 Upstash 时系数覆盖仅本地生效
 
 ## Open Questions
 
-- 各书写系统 × 平台系数的标定基准与可接受误差带。
-- 是否在 004 引入轻量 tokenizer 作可选精度升级（仍非默认路径）。
-- Firefox 差异清单：哪些交互在三端表现不一，需各自适配。
-- 对于"未知"分词器平台的经验估算，可接受的误差带是多少？是否需要定期（平台升级模型时）重新采样校准？
+- 各书写系统 × 平台系数的标定基准与可接受误差带
+- 是否引入轻量 tokenizer 作可选精度升级（仍非默认路径）
+- 对于"未知"分词器平台的经验估算，可接受的误差带是多少
+- 是否需要定期（平台升级模型时）重新采样校准

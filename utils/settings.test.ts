@@ -222,6 +222,7 @@ describe("saveSettings", () => {
       language: "ja",
       upstash: { url: "https://u.upstash.io", token: "tok" },
       contextLimits: { deepseek: 500_000 },
+      tokenCoefficients: {},
     };
     await saveSettings(settings);
     expect(mockSet).toHaveBeenCalledTimes(1);
@@ -235,11 +236,50 @@ describe("saveSettings", () => {
       language: "auto",
       upstash: { url: "", token: "" },
       contextLimits: {},
+      tokenCoefficients: {},
     };
     await saveSettings(partial);
     const arg = mockSet.mock.calls[0][0] as Record<string, unknown>;
     const stored = arg[STORAGE_KEY] as Settings;
     expect(stored.thresholds).toEqual({ yellow: 10, red: 20 });
     expect(stored.language).toBe("auto");
+  });
+});
+
+// ============================================================================
+// tokenCoefficients (spec 004)
+// ============================================================================
+
+describe("getSettings — tokenCoefficients", () => {
+  it("returns an empty object when nothing is stored", async () => {
+    mockGet.mockResolvedValue({});
+    const s = await getSettings();
+    expect(s.tokenCoefficients).toEqual({});
+  });
+
+  it("reads stored coefficient overrides", async () => {
+    mockGet.mockResolvedValue({
+      [STORAGE_KEY]: {
+        tokenCoefficients: { deepseek: { cjk: 0.8 } },
+      },
+    });
+    const s = await getSettings();
+    expect(s.tokenCoefficients.deepseek?.cjk).toBe(0.8);
+  });
+
+  it("falls back to empty object for non-object tokenCoefficients", async () => {
+    mockGet.mockResolvedValue({
+      [STORAGE_KEY]: { tokenCoefficients: "bad" },
+    });
+    const s = await getSettings();
+    expect(s.tokenCoefficients).toEqual({});
+  });
+
+  it("falls back to empty object when undefined", async () => {
+    mockGet.mockResolvedValue({
+      [STORAGE_KEY]: { tokenCoefficients: undefined },
+    });
+    const s = await getSettings();
+    expect(s.tokenCoefficients).toEqual({});
   });
 });

@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  CLEANUP_THROTTLE_MS,
+  cleanupStateAfterRun,
   convIndexAfterDelete,
   convIndexAfterSet,
   pickOldestKeys,
+  shouldRunCleanup,
+  type CleanupState,
   type ConvIndex,
 } from "./local-cache";
 
@@ -61,5 +65,80 @@ describe("pickOldestKeys", () => {
 
   it("breaks updatedAt ties by key, ascending (deterministic)", () => {
     expect(pickOldestKeys({ z: 5, a: 5, m: 5 }, 3)).toEqual(["a", "m", "z"]);
+  });
+});
+
+describe("shouldRunCleanup (zombie-cleanup throttle)", () => {
+  const NOW = 1_000_000;
+
+  it("runs when the platform has never been cleaned (absent key)", () => {
+    expect(shouldRunCleanup({}, "deepseek", NOW)).toBe(true);
+  });
+
+  it("runs when last cleanup is older than the throttle window", () => {
+    const state: CleanupState = {
+      deepseek: NOW - CLEANUP_THROTTLE_MS - 1,
+    };
+    expect(shouldRunCleanup(state, "deepseek", NOW)).toBe(true);
+  });
+
+  it("runs when last cleanup is exactly at the throttle boundary", () => {
+    const state: CleanupState = {
+      deepseek: NOW - CLEANUP_THROTTLE_MS,
+    };
+    expect(shouldRunCleanup(state, "deepseek", NOW)).toBe(true);
+  });
+
+  it("is throttled when last cleanup is more recent than the throttle window", () => {
+    const state: CleanupState = {
+      deepseek: NOW - CLEANUP_THROTTLE_MS + 1,
+    };
+    expect(shouldRunCleanup(state, "deepseek", NOW)).toBe(false);
+  });
+
+  it("throttles per-platform independent of other platforms", () => {
+    const state: CleanupState = {
+      deepseek: NOW - 10_000, // recent — throttled
+      chatgpt: NOW - CLEANUP_THROTTLE_MS - 1, // old — runs
+    };
+    expect(shouldRunCleanup(state, "deepseek", NOW)).toBe(false);
+    expect(shouldRunCleanup(state, "chatgpt", NOW)).toBe(true);
+  });
+
+  it("does not mutate the input state (pure)", () => {
+    const state: CleanupState = { deepseek: NOW };
+    shouldRunCleanup(state, "deepseek", NOW);
+    expect(state).toEqual({ deepseek: NOW });
+  });
+});
+
+describe("cleanupStateAfterRun", () => {
+  const NOW = 2_000_000;
+
+  it("stamps a new platform into an empty state", () => {
+    expect(cleanupStateAfterRun({}, "deepseek", NOW)).toEqual({
+      deepseek: NOW,
+    });
+  });
+
+  it("updates the timestamp for an existing platform", () => {
+    const state: CleanupState = { deepseek: 1_000_000 };
+    expect(cleanupStateAfterRun(state, "deepseek", NOW)).toEqual({
+      deepseek: NOW,
+    });
+  });
+
+  it("preserves other platforms' timestamps", () => {
+    const state: CleanupState = { deepseek: 1_000_000, chatgpt: 500_000 };
+    expect(cleanupStateAfterRun(state, "deepseek", NOW)).toEqual({
+      deepseek: NOW,
+      chatgpt: 500_000,
+    });
+  });
+
+  it("does not mutate the input state (pure)", () => {
+    const state: CleanupState = { deepseek: 1_000_000 };
+    cleanupStateAfterRun(state, "deepseek", NOW);
+    expect(state).toEqual({ deepseek: 1_000_000 });
   });
 });

@@ -291,6 +291,13 @@ body {
   color: var(--fg);
   white-space: nowrap;
 }
+.hd-platform-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  object-fit: contain;
+}
 .hd-swatch {
   width: 10px;
   height: 10px;
@@ -709,4 +716,163 @@ body {
   font-size: 11px;
   line-height: 1.4;
   color: var(--fg-muted);
+}
+
+/* ---- Advanced Settings (spec 004 — token coefficients) ---- */
+
+.hd-advanced {
+  margin: 0;
+}
+
+.hd-advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  cursor: pointer;
+  list-style: none; /* hide default disclosure triangle in some browsers */
+}
+
+.hd-advanced-toggle::-webkit-details-marker {
+  display: none;
+}
+
+.hd-advanced-toggle::before {
+  content: "›";
+  display: inline-block;
+  width: 12px;
+  font-size: 16px;
+  font-weight: 400;
+  transition: transform 0.15s;
+  color: var(--fg-muted);
+}
+
+.hd-advanced[open] > .hd-advanced-toggle::before {
+  transform: rotate(90deg);
+}
+
+.hd-advanced-body {
+  padding: 4px 0 8px;
+}
+
+.hd-platform-coeff {
+  margin-top: 8px;
+  padding: 0;
+}
+
+.hd-platform-coeff > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fg-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.hd-platform-coeff > summary::-webkit-details-marker {
+  display: none;
+}
+
+.hd-platform-coeff > summary::before {
+  content: "›";
+  display: inline-block;
+  width: 10px;
+  margin-right: 4px;
+  font-size: 14px;
+  transition: transform 0.15s;
+}
+
+.hd-platform-coeff[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.hd-coeff-desc {
+  margin: 0 0 8px;
+  font-size: 11px;
+  color: var(--fg-muted);
+  line-height: 1.45;
+}
+
+.hd-coeff-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 20px;
+  padding: 8px 0 8px 14px;
+}
+
+.hd-coeff-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hd-coeff-field label {
+  width: 54px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--fg);
+  text-align: right;
+}
+
+.hd-coeff-field input[type="number"] {
+  width: 52px;
+  flex-shrink: 0;
+  padding: 2px 4px;
+  font-size: 12px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.hd-coeff-field input[type="number"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.hd-coeff-unit {
+  font-size: 9px;
+  color: var(--fg-muted);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.hd-coeff-hint {
+  display: block;
+  margin: 6px 0 4px;
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.hd-coeff-hint[hidden] {
+  display: none;
+}
+
+.hd-coeff-row-end {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.hd-coeff-reset {
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-card);
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.hd-coeff-reset:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }

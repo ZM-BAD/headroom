@@ -40,3 +40,4 @@ requirements/
 
 # QA — local manual acceptance checklist, not version-controlled
 qa.md
+coverage/

@@ -19,6 +19,41 @@ import {
 import { ADAPTERS, platformDisplayName } from "../../adapters";
 import { setCloudSettings, toCloudSettings } from "../../utils/cloud-settings";
 import type { UpstashCreds } from "../../utils/upstash";
+import {
+  DEFAULT_COEFFICIENTS,
+  type TokenCoefficients,
+} from "../../utils/estimate";
+
+// Platform logo imports (SVGs from icon/ directory).
+import defaultIcon from "../../icon/default.svg";
+import chatgptIcon from "../../icon/openai.svg";
+import deepseekIcon from "../../icon/deepseek.svg";
+import doubaoIcon from "../../icon/doubao.svg";
+import geminiIcon from "../../icon/gemini.svg";
+import kimiIcon from "../../icon/kimi.svg";
+import qianwenIcon from "../../icon/qianwen.svg";
+import qwenIcon from "../../icon/qwen.svg";
+
+const PLATFORM_ICON: Record<string, string> = {
+  chatgpt: chatgptIcon,
+  deepseek: deepseekIcon,
+  doubao: doubaoIcon,
+  gemini: geminiIcon,
+  kimi: kimiIcon,
+  qianwen: qianwenIcon,
+  qwen: qwenIcon,
+};
+
+function platformIconImg(platformId: string): HTMLImageElement {
+  const img = document.createElement("img");
+  img.src = PLATFORM_ICON[platformId] ?? defaultIcon;
+  img.className = "hd-platform-icon";
+  img.width = 16;
+  img.height = 16;
+  img.alt = "";
+  img.setAttribute("aria-hidden", "true");
+  return img;
+}
 
 /**
  * Raw browser-locale lookup. WXT types `browser.i18n.getMessage` to accept
@@ -81,6 +116,8 @@ const els = {
   upstashStatus: document.querySelector<HTMLElement>("#upstash-status")!,
   settingsSave: document.querySelector<HTMLButtonElement>("#settings-save")!,
   ctxReset: document.querySelector<HTMLButtonElement>("#ctx-reset")!,
+  coeffResetAll: document.querySelector<HTMLButtonElement>("#coeff-reset-all")!,
+  coeffHint: document.querySelector<HTMLOutputElement>("#coeff-hint")!,
   roundsList: document.querySelector<HTMLElement>("#rounds-list")!,
 };
 
@@ -92,6 +129,7 @@ let currentState: UsageState = IDLE_STATE;
 let currentLanguage: Language = "auto";
 let currentUpstash: UpstashCreds = { url: "", token: "" };
 let currentContextLimits: ContextLimits = { ...DEFAULT_SETTINGS.contextLimits };
+let currentTokenCoefficients: Record<string, Partial<TokenCoefficients>> = {};
 
 /** Loaded message tables for a manual locale override. "auto" uses browser i18n. */
 const localeTables: Partial<
@@ -284,6 +322,10 @@ els.thrReset.addEventListener("click", () => {
 els.langSelect.addEventListener("change", () => {
   currentLanguage = els.langSelect.value as Language;
   applyI18n();
+  // Rebuild programmatically-localized sections so labels, units, and
+  // descriptions reflect the new language.
+  buildContextLimitRows();
+  buildCoefficientRows();
   render(currentState, currentThresholds);
 });
 
@@ -311,7 +353,12 @@ function buildContextLimitRows(): void {
     const label = document.createElement("label");
     label.className = "hd-settings-label";
     label.htmlFor = id;
-    label.textContent = a.displayName;
+    label.append(
+      platformIconImg(a.platformId),
+      Object.assign(document.createElement("span"), {
+        textContent: a.displayName,
+      }),
+    );
     const input = document.createElement("input");
     input.className = "hd-input hd-input--num";
     input.id = id;
@@ -376,6 +423,160 @@ els.ctxReset.addEventListener("click", () => {
         toKilo(currentContextLimits[a.platformId] ?? a.contextLimit),
       );
   }
+});
+
+// ---------- token coefficients (spec 004 — Advanced Settings) ----------
+
+const COEFF_KEYS: (keyof TokenCoefficients)[] = [
+  "cjk",
+  "kana",
+  "hangul",
+  "cyrillic",
+  "arabic",
+  "latin",
+];
+
+const COEFF_I18N: Record<
+  keyof TokenCoefficients,
+  { label: string; unit: string }
+> = {
+  cjk: { label: "coeffCjk", unit: "coeffUnitChar" },
+  kana: { label: "coeffKana", unit: "coeffUnitChar" },
+  hangul: { label: "coeffHangul", unit: "coeffUnitChar" },
+  cyrillic: { label: "coeffCyrillic", unit: "coeffUnitWord" },
+  arabic: { label: "coeffArabic", unit: "coeffUnitWord" },
+  latin: { label: "coeffLatin", unit: "coeffUnitWord" },
+};
+
+/** Per-platform coefficient input elements, keyed as `${platformId}:${field}`. */
+const coeffInputs: Record<string, HTMLInputElement> = {};
+
+function coeffInputKey(
+  platformId: string,
+  field: keyof TokenCoefficients,
+): string {
+  return `${platformId}:${field}`;
+}
+
+/** Build the coefficient-rows DOM for every platform, seeded from currentTokenCoefficients. */
+function buildCoefficientRows(): void {
+  const list = document.querySelector<HTMLElement>("#coeff-list");
+  if (!list) return;
+  // Drop stale DOM references before destroying elements (see Issue 4).
+  for (const k of Object.keys(coeffInputs)) delete coeffInputs[k];
+  list.innerHTML = "";
+
+  // Section-level description: what the numbers mean
+  const desc = document.createElement("p");
+  desc.className = "hd-coeff-desc";
+  desc.textContent = t("coeffDescription");
+  list.append(desc);
+
+  for (const a of ADAPTERS) {
+    const defaults = a.tokenCoefficients;
+    const overrides = currentTokenCoefficients[a.platformId] ?? {};
+
+    const details = document.createElement("details");
+    details.className = "hd-platform-coeff";
+
+    const summary = document.createElement("summary");
+    summary.append(
+      platformIconImg(a.platformId),
+      Object.assign(document.createElement("span"), {
+        textContent: a.displayName,
+      }),
+    );
+    details.append(summary);
+
+    const fields = document.createElement("div");
+    fields.className = "hd-coeff-fields";
+
+    for (const f of COEFF_KEYS) {
+      const field = document.createElement("div");
+      field.className = "hd-coeff-field";
+
+      const label = document.createElement("label");
+      label.textContent = t(COEFF_I18N[f].label) || COEFF_I18N[f].label;
+
+      const input = document.createElement("input");
+      input.type = "number";
+      input.step = "0.01";
+      input.inputMode = "decimal";
+      const val =
+        overrides[f] !== undefined
+          ? overrides[f]
+          : (defaults[f] ?? DEFAULT_COEFFICIENTS[f]);
+      input.value = String(val);
+
+      const unit = document.createElement("span");
+      unit.className = "hd-coeff-unit";
+      unit.textContent = t(COEFF_I18N[f].unit);
+
+      const key = coeffInputKey(a.platformId, f);
+      coeffInputs[key] = input;
+
+      field.append(label, input, unit);
+      fields.append(field);
+    }
+
+    const resetBtn = document.createElement("button");
+    resetBtn.className = "hd-coeff-reset";
+    resetBtn.type = "button";
+    resetBtn.textContent = t("coeffReset");
+    resetBtn.addEventListener("click", () => {
+      for (const f of COEFF_KEYS) {
+        const inp = coeffInputs[coeffInputKey(a.platformId, f)];
+        if (inp) inp.value = String(defaults[f] ?? DEFAULT_COEFFICIENTS[f]);
+      }
+      delete currentTokenCoefficients[a.platformId];
+    });
+
+    const rowEnd = document.createElement("div");
+    rowEnd.className = "hd-coeff-row-end";
+    rowEnd.append(resetBtn);
+    fields.append(rowEnd);
+    details.append(fields);
+    list.append(details);
+  }
+}
+
+/** Read coefficient overrides from the DOM. Only stores values that differ from defaults. */
+function readCoefficientOverrides(): Record<
+  string,
+  Partial<TokenCoefficients>
+> {
+  const result: Record<string, Partial<TokenCoefficients>> = {};
+  for (const a of ADAPTERS) {
+    const defaults = a.tokenCoefficients;
+    const override: Partial<TokenCoefficients> = {};
+    for (const f of COEFF_KEYS) {
+      const inp = coeffInputs[coeffInputKey(a.platformId, f)];
+      if (!inp) continue;
+      const val = Number(inp.value);
+      if (
+        Number.isFinite(val) &&
+        val > 0 &&
+        Math.abs(val - (defaults[f] ?? DEFAULT_COEFFICIENTS[f])) > 0.001
+      ) {
+        override[f] = val;
+      }
+    }
+    if (Object.keys(override).length > 0) {
+      result[a.platformId] = override;
+    }
+  }
+  return result;
+}
+
+els.coeffResetAll.addEventListener("click", () => {
+  for (const a of ADAPTERS) {
+    const defaults = a.tokenCoefficients;
+    for (const f of COEFF_KEYS) {
+      const inp = coeffInputs[coeffInputKey(a.platformId, f)];
+      if (inp) inp.value = String(defaults[f] ?? DEFAULT_COEFFICIENTS[f]);
+    }
+  }
+  currentTokenCoefficients = {};
 });
 
 // ---------- upstash (BYOK REST API) ----------
@@ -534,14 +735,25 @@ els.settingsSave.addEventListener("click", () => {
         return;
       }
     }
+    const coeffOverrides = readCoefficientOverrides();
+    const coeffChanged =
+      JSON.stringify(coeffOverrides) !==
+      JSON.stringify(currentTokenCoefficients);
+    currentTokenCoefficients = coeffOverrides;
+
     const settings: Settings = {
       thresholds: currentThresholds,
       language: currentLanguage,
       upstash: currentUpstash,
       contextLimits: currentContextLimits,
+      tokenCoefficients: currentTokenCoefficients,
     };
     await saveSettings(settings);
     flashSaved();
+    if (coeffChanged) {
+      els.coeffHint.textContent = t("coeffRefreshHint");
+      els.coeffHint.hidden = false;
+    }
     // Push a credentials-stripped snapshot to Upstash so settings follow the
     // user across devices. Best-effort, AFTER the local write + UI flash so a
     // slow Upstash never blocks the "Saved ✓" feedback. Offline buffering is a
@@ -583,10 +795,12 @@ void (async () => {
   currentLanguage = settings.language;
   currentUpstash = settings.upstash;
   currentContextLimits = settings.contextLimits;
+  currentTokenCoefficients = settings.tokenCoefficients;
   els.langSelect.value = currentLanguage;
   els.upstashUrl.value = currentUpstash.url;
   els.upstashToken.value = currentUpstash.token;
   buildContextLimitRows();
+  buildCoefficientRows();
   // Preload tables for all supported locales so manual override is instant.
   await Promise.all(
     (
@@ -656,6 +870,10 @@ browser.storage.onChanged.addListener((changes, area) => {
           toKilo(currentContextLimits[a.platformId] ?? a.contextLimit),
         );
     }
+  }
+  if (next.tokenCoefficients) {
+    currentTokenCoefficients = next.tokenCoefficients;
+    buildCoefficientRows();
   }
   render(currentState, currentThresholds);
 });

@@ -382,6 +382,29 @@
           </p>
 
           <div class="hd-divider" role="separator"></div>
+          <details class="hd-advanced" id="advanced-section">
+            <summary class="hd-advanced-toggle" data-i18n="advancedSettings">
+              Advanced
+            </summary>
+            <div class="hd-advanced-body">
+              <p class="hd-hint" data-i18n="advancedSettingsHint">
+                Override token estimation coefficients per platform. Changes
+                require refreshing the AI platform page.
+              </p>
+              <div id="coeff-list" class="hd-coeff-list"></div>
+              <output id="coeff-hint" class="hd-coeff-hint"></output>
+              <button
+                class="hd-settings-reset"
+                id="coeff-reset-all"
+                type="button"
+                data-i18n="resetAllCoefficients"
+              >
+                Reset all to defaults
+              </button>
+            </div>
+          </details>
+
+          <div class="hd-divider" role="separator"></div>
           <button
             id="settings-save"
             class="hd-btn hd-btn--primary hd-btn--block"
