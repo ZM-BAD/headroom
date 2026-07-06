@@ -420,42 +420,44 @@ DialogueRecord = {
 ## Acceptance Criteria
 
 > 按**闸门次序**验收。**001 是纯本地层——闸门里不含任何 Upstash 断言**（那是 002/003）。
+>
+> 详细操作步骤见 [`specs/acceptance-checklist.md`](./acceptance-checklist.md)「001 核心监控」部分。
 
 ### 闸门 1 — DeepSeek 端到端（必过，卡后续一切）
 
 ✅ **DeepSeek 真机验收通过（2026-06）**。
 
-- [x] 平台页点扩展图标 → 原生侧边栏打开，显示 Headroom UI
-- [x] 一轮问答后，面板实时更新 token 数与占比
-- [x] 占比过阈值时进度条变色（黄/红）
-- [x] 阈值可在设置面板自定义
-- [x] 显示当前平台 context window limit
-- [x] 非匹配页图标灰化、点击不开侧栏
+- 平台页点扩展图标 → 原生侧边栏打开，显示 Headroom UI
+- 一轮问答后，面板实时更新 token 数与占比
+- 占比过阈值时进度条变色（黄/红）
+- 阈值可在设置面板自定义
+- 显示当前平台 context window limit
+- 非匹配页图标灰化、点击不开侧栏
 
 ### 闸门 2 — 另 6 家冒烟（fast-follow，不卡主路径）
 
-> history-authoritative 设计要求每家有 `fetchHistory`（历史 API 逆向，见"平台适配参考"）。目前仅 DeepSeek 实现；其余 6 家需逆向各自的 history API。
+> history-authoritative 设计要求每家有 `fetchHistory`（历史 API 逆向，见"平台适配参考"）。
 
-- [x] DeepSeek — 已验收（见闸门 1）
-- [x] ChatGPT
-- [ ] Gemini（可能无历史 API，需 DOM 兜底）
-- [x] Kimi
-- [x] Qwen
-- [x] 通义千问
-- [x] 豆包
+- DeepSeek — 已验收（见闸门 1）
+- ChatGPT
+- Gemini（可能无历史 API，需 DOM 兜底）
+- Kimi
+- Qwen
+- 通义千问
+- 豆包
 
 各家验收点：能加载、打开对话显示历史、一轮问答后面板更新、regenerate 不多算。
 
 ### 闸门 3 — 跨浏览器冒烟（早抓 Chrome 专属假设；深度 QA 归 004）
 
-- [x] Edge、Firefox 能装、能开面板、DeepSeek 一轮问答跑通
+- Edge、Firefox 能装、能开面板、DeepSeek 一轮问答跑通
 
 ## Open Questions
 
-- [ ] v1 估算系数的精确标定值（→ 004）
-- [ ] 书写系统判定与中英混排的估算精度（→ 004）
-- [ ] DOM 选择器 / API host 的时效性（平台改版风险）
-- [ ] `MAX_RETAINED_ROUNDS` 是否需要调整：003 全量对账下平台历史可能更长，统一见 [003 Open Questions](./003-cross-device-sync.md)。
+- v1 估算系数的精确标定值（→ 004）
+- 书写系统判定与中英混排的估算精度（→ 004）
+- DOM 选择器 / API host 的时效性（平台改版风险）
+- `MAX_RETAINED_ROUNDS` 是否需要调整：003 全量对账下平台历史可能更长，统一见 [003 Open Questions](./003-cross-device-sync.md)。
 
 ```
 

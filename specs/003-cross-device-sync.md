@@ -115,7 +115,7 @@ sequenceDiagram
 ### P1 — 增强
 
 - [x] **僵尸清理（统一引擎）**：`chrome.alarms`(10min 周期) + 打开首页 → 共享节流(5min) → `fetchConversationList` → 对比 Upstash → 删差集。
-- [ ] **对账频率控制**：快速切多个对话时 debounce / 只对停留 >N 秒的对话触发全量对账。
+- [x] **对账频率控制**：快速切多个对话时 debounce / 只对停留 >N 秒的对话触发全量对账。
 - [x] 7 家拉历史 API 验证（2026-06 真机抓包，全平台文本可取）。
 - [x] 7 家删除端点实测（拦截层就绪）。
 
@@ -348,21 +348,23 @@ headroom:cleanup-state → { <platform>: lastCleanupTimestamp }
 
 ## Acceptance Criteria
 
-- [x] 全新装、填凭证 → 打开一个已有对话 → 仪表盘从 0 爬升到真实累计（对账生效）
-- [ ] **跨设备续聊**：设备 A 聊 5 轮 → 设备 B 打开同对话 → B 显示 5 轮累计（不是 0，不覆盖丢 A 的）
-- [ ] **移动端轮次**：手机聊 3 轮 → 网页打开同对话 → 仪表盘含那 3 轮（平台历史里有，对账纳入）
-- [ ] **断网不丢**：断网聊几轮（增量推失败 warn）→ 恢复后打开对话 → 对账补回（不需 outbox）
-- [ ] **union 按稳定 messageId 合并**：平台返回的轮集变化（截断 / 单条删除 / 重生成移位）时，`totalTokens` 仍正确——不重复计、不丢早期轮（回归测试：50 轮截断到 30 轮 → `totalTokens` 不变；旧实现会算成 1875≠1275）
-- [x] 网页端删对话 → 本地缓存 + Upstash 对应 key 都消失
-- [x] 移动端删对话 → 下次首页打开或定期 alarm → Upstash 记录被差集清理
-- [ ] **定期僵尸清理**：`chrome.alarms` 每 10min 触发 → 有平台 tab 时自动清理死 record；与首页触发共享 5min 节流
-- [ ] 切 tab / 开面板读本地缓存（秒开），不阻塞网络
+> 详细操作步骤见 [`specs/acceptance-checklist.md`](./acceptance-checklist.md)「003 跨设备对账」部分。
+
+- 全新装、填凭证 → 打开一个已有对话 → 仪表盘从 0 爬升到真实累计（对账生效）
+- **跨设备续聊**：设备 A 聊 5 轮 → 设备 B 打开同对话 → B 显示 5 轮累计（不是 0，不覆盖丢 A 的）
+- **移动端轮次**：手机聊 3 轮 → 网页打开同对话 → 仪表盘含那 3 轮（平台历史里有，对账纳入）
+- **断网不丢**：断网聊几轮（增量推失败 warn）→ 恢复后打开对话 → 对账补回（不需 outbox）
+- **union 按稳定 messageId 合并**：平台返回的轮集变化（截断 / 单条删除 / 重生成移位）时，`totalTokens` 仍正确——不重复计、不丢早期轮（回归测试：50 轮截断到 30 轮 → `totalTokens` 不变；旧实现会算成 1875≠1275）
+- 网页端删对话 → 本地缓存 + Upstash 对应 key 都消失
+- 移动端删对话 → 下次首页打开或定期 alarm → Upstash 记录被差集清理
+- **定期僵尸清理**：`chrome.alarms` 每 10min 触发 → 有平台 tab 时自动清理死 record；与首页触发共享 5min 节流
+- 切 tab / 开面板读本地缓存（秒开），不阻塞网络
 
 ## Open Questions
 
-- [ ] ChatGPT 的 mapping 树遍历：取主线（current_node 回溯）还是取所有 user→assistant 对？重生成分支怎么处理？
-- [x] Gemini 历史内容抓取方式（2026-06 真机确认：内容在 SSR HTML / DOM，`fetchHistory` 走 DOM 抓取作兜底，文本可取；是否升级为更稳的 batchexecute RPC 留 [004](./004-optimizations.md)）。
-- [ ] `fetchHistory` 的频率控制阈值：快速切对话时，debounce 多少 / 停留几秒才触发全量对账？
-- [x] 僵尸清理触发频率：定期 alarms(10min) + 首页触发,共享 5min 节流（已设计）。
-- [ ] 新会话首条无 dialogueId（Kimi 等）→ 首轮无法 fetchHistory；要等 dialogueId 出现。
-- [ ] `MAX_RETAINED_ROUNDS`（200）在全量对账下是否仍合理？平台历史可能更长，对账要不要截断？
+- ChatGPT 的 mapping 树遍历：取主线（current_node 回溯）还是取所有 user→assistant 对？重生成分支怎么处理？
+- Gemini 历史内容抓取方式（2026-06 真机确认：内容在 SSR HTML / DOM，`fetchHistory` 走 DOM 抓取作兜底，文本可取；是否升级为更稳的 batchexecute RPC 留 [004](./004-optimizations.md)）。
+- `fetchHistory` 的频率控制阈值：快速切对话时，debounce 多少 / 停留几秒才触发全量对账？
+- 僵尸清理触发频率：定期 alarms(10min) + 首页触发,共享 5min 节流（已设计）。
+- 新会话首条无 dialogueId（Kimi 等）→ 首轮无法 fetchHistory；要等 dialogueId 出现。
+- `MAX_RETAINED_ROUNDS`（200）在全量对账下是否仍合理？平台历史可能更长，对账要不要截断？

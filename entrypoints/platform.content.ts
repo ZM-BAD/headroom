@@ -111,7 +111,8 @@ export default defineContentScript({
       },
     );
 
-    // Initial load.
+    // Initial load — always immediate, no debounce (user opened/reloaded the
+    // page; the gauge must show the current conversation right away).
     sendPageReady();
     void fetchAndShipHistory();
     void fetchAndShipConversationList();
@@ -122,15 +123,32 @@ export default defineContentScript({
     // content-script CONTEXT's interval (not window.setInterval) so it
     // AUTO-CLEARS when the context is invalidated (extension reload) — otherwise
     // the dead context throws "Extension context invalidated" every tick.
+    //
+    // spec 003 P1 — debounce history fetches on SPA switches: rapid tab-through
+    // triggers immediate gauge reset (sendPageReady, from cache) but defers the
+    // full history fetch + union merge until the user settles on a conversation
+    // for ≥ DEBOUNCE_MS. Round-complete (REFRESH_HISTORY) and initial load are
+    // NOT debounced — only SPA switches are.
+    const DEBOUNCE_MS = 2000;
     let lastHref = location.href;
     let lastTitle = document.title;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const debouncedFetch = (): void => {
+      if (debounceTimer != null) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        void fetchAndShipHistory();
+        void fetchAndShipConversationList();
+      }, DEBOUNCE_MS);
+    };
+
     ctx.setInterval(() => {
       if (location.href !== lastHref) {
         lastHref = location.href;
         lastTitle = document.title;
-        sendPageReady();
-        void fetchAndShipHistory();
-        void fetchAndShipConversationList();
+        sendPageReady(); // instant UX — gauge resets to cached/new record
+        debouncedFetch(); // debounce history fetch for SPA switches
       } else if (document.title !== lastTitle) {
         lastTitle = document.title;
         sendPageReady(); // title-only — rename detected, no history refetch needed

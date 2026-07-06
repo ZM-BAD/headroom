@@ -102,11 +102,13 @@ Upstash 免费层：256 MB 存储、**50 万命令/月**（账户级，非按 ke
 
 ## Acceptance Criteria
 
-- [x] 单测：kv 原语 / dialogue 包装 / 凭证剥离 / 设置 LWW（mock fetch）
-- [x] 真库：探针 6/6（conv 与 settings 各 SET→GET→DEL），存储 JSON 无凭证
-- [x] 真机：DeepSeek 聊几轮 → Upstash 控制台出现 `headroom:conv:deepseek:*`（依赖 003 接线）
-- [x] 真机：设置 Save → Upstash 出现 `headroom:settings`（无凭证字段）
+> 详细操作步骤见 [`specs/acceptance-checklist.md`](./acceptance-checklist.md)「002 Upstash 数据层」部分。
+
+- 单测：kv 原语 / dialogue 包装 / 凭证剥离 / 设置 LWW（mock fetch）
+- 真库：探针 6/6（conv 与 settings 各 SET→GET→DEL），存储 JSON 无凭证
+- 真机：DeepSeek 聊几轮 → Upstash 控制台出现 `headroom:conv:deepseek:*`（依赖 003 接线）
+- 真机：设置 Save → Upstash 出现 `headroom:settings`（无凭证字段）
 
 ## Open Questions
 
-- [x] 调用方推云失败如何处理：002 只 throw；warn 丢弃 / 下次打开重算补回的策略由 003 定（已按此分工）。
+- 调用方推云失败如何处理：002 只 throw；warn 丢弃 / 下次打开重算补回的策略由 003 定（已按此分工）。
