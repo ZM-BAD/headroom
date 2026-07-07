@@ -78,5 +78,41 @@
   "coeffUnitWord": { "message": "tok/词" },
   "coeffDescription": {
     "message": "字符类（中日韩/假名/谚文）按每字估算，单词类（西里尔/阿拉伯/拉丁）按每词估算。值越大，该文字系统的 token 计数越多。"
+  },
+  "platformRefTitle": { "message": "平台参考" },
+  "platformRefModel": { "message": "模型" },
+  "platformRefContext": { "message": "上下文长度" },
+  "platformRefTokenizer": { "message": "分词器" },
+  "estimationGuideTitle": { "message": "Token 估算原理" },
+  "estimationGuideText": {
+    "message": "Headroom 使用文字系统系数从对话文本估算 token 数量——不信任平台自身的计数。CJK 表意文字、日文假名、韩文谚文按字符计数；西里尔字母、阿拉伯字母、拉丁字母（及其他）按空格分词后的单词计数。每种文字系统的系数代表该模型分词器下平均每计数单位产生的 token 数，通过观测真实分词器输出校准得出。你可以在上方「高级设置」中按平台调整这些系数。"
+  },
+  "aboutTitle": { "message": "关于" },
+  "aboutContribute": {
+    "message": "欢迎贡献 —— 提交 issue 或 pull request 至"
+  },
+  "platformRefNoteDeepseek": {
+    "message": "针对中英文优化。典型文本 CJK ~1.5 tok/字，拉丁字母 ~0.25 tok/词。"
+  },
+  "platformRefNoteChatgpt": {
+    "message": "OpenAI 最新分词器。CJK 字符 0.5–2 tok/字（取决于生僻程度）；拉丁字母 ~0.75 tok/词。"
+  },
+  "platformRefNoteGemini": {
+    "message": "多语言 BPE。CJK ~1.0–2.0 tok/字；各文字系统间差异最大。"
+  },
+  "platformRefNoteKimi": {
+    "message": "行为类似 tiktoken。中文为主的长文本最受益于系数调优。"
+  },
+  "platformRefNoteQwen": {
+    "message": "跨文字系统表现均衡。CJK ~0.6 tok/字，拉丁字母 ~0.25 tok/词。"
+  },
+  "platformRefNoteQianwen": {
+    "message": "与 Qwen Chat 同款分词器。消费者版可能使用不同的量化版本。"
+  },
+  "platformRefNoteDoubao": {
+    "message": "闭源分词器。系数为近似值 —— 如果计量值偏差明显，请手动调优。"
+  },
+  "aboutStack": {
+    "message": "基于 WXT、Vitest 和 TypeScript 构建。"
   }
 }

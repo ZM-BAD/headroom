@@ -80,5 +80,41 @@
   "coeffUnitWord": { "message": "tok/wd" },
   "coeffDescription": {
     "message": "Estimate tokens per character (CJK/Kana/Hangul) or per word (Cyrillic/Arabic/Latin). Higher = more tokens for that script."
+  },
+  "platformRefTitle": { "message": "Platform Reference" },
+  "platformRefModel": { "message": "Model" },
+  "platformRefContext": { "message": "Context window" },
+  "platformRefTokenizer": { "message": "Tokenizer" },
+  "estimationGuideTitle": { "message": "How token estimation works" },
+  "estimationGuideText": {
+    "message": "Headroom estimates token counts from the conversation text using per-script coefficients — it never trusts the platform's own count. CJK ideographs, Japanese kana, and Korean Hangul are counted per character. Cyrillic, Arabic, and Latin (and anything else) are counted per whitespace-separated word. Each script has a coefficient that represents the average tokens per counting unit for that model's tokenizer, calibrated by observing real tokenizer output. You can adjust these coefficients per platform in the Advanced settings above."
+  },
+  "aboutTitle": { "message": "About" },
+  "aboutContribute": {
+    "message": "Contributions welcome — open an issue or pull request at"
+  },
+  "platformRefNoteDeepseek": {
+    "message": "Optimised for Chinese + English. CJK ~1.5 tok/ch, Latin ~0.25 tok/ch on typical text."
+  },
+  "platformRefNoteChatgpt": {
+    "message": "OpenAI's latest tokenizer. CJK characters 0.5–2 tok/ch depending on rarity; Latin ~0.75 tok/word."
+  },
+  "platformRefNoteGemini": {
+    "message": "Multilingual BPE. CJK ~1.0–2.0 tok/ch; the widest variance across scripts."
+  },
+  "platformRefNoteKimi": {
+    "message": "Similar to tiktoken in behaviour. Chinese-heavy texts benefit most from coefficient tuning."
+  },
+  "platformRefNoteQwen": {
+    "message": "Well-balanced across scripts. CJK ~0.6 tok/ch, Latin ~0.25 tok/word."
+  },
+  "platformRefNoteQianwen": {
+    "message": "Same tokenizer family as Qwen Chat. The consumer app may serve a different quant."
+  },
+  "platformRefNoteDoubao": {
+    "message": "Closed tokenizer. Coefficients are approximate — tune if the gauge drifts."
+  },
+  "aboutStack": {
+    "message": "Built with WXT, Vitest, and TypeScript."
   }
 }

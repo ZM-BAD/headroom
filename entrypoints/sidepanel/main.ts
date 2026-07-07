@@ -154,6 +154,12 @@ function t(key: string): string {
   if (currentLanguage !== "auto") {
     const msg = localeTables[currentLanguage]?.[key];
     if (msg != null) return msg;
+    // Key missing in the selected locale — fall back to English explicitly.
+    // browser.i18n.getMessage would use the BROWSER locale, which can be a
+    // third language (e.g. browser is zh_CN, user selected de → would return
+    // Chinese instead of English). We want en for any untranslated key.
+    const enFallback = localeTables["en"]?.[key];
+    if (enFallback != null) return enFallback;
   }
   return getMessage(key);
 }
@@ -326,6 +332,9 @@ els.langSelect.addEventListener("change", () => {
   // descriptions reflect the new language.
   buildContextLimitRows();
   buildCoefficientRows();
+  buildPlatformReference();
+  buildEstimationGuide();
+  buildAbout();
   render(currentState, currentThresholds);
 });
 
@@ -579,6 +588,168 @@ els.coeffResetAll.addEventListener("click", () => {
   currentTokenCoefficients = {};
 });
 
+// ---------- platform reference ----------
+
+interface PlatformInfo {
+  platformId: string;
+  model: string;
+  tokenizer: string;
+  tokenizerNote: string;
+}
+
+const PLATFORM_REF: PlatformInfo[] = [
+  {
+    platformId: "deepseek",
+    model: "DeepSeek-V3 / DeepSeek-R1",
+    tokenizer: "Custom BPE",
+    tokenizerNote: "platformRefNoteDeepseek",
+  },
+  {
+    platformId: "chatgpt",
+    model: "GPT-4o",
+    tokenizer: "o200k_base (tiktoken)",
+    tokenizerNote: "platformRefNoteChatgpt",
+  },
+  {
+    platformId: "gemini",
+    model: "Gemini 2.5 Pro / Flash",
+    tokenizer: "SentencePiece",
+    tokenizerNote: "platformRefNoteGemini",
+  },
+  {
+    platformId: "kimi",
+    model: "Kimi (Moonshot)",
+    tokenizer: "Custom BPE",
+    tokenizerNote: "platformRefNoteKimi",
+  },
+  {
+    platformId: "qwen",
+    model: "Qwen3",
+    tokenizer: "Custom BPE (tiktoken-compatible)",
+    tokenizerNote: "platformRefNoteQwen",
+  },
+  {
+    platformId: "qianwen",
+    model: "Qwen3 (通义千问)",
+    tokenizer: "Custom BPE (tiktoken-compatible)",
+    tokenizerNote: "platformRefNoteQianwen",
+  },
+  {
+    platformId: "doubao",
+    model: "Doubao (豆包 / ByteDance)",
+    tokenizer: "Custom",
+    tokenizerNote: "platformRefNoteDoubao",
+  },
+];
+
+function lookupPlatformInfo(id: string): PlatformInfo | undefined {
+  return PLATFORM_REF.find((p) => p.platformId === id);
+}
+
+function buildPlatformReference(): void {
+  const list = document.querySelector<HTMLElement>("#platform-ref-list");
+  if (!list) return;
+  list.innerHTML = "";
+
+  for (const a of ADAPTERS) {
+    const info = lookupPlatformInfo(a.platformId);
+    const card = document.createElement("div");
+    card.className = "hd-platform-ref-card";
+
+    const header = document.createElement("div");
+    header.className = "hd-ref-header";
+    header.append(
+      platformIconImg(a.platformId),
+      Object.assign(document.createElement("span"), {
+        className: "hd-ref-name",
+        textContent: a.displayName,
+      }),
+    );
+
+    const dl = document.createElement("dl");
+    dl.className = "hd-ref-dl";
+    const addRow = (labelKey: string, value: string) => {
+      const dt = document.createElement("dt");
+      dt.textContent = t(labelKey);
+      const dd = document.createElement("dd");
+      dd.textContent = value;
+      dl.append(dt, dd);
+    };
+    const ctxLimit = a.contextLimit;
+    const ctx =
+      ctxLimit >= 1_048_576
+        ? `${ctxLimit / 1_048_576}M`
+        : `${ctxLimit / 1024}K`;
+    addRow("platformRefModel", info?.model ?? "—");
+    addRow("platformRefContext", `${ctx} tokens`);
+    addRow("platformRefTokenizer", info?.tokenizer ?? "—");
+
+    if (info?.tokenizerNote) {
+      const note = document.createElement("p");
+      note.className = "hd-ref-note";
+      note.textContent = t(info.tokenizerNote);
+      dl.append(note);
+    }
+
+    card.append(header, dl);
+    list.append(card);
+  }
+}
+
+function buildEstimationGuide(): void {
+  const guide = document.querySelector<HTMLElement>("#estimation-guide");
+  if (!guide) return;
+  guide.innerHTML = "";
+
+  const title = document.createElement("h4");
+  title.className = "hd-info-subtitle";
+  title.textContent = t("estimationGuideTitle");
+
+  const text = document.createElement("p");
+  text.className = "hd-ref-note";
+  text.textContent = t("estimationGuideText");
+
+  guide.append(title, text);
+}
+
+function buildAbout(): void {
+  const body = document.querySelector<HTMLElement>("#about-body");
+  if (!body) return;
+  body.innerHTML = "";
+
+  const name = document.createElement("p");
+  name.className = "hd-about-name";
+  name.textContent = "Headroom v0.0.1";
+
+  const desc = document.createElement("p");
+  desc.className = "hd-ref-note";
+  desc.textContent = t("extDescription");
+
+  const copyright = document.createElement("p");
+  copyright.className = "hd-ref-note";
+  const thisYear = new Date().getFullYear();
+  copyright.textContent = `© 2026${
+    thisYear > 2026 ? `–${thisYear}` : ""
+  } ZM-BAD. Apache-2.0 License.`;
+
+  const stack = document.createElement("p");
+  stack.className = "hd-ref-note";
+  stack.textContent = t("aboutStack");
+
+  const repo = document.createElement("p");
+  repo.className = "hd-ref-note";
+  const repoUrl = "https://github.com/ZM-BAD/headroom";
+  const link = (href: string, text: string) =>
+    `<a href="${href}" class="hd-link" target="_blank" rel="noopener">${text}</a>`;
+  repo.innerHTML = `${t("aboutContribute")} ${link(repoUrl, repoUrl)}`;
+  // Linkify "issue" and "pull request" in the contribute text
+  repo.innerHTML = repo.innerHTML
+    .replace("issue", link(`${repoUrl}/issues`, "issue"))
+    .replace("pull request", link(`${repoUrl}/pulls`, "pull request"));
+
+  body.append(name, desc, copyright, stack, repo);
+}
+
 // ---------- upstash (BYOK REST API) ----------
 
 /** Read + normalize the Upstash fields straight from the inputs (testable pre-save). */
@@ -801,6 +972,9 @@ void (async () => {
   els.upstashToken.value = currentUpstash.token;
   buildContextLimitRows();
   buildCoefficientRows();
+  buildPlatformReference();
+  buildEstimationGuide();
+  buildAbout();
   // Preload tables for all supported locales so manual override is instant.
   await Promise.all(
     (
