@@ -50,9 +50,9 @@ Yes for any realistic personal use. Upstash's free tier ([pricing](https://upsta
 
 We welcome bug reports, feature requests, and code contributions!
 
-- **Found a bug?** → [Report an issue](https://github.com/badlogic/headroom/issues/new/choose)
+- **Found a bug?** → [Report an issue](https://github.com/ZM-BAD/headroom/issues/new/choose)
 - **Want to contribute?** → Read our [Contributing Guide](./CONTRIBUTING.md)
-- **Testing help needed?** → See [open issues](https://github.com/badlogic/headroom/issues) labeled `needs-test`
+- **Testing help needed?** → See [open issues](https://github.com/ZM-BAD/headroom/issues) labeled `needs-test`
 
 ## Browser Support
 
@@ -84,7 +84,7 @@ architecture — adding a new AI chat platform is a matter of writing one adapte
 
 - **[WXT](https://wxt.dev/)** — Next-gen web extension framework (Manifest V3)
 - **Native Side Panel API** — Browser-native sidebar (Chrome `sidePanel`, Firefox `sidebarAction`)
-- **Heuristic token estimation** — a per-platform × per-script coefficient matrix (v1: Chinese + English); no heavy tokenizer bundled (keeps the extension light and model-agnostic)
+- **Heuristic token estimation** — 6-way per-script coefficient engine (CJK, Kana, Hangul, Cyrillic, Arabic, Latin); char-based for CJK/kana/Hangul, word-based for the rest. No heavy tokenizer bundled (keeps the extension light and model-agnostic)
 - **Upstash Redis KV** — User-owned cloud storage (BYOK model)
 
 ## Development
@@ -107,7 +107,7 @@ Full details: [PRIVACY.md](./PRIVACY.md).
 
 ## License
 
-Copyright 2026 周铭 (ZM-BAD).
+Copyright 2026 ZM-BAD.
 
 Licensed under the **Apache License, Version 2.0** — see [LICENSE](./LICENSE).
 You may obtain a copy of the License at

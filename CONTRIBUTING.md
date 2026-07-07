@@ -6,7 +6,7 @@
 
 有两种方式反馈问题：
 
-- **GitHub Issues**：[点击创建 issue](https://github.com/badlogic/headroom/issues/new/choose)
+- **GitHub Issues**：[点击创建 issue](https://github.com/ZM-BAD/headroom/issues/new/choose)
 - **Discord/邮件**：如果涉及敏感信息，请私下联系我
 
 ### 提 Issue 前请确认
@@ -19,7 +19,7 @@
 
 请尽可能提供以下信息，有助于快速定位：
 
-- 平台名称（DeepSeek / ChatGPT / Gitmi / Kimi / Qwen / 通义千问 / 豆包）
+- 平台名称（DeepSeek / ChatGPT / Gemini / Kimi / Qwen / 通义千问 / 豆包）
 - 浏览器及版本（Chrome / Edge / Firefox + 版本号）
 - 扩展版本（在 `chrome://extensions` 中查看）
 - 复现步骤
@@ -46,9 +46,10 @@ Headroom 覆盖多个平台×浏览器的组合。核心功能测试在每次发
 
 ### Token 估算验证
 
-- 纯中文消息：token ≈ 字数 × 0.6
-- 纯英文消息：token ≈ 词数 × 0.5
-- 中英混排：按字符类型分别计费
+- CJK 字符：token ≈ 字 × 0.6 tok/ch
+- 假名 / 谚文：按字符数 × 各自系数
+- 英文 / 拉丁字母：token ≈ 词数 × 0.5 tok/wd
+- 中英混排：CJK 按字计、英文按词计，互不重复计数
 
 ### 轮次生命周期
 
@@ -70,7 +71,7 @@ Headroom 覆盖多个平台×浏览器的组合。核心功能测试在每次发
 
 ```bash
 # 克隆项目
-git clone https://github.com/badlogic/headroom.git
+git clone https://github.com/ZM-BAD/headroom.git
 cd headroom
 
 # 安装依赖
@@ -134,7 +135,7 @@ headroom/
 │   ├── deepseek.ts          # DeepSeek 参考实现
 │   └── __tests__/           # 适配器 parse 测试
 ├── utils/                   # 工具函数（纯逻辑，有单测覆盖）
-│   ├── estimate.ts          # Token 估算引擎
+│   ├── estimate.ts          # 六路文字系统 token 估算引擎 (spec 004)
 │   ├── dialogue-record.ts   # 对话记录数据结构 + union merge
 │   ├── upstash.ts           # Upstash REST 客户端
 │   ├── local-cache.ts       # 本地缓存 LRU 淘汰
@@ -144,6 +145,16 @@ headroom/
 │   ├── cloud-settings.ts    # 云端设置（凭证剥离）
 │   ├── thresholds.ts        # 预警阈值逻辑
 │   └── match-host.ts        # URL → platform 匹配
+├── brand/                   # 项目 logo 源文件（SVG）
+│   ├── blue.svg             # 主 logo（Headroom 仪表盘图标）
+│   └── white.svg            # 浅色背景备用
+├── icon/                    # 平台 logo（SVG，供 UI 使用）
+│   ├── default.svg          # 默认图标（→ ../brand/blue.svg 软链接）
+│   ├── deepseek.svg — qwen.svg  # 7 个平台品牌 logo
+│   └── openai.svg           # ChatGPT 使用 OpenAI logo
+├── public/                  # 静态资源
+│   ├── _locales/            # i18n 翻译（en + zh_CN 完整，其余回退英文）
+│   └── icon/                # 扩展图标 PNG（从 brand/blue.svg 渲染）
 ├── specs/                   # 设计规格 + 验收 checklist
 │   ├── 001-headroom-core.md
 │   ├── 002-upstash-data-layer.md

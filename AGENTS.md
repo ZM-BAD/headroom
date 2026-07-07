@@ -58,8 +58,48 @@ Upstash Redis (user-owned, BYOK) is the **cross-device merge point + cloud persi
 - `eslint.config.js` — ESLint flat config (TS + auto-imports aware)
 - `.github/workflows/ci.yml` — GitHub Actions: lint + typecheck + build
 - `.husky/pre-commit` — lint-staged (ESLint + Prettier on staged files)
+- `brand/` — project logo source SVGs (`blue.svg` main, `white.svg` light-bg variant)
+- `icon/` — per-platform brand SVGs + `default.svg` (→ `../brand/blue.svg` symlink); imported by the sidepanel at build time
+- `public/icon/` — extension toolbar icons (PNGs rendered from `brand/blue.svg`)
+- `public/_locales/` — i18n message catalogs (en + zh_CN complete; 8 other locales fall back to en for new keys)
 - `.wxt/` — generated types, do not edit manually
 - `.output/` — build output, gitignored
+
+### i18n system
+
+The sidepanel uses a two-layer translator (`t()` in `main.ts`):
+
+1. Manual override layer — `localeTables[selectedLang]`, loaded at init from the 10 `_locales/*/messages.json` files
+2. Browser-native layer — `browser.i18n.getMessage(key)`, used in "auto" mode
+
+When a key is missing in the selected locale, `t()` explicitly falls back to `localeTables["en"]` — NOT to `browser.i18n.getMessage(key)`. The browser API uses the **browser's UI language**, which can be a third language (e.g. browser is zh_CN, user selected Deutsch). Explicit en fallback ensures untranslated keys always show English, not whatever the browser happens to speak.
+
+New keys only need to be added to `en/messages.json` and `zh_CN/messages.json`; the other 8 locales inherit English via the fallback chain. See `sidepanel/main.ts` → `t()` for the implementation.
+
+### Token estimation engine (spec 004)
+
+Six writing systems, each with an independent coefficient:
+
+| Script                   | Counting unit | Default coeff |
+| ------------------------ | ------------- | ------------- |
+| CJK (中日韩统一表意文字) | per character | 0.6 tok/ch    |
+| Kana (仮名)              | per character | 0.5 tok/ch    |
+| Hangul (한글)            | per character | 0.5 tok/ch    |
+| Cyrillic                 | per word      | 0.5 tok/wd    |
+| Arabic                   | per word      | 0.5 tok/wd    |
+| Latin (fallback)         | per word      | 0.5 tok/wd    |
+
+Char-based scripts are NOT double-counted as words. Coefficients are user-overridable per platform in the Advanced Settings panel. The engine lives in `utils/estimate.ts`; coefficients flow through `Settings.tokenCoefficients` → Upstash cloud sync.
+
+### Adding a new platform
+
+1. Create `adapters/<platform>.ts` implementing `PlatformAdapter` (see `utils/platform-adapter.ts`)
+2. Register in `adapters/index.ts` → `ADAPTERS` array
+3. Add SVG brand icon to `icon/<platform>.svg` (and `PLATFORM_ICON` map in `sidepanel/main.ts`)
+4. Add entry to `PLATFORM_REF` array in `sidepanel/main.ts` for the Platform Reference section
+5. Add `host_permissions` entry in `wxt.config.ts`
+6. Run `npx wxt prepare` to refresh types
+7. If no SVG exists, `icon/default.svg` (the Headroom gauge) is used automatically via `PLATFORM_ICON[platformId] ?? defaultIcon`
 
 ## Commit Messages
 

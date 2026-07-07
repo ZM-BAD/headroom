@@ -50,9 +50,9 @@ Headroom 显示在浏览器的原生侧边栏中，实时可视化你的 context
 
 欢迎 Bug 反馈、功能建议和代码贡献！
 
-- **遇到问题？** → [提交 issue](https://github.com/badlogic/headroom/issues/new/choose)
+- **遇到问题？** → [提交 issue](https://github.com/ZM-BAD/headroom/issues/new/choose)
 - **想要贡献代码？** → 阅读 [贡献指南](./CONTRIBUTING.md)
-- **帮忙测试？** → 查看标记了 `needs-test` 的 [开放 issue](https://github.com/badlogic/headroom/issues)
+- **帮忙测试？** → 查看标记了 `needs-test` 的 [开放 issue](https://github.com/ZM-BAD/headroom/issues)
 
 ## 浏览器支持
 
@@ -82,7 +82,7 @@ Headroom **仅支持 Manifest V3**（不支持 MV2），需要较新的浏览器
 
 - **[WXT](https://wxt.dev/)** — 下一代 Web 扩展框架 (Manifest V3)
 - **原生 Side Panel API** — 浏览器原生侧边栏 (Chrome `sidePanel`、Firefox `sidebarAction`)
-- **启发式 token 估算** — 按「平台 × 文字脚本」系数矩阵（v1：中文 + 英文）；不打包重型 tokenizer（保持扩展轻量、模型无关）
+- **启发式 token 估算** — 六路文字系统系数引擎（中日韩/假名/谚文/西里尔/阿拉伯/拉丁）；汉字类按字计，单词类按词计。不打包重型 tokenizer（保持扩展轻量、模型无关）
 - **Upstash Redis KV** — 用户自有云存储（BYOK 模式）
 
 ## 开发
@@ -102,7 +102,7 @@ Headroom 读取你的对话文本仅用于计算 token——它**只存储计数
 
 ## 许可证
 
-Copyright 2026 周铭 (ZM-BAD)。
+Copyright 2026 ZM-BAD。
 
 基于 **Apache License, Version 2.0** 授权 — 详见 [LICENSE](./LICENSE)。你可以在以下地址获取协议副本：
 
