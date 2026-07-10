@@ -659,6 +659,11 @@ body {
   filter: brightness(1.08);
   border-color: var(--accent);
 }
+/* Saved feedback: button turns green then fades back. */
+.hd-btn--saved {
+  background: var(--green) !important;
+  border-color: var(--green) !important;
+}
 .hd-btn--block {
   width: 100%;
 }

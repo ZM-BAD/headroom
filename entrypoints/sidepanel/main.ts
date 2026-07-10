@@ -171,6 +171,9 @@ function statusText(level: Level): string {
 /** Localize every [data-i18n] element/attr from messages. */
 function applyI18n(root: ParentNode = document.body): void {
   root.querySelectorAll<HTMLElement>("[data-i18n]").forEach((el) => {
+    // Don't overwrite the "Saved ✓" flash on the save button — it resets
+    // itself after the animation completes.
+    if (el.classList.contains("hd-btn--saved")) return;
     el.textContent = t(el.dataset.i18n!);
   });
   root.querySelectorAll<HTMLElement>("[data-i18n-title]").forEach((el) => {
@@ -270,9 +273,33 @@ function showView(view: "main" | "settings"): void {
 }
 
 els.settingsBtn.addEventListener("click", () => showView("settings"));
+
+/** Reload settings from storage and reset every input to the last-saved values. */
+async function discardSettingsChanges(): Promise<void> {
+  const settings = await getSettings();
+  currentThresholds = settings.thresholds;
+  currentLanguage = settings.language;
+  currentUpstash = settings.upstash;
+  currentContextLimits = settings.contextLimits;
+  currentTokenCoefficients = settings.tokenCoefficients;
+  els.langSelect.value = currentLanguage;
+  els.upstashUrl.value = currentUpstash.url;
+  els.upstashToken.value = currentUpstash.token;
+  els.upstashToken.type = "password";
+  setUpstashStatus(null, "");
+  renderTokenToggle();
+  buildContextLimitRows();
+  buildCoefficientRows();
+  applyThresholdsToSliders(currentThresholds);
+  applyI18n();
+  render(currentState, currentThresholds);
+}
+
 // Back discards unsaved working-copy edits (no confirm) — fine while there's
 // a single writer; revisit (dirty check) if a second writer ever appears.
-els.settingsBack.addEventListener("click", () => showView("main"));
+els.settingsBack.addEventListener("click", () => {
+  void discardSettingsChanges().then(() => showView("main"));
+});
 
 // ---------- thresholds ----------
 
@@ -878,10 +905,15 @@ function flashSaved(): void {
   const btn = els.settingsSave;
   btn.textContent = `${t("settingsSaved")} ✓`;
   btn.classList.add("hd-btn--saved");
+  // Let the green linger briefly, then remove the class so the CSS transition
+  // fades back to the primary colour. Restore the original label after the
+  // transition completes.
   window.setTimeout(() => {
-    btn.textContent = t("saveSettings");
     btn.classList.remove("hd-btn--saved");
   }, 1200);
+  window.setTimeout(() => {
+    btn.textContent = t("saveSettings");
+  }, 1400);
 }
 
 els.settingsSave.addEventListener("click", () => {
@@ -1009,8 +1041,7 @@ browser.runtime.onMessage.addListener((message: HeadroomMessage) => {
 browser.storage.onChanged.addListener((changes, area) => {
   if (area !== "local") return;
   const next = (changes[STORAGE_KEY]?.newValue ?? undefined) as
-    | Partial<Settings>
-    | undefined;
+    Partial<Settings> | undefined;
   if (!next) return;
   if (next.thresholds) {
     currentThresholds = {
