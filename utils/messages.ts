@@ -87,6 +87,29 @@ export interface GetTitleMessage {
   type: "GET_TITLE";
 }
 
+/**
+ * Background → content script: the user clicked stop generating. Read the
+ * last user prompt + partial AI reply from the DOM and send them back so the
+ * gauge can display an immediate (temporary) round before the history API
+ * catches up (001-17 stop-generation immediate feedback).
+ */
+export interface GetStopRoundMessage {
+  type: "GET_STOP_ROUND";
+}
+
+/**
+ * Content → background: DOM-scraped text from a stopped generation. The
+ * background estimates tokens, adds a temporary local-only round (never
+ * written to Upstash), and broadcasts the updated gauge immediately.
+ */
+export interface StopRoundDataMessage {
+  type: "STOP_ROUND_DATA";
+  /** The last user prompt text (from DOM). */
+  promptText: string;
+  /** The partial AI answer text visible in the page (from DOM). */
+  answerText: string;
+}
+
 export type HeadroomMessage =
   | PageReadyMessage
   | GetStateMessage
@@ -95,7 +118,9 @@ export type HeadroomMessage =
   | RefreshHistoryMessage
   | HistoryParsedMessage
   | ConversationListMessage
-  | FetchConversationListMessage;
+  | FetchConversationListMessage
+  | GetStopRoundMessage
+  | StopRoundDataMessage;
 
 /**
  * Live usage state rendered by the side panel — a pure DISPLAY projection of

@@ -161,8 +161,9 @@ describe("parseChatGptHistory", () => {
     expect(round.promptText).toBe("real text");
   });
 
-  it("skips a user node whose reply never arrived (no assistant-text descendant)", () => {
+  it('pairs stopped generation as a round with answerText=""', () => {
     // User with a model_editable_context child but no text reply downstream.
+    // The prompt still consumed tokens — count it with empty answerText.
     const resp = {
       mapping: {
         u1: {
@@ -176,12 +177,21 @@ describe("parseChatGptHistory", () => {
           message: {
             author: { role: "assistant" },
             content: { content_type: "model_editable_context", parts: [] },
+            create_time: 1780272000,
           },
           children: [],
         },
       },
     };
-    expect(parseChatGptHistory(resp)).toEqual([]);
+    expect(parseChatGptHistory(resp)).toEqual([
+      {
+        messageId: "stub_only",
+        order: 1780272000,
+        createdAt: 1780272000000,
+        promptText: "pending question",
+        answerText: "",
+      },
+    ]);
   });
 
   it("returns [] for empty / missing / malformed mapping", () => {

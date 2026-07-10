@@ -72,14 +72,27 @@ export default defineContentScript({
       }
     };
 
-    // On the platform HOME page (no dialogue id), fetch the conversation list
-    // and ship it for zombie cleanup (spec 003): the background diffs it
-    // against the cloud keys and DELs orphans. No-op when the adapter can't
-    // list conversations or a specific conversation is open.
-    const fetchAndShipConversationList = async (): Promise<void> => {
+    // On the platform HOME page (no dialogue id), fetch the conversation
+    // list and ship it for zombie cleanup (spec 003). When force=true
+    // (alarm-triggered FETCH_CONVERSATION_LIST), skip the dialogueId gate
+    // — the alarm needs the list regardless of which page the user is on.
+    //
+    // 30 s throttle on non-forced calls prevents hammering the platform API
+    // during rapid SPA toggling between home ↔ conversation.  force=true
+    // (alarm, every 60 min) and first-ever call are never throttled.
+    let lastFetchConvListTs = 0;
+    const FETCH_CONV_LIST_THROTTLE_MS = 30_000;
+    const fetchAndShipConversationList = async (
+      opts: { force?: boolean } = {},
+    ): Promise<void> => {
       if (!adapter.fetchConversationList) return;
-      const dialogueId = adapter.dialogueIdFromUrl?.(location.href) ?? null;
-      if (dialogueId) return; // a conversation is open, not the home page
+      if (!opts.force) {
+        const dialogueId = adapter.dialogueIdFromUrl?.(location.href) ?? null;
+        if (dialogueId) return; // a conversation is open, not the home page
+        const now = Date.now();
+        if (now - lastFetchConvListTs < FETCH_CONV_LIST_THROTTLE_MS) return;
+        lastFetchConvListTs = now;
+      }
       try {
         const ids = await adapter.fetchConversationList();
         if (ids.length === 0) return;
@@ -89,8 +102,8 @@ export default defineContentScript({
           url: location.href,
           ids,
         } satisfies ConversationListMessage);
-      } catch {
-        // list fetch failed — the next open-home retries
+      } catch (e) {
+        console.warn("[Headroom] fetchConversationList failed:", e);
       }
     };
 
@@ -102,11 +115,55 @@ export default defineContentScript({
       (message: HeadroomMessage, _sender, sendResponse) => {
         if (message.type === "REFRESH_HISTORY") void fetchAndShipHistory();
         if (message.type === "FETCH_CONVERSATION_LIST")
-          void fetchAndShipConversationList();
+          void fetchAndShipConversationList({ force: true });
         if (message.type === "GET_TITLE") {
           sendResponse({
             dialogueTitle: adapter.dialogueTitleFromDoc?.(document) ?? null,
           });
+        }
+        if (message.type === "GET_STOP_ROUND") {
+          void (async () => {
+            // Find last AI reply (partial answer after stop).
+            const answerEls = document.querySelectorAll(adapter.answerSelector);
+            const lastAnswer = answerEls[answerEls.length - 1];
+            const answerText = (
+              lastAnswer as HTMLElement | undefined
+            )?.innerText?.trim();
+            if (!answerText) return;
+            // Find last user prompt — use adapter.userSelector if defined,
+            // otherwise walk backwards from the answer element.
+            let promptText = "";
+            if (adapter.userSelector) {
+              const userEls = document.querySelectorAll(adapter.userSelector);
+              const lastUser = userEls[userEls.length - 1];
+              promptText =
+                (lastUser as HTMLElement | undefined)?.innerText?.trim() ?? "";
+            }
+            if (!promptText) {
+              // Fallback: walk backwards from the answer element to find
+              // the preceding user message.
+              let walker: Element | null = lastAnswer;
+              for (let i = 0; i < 20 && walker; i++) {
+                const sib: Element | null = walker.previousElementSibling;
+                if (sib) {
+                  const text = (sib as HTMLElement).innerText?.trim();
+                  if (text && text !== answerText) {
+                    promptText = text;
+                    break;
+                  }
+                  walker = sib;
+                } else {
+                  walker = walker.parentElement;
+                }
+              }
+            }
+            if (!promptText) return;
+            send({
+              type: "STOP_ROUND_DATA",
+              promptText,
+              answerText,
+            } satisfies HeadroomMessage);
+          })();
         }
       },
     );

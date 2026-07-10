@@ -124,7 +124,10 @@ export const doubaoAdapter: PlatformAdapter = {
     }
     return parseDoubaoHistory(messages);
   },
-  // POST /im/chain/recent_conv (cookie auth, same IM gateway as fetchHistory).
+  // POST /im/chain/recent_conv — ByteDance IM gateway. Needs a JSON body
+  // with cmd:3200 + uplink_body (same envelope as fetchHistory). Without
+  // the body the gateway returns status_code 712010702 with empty data.
+  // Confirmed live (2026-07, Playwright).
   // Used by zombie cleanup (spec 003).
   async fetchConversationList() {
     try {
@@ -137,10 +140,47 @@ export const doubaoAdapter: PlatformAdapter = {
             "content-type": "application/json; encoding=utf-8",
             "agw-js-conv": "str",
           },
+          body: JSON.stringify({
+            cmd: 3200,
+            uplink_body: {
+              pull_recent_conv_chain_uplink_body: {
+                limit: 20,
+                message_count_per_conv: 10,
+                api_version: 1,
+                conv_version: 0,
+                direction: 3,
+                option: {
+                  not_need_message: true,
+                  need_complete_conversation: true,
+                  need_coco_conversation: true,
+                  need_coco_bot: true,
+                  need_pc_pin_chain: true,
+                  pc_pin_query_type: 0,
+                },
+              },
+            },
+            sequence_id: crypto.randomUUID(),
+            channel: 2,
+            version: "1",
+          }),
         },
       );
-      if (!res.ok) return [];
+      if (!res.ok) {
+        console.warn(
+          "[Headroom] doubao fetchConversationList HTTP",
+          res.status,
+        );
+        return [];
+      }
       const json = await res.json();
+      if (json.status_code && json.status_code !== 0) {
+        console.warn(
+          "[Headroom] doubao fetchConversationList API error",
+          json.status_code,
+          json.status_desc,
+        );
+        return [];
+      }
       const cells: Array<{
         id?: string;
         conversation?: { conversation_id?: string };
@@ -149,7 +189,8 @@ export const doubaoAdapter: PlatformAdapter = {
       return cells
         .map((c) => c.conversation?.conversation_id ?? c.id)
         .filter((id): id is string => typeof id === "string");
-    } catch {
+    } catch (e) {
+      console.warn("[Headroom] doubao fetchConversationList error:", e);
       return [];
     }
   },
@@ -305,6 +346,16 @@ export function parseDoubaoHistory(messages: DoubaoMessage[]): HistoryRound[] {
         answerText: answer.text,
         // doubao create_time is epoch seconds → ms.
         createdAt: answer.ts > 0 ? answer.ts * 1000 : undefined,
+      });
+    } else {
+      // No bot reply follows this user (e.g. user stopped generation).
+      // Count the round with answerText="" — the prompt still consumed tokens.
+      rounds.push({
+        messageId: `db:u${i}`,
+        order: enriched[i].ts,
+        promptText,
+        answerText: "",
+        createdAt: enriched[i].ts > 0 ? enriched[i].ts * 1000 : undefined,
       });
     }
   }

@@ -69,8 +69,9 @@ export function parseDeepSeekHistory(resp: unknown): HistoryRound[] {
   for (const m of messages) {
     if (m?.role !== "ASSISTANT") continue;
     if (typeof m.message_id !== "number") continue;
-    // Skip incomplete/stopped messages — they aren't real rounds (ROUND-4).
-    if (m.status && m.status !== "FINISHED") continue;
+    // Allow incomplete/stopped messages — stopped generation still counts as a
+    // round (answerText may be ""). The dedup below prefers higher message_id,
+    // so a retry always wins over a stopped attempt for the same parent.
     const parentId = m.parent_id;
     if (parentId == null || typeof parentId !== "number") continue;
     const parent = byId.get(parentId);
@@ -146,6 +147,17 @@ export const deepseekAdapter: PlatformAdapter = {
   displayName: "DeepSeek",
   host: "chat.deepseek.com",
   completionUrl: "*://chat.deepseek.com/api/v0/chat/completion",
+  // Confirmed live (2026-07, Playwright): clicking "stop generating" sends a
+  // SEPARATE POST /api/v0/chat/stop_stream (not an abort of the completion
+  // request). The SSE stream closes normally afterward → onCompleted fires on
+  // completionUrl, not onErrorOccurred. Without this stopUrl, Headroom has no
+  // way to know the user stopped and can't retry with backoff (001-17).
+  stopUrl: "*://chat.deepseek.com/api/v0/chat/stop_stream",
+  // Confirmed live (2026-07, Playwright): "continue generating" sends
+  // POST /api/v0/chat/continue (separate endpoint from /completion).
+  // Completion behaves identically to /completion — when the stream closes
+  // the continued answer is in history, same messageId, round count unchanged.
+  continueUrl: "*://chat.deepseek.com/api/v0/chat/continue*",
   matchPattern: "*://chat.deepseek.com/*",
   contextLimit: 1_048_576, // 1M (1 << 20); overridable
   tokenCoefficients: DEFAULT_COEFFICIENTS, // v1 reference (cjk 0.6 / latin 0.5); calibrate in spec 004

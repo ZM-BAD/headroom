@@ -22,7 +22,7 @@ export const chatgptAdapter: PlatformAdapter = {
   platformId: "chatgpt",
   displayName: "ChatGPT",
   host: "chatgpt.com",
-  completionUrl: "*://chatgpt.com/backend-api/conversation",
+  completionUrl: "*://chatgpt.com/backend-api/conversation*",
   matchPattern: "*://chatgpt.com/*",
   contextLimit: 131_072, // 128K (1 << 17); overridable
   tokenCoefficients: DEFAULT_COEFFICIENTS, // v1 default; calibrate in spec 004
@@ -108,6 +108,7 @@ export const chatgptAdapter: PlatformAdapter = {
         }
         offset += limit;
         if (offset >= (json.total ?? 0)) break;
+        await new Promise((r) => setTimeout(r, 300));
       }
       return ids;
     } catch {
@@ -185,13 +186,26 @@ export function parseChatGptHistory(resp: unknown): HistoryRound[] {
     const promptText = joinChatGptParts(node.message?.content?.parts);
     if (!promptText) continue; // empty/hidden user node — skip
     const answer = findFirstAssistantText(mapping, node.children);
-    if (!answer) continue; // user with no reply yet — skip
-    staged.push({
-      ts: typeof answer.ts === "number" ? answer.ts : 0,
-      assistantId: answer.id,
-      promptText,
-      answerText: answer.text,
-    });
+    if (answer) {
+      staged.push({
+        ts: typeof answer.ts === "number" ? answer.ts : 0,
+        assistantId: answer.id,
+        promptText,
+        answerText: answer.text,
+      });
+    } else {
+      // No text-containing assistant found — user may have stopped
+      // generation. Fall back to any assistant child (even empty).
+      const any = findFirstAssistantAny(mapping, node.children);
+      if (any) {
+        staged.push({
+          ts: any.ts,
+          assistantId: any.id,
+          promptText,
+          answerText: "",
+        });
+      }
+    }
   }
   // Order rounds chronologically (oldest first) by the reply's create_time.
   staged.sort((a, b) => a.ts - b.ts);
@@ -242,6 +256,37 @@ function findFirstAssistantText(
       }
       // assistant but not a text node (e.g. model_editable_context) — keep
       // walking ITS children in case the real reply is one more hop down.
+    }
+    if (Array.isArray(node.children)) queue.push(...node.children);
+  }
+  return null;
+}
+
+/**
+ * Like findFirstAssistantText but returns the first assistant node regardless
+ * of whether it has text content. Fallback when the user stopped generation
+ * and the assistant node exists but has no readable text.
+ */
+function findFirstAssistantAny(
+  mapping: Record<string, ChatGptNode>,
+  startChildren: string[] | undefined,
+): { ts: number; id: string } | null {
+  const queue = [...(startChildren ?? [])];
+  const seen = new Set<string>();
+  while (queue.length) {
+    const id = queue.shift();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const node = mapping[id];
+    if (!node) continue;
+    if (node.message?.author?.role === "assistant") {
+      return {
+        id,
+        ts:
+          typeof node.message?.create_time === "number"
+            ? node.message.create_time
+            : 0,
+      };
     }
     if (Array.isArray(node.children)) queue.push(...node.children);
   }

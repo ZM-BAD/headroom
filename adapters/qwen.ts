@@ -99,6 +99,7 @@ export const qwenAdapter: PlatformAdapter = {
         }
         if (data.length === 0) break;
         page++;
+        await new Promise((r) => setTimeout(r, 300));
       }
       return ids;
     } catch {

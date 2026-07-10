@@ -38,6 +38,25 @@ export interface PlatformAdapter {
    * "*://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat".
    */
   completionUrl: string;
+  /**
+   * webRequest match-pattern for the platform's "stop generating" request, if
+   * the platform uses a dedicated endpoint (e.g. DeepSeek POST
+   * /api/v0/chat/stop_stream). Absent ⇒ stop is handled by onErrorOccurred on
+   * completionUrl (aborted fetch), which may not fire on all platforms. When
+   * set, onCompleted on this URL triggers a retry-based history fetch (spec
+   * 001-17: the partial answer may take longer to land in history after stop).
+   */
+  stopUrl?: string;
+  /**
+   * webRequest match-pattern for the platform's "continue generating" request,
+   * if the platform uses a dedicated endpoint (e.g. DeepSeek POST
+   * /api/v0/chat/continue). Absent ⇒ the platform resumes via completionUrl
+   * itself. When set, onCompleted on this URL triggers the same normal history
+   * fetch as completionUrl — the round's messageId is unchanged, so
+   * applyHistory replaces it with updated token counts (round count unchanged,
+   * token count updated, cloud synced).
+   */
+  continueUrl?: string;
   /** Content-script match pattern, e.g. "*://chat.deepseek.com/*". */
   matchPattern: string;
   /** Context window limit in tokens. */

@@ -85,36 +85,6 @@ function isArabic(ch: string): boolean {
   return RE_ARABIC.test(ch);
 }
 
-/** A character that belongs to ANY char-based script (not word-classified). */
-function isCharBased(ch: string): boolean {
-  return isCJK(ch) || isKana(ch) || isHangul(ch);
-}
-
-// ---- word-level classifiers (word-based scripts) ----
-
-/**
- * Classify a non-empty whitespace-separated token into exactly one word
- * bucket. Priority: Cyrillic > Arabic > Latin. A word composed entirely of
- * char-based characters (CJK/kana/Hangul) returns null — those are already
- * counted per-character and must not be double-counted.
- */
-function wordBucket(chars: string[]): "cyrillic" | "arabic" | "latin" | null {
-  let hasCyrillic = false;
-  let hasArabic = false;
-  let hasWordBased = false;
-
-  for (const ch of chars) {
-    if (isCyrillic(ch)) hasCyrillic = true;
-    else if (isArabic(ch)) hasArabic = true;
-    else if (!isCharBased(ch)) hasWordBased = true;
-  }
-
-  if (hasCyrillic) return "cyrillic";
-  if (hasArabic) return "arabic";
-  if (hasWordBased) return "latin";
-  return null; // pure CJK/kana/Hangul token — already counted per-char
-}
-
 // ---- public API ----
 
 /**
@@ -123,43 +93,72 @@ function wordBucket(chars: string[]): "cyrillic" | "arabic" | "latin" | null {
  * Char-based scripts (CJK, kana, Hangul): counted per character.
  * Word-based scripts (Cyrillic, Arabic, Latin): counted per whitespace-
  * separated word, each word assigned to at most one bucket.
+ *
+ * Single-pass: one iteration counts char-based scripts AND classifies
+ * word-based scripts on whitespace boundaries. Chinese has no whitespace
+ * delimiters, so the old two-pass approach (`split` + `[...tok]`) allocated
+ * an array of every single character on long Chinese texts — a GC bomb.
  */
 export function estimateTokens(text: string, coeff: TokenCoefficients): number {
   if (!text) return 0;
 
-  // ---- pass 1: char-based scripts (per-character) ----
   let cjkChars = 0;
   let kanaChars = 0;
   let hangulChars = 0;
-
-  for (const ch of text) {
-    if (isCJK(ch)) cjkChars++;
-    else if (isKana(ch)) kanaChars++;
-    else if (isHangul(ch)) hangulChars++;
-  }
-
-  // ---- pass 2: word-based scripts (per whitespace-separated token) ----
   let cyrillicWords = 0;
   let arabicWords = 0;
   let latinWords = 0;
 
-  const tokens = text.split(/\s+/);
-  for (const tok of tokens) {
-    if (tok.length === 0) continue;
-    const chars = [...tok];
-    const bucket = wordBucket(chars);
-    switch (bucket) {
-      case "cyrillic":
-        cyrillicWords++;
-        break;
-      case "arabic":
-        arabicWords++;
-        break;
-      case "latin":
-        latinWords++;
-        break;
-      // null: pure char-based token → already counted, skip
+  // Word classification state: accumulated across chars between whitespace.
+  // Priority: Cyrillic (3) > Arabic (2) > Latin (1) > pure-char-based (0).
+  let inWord = false;
+  let wordClass = 0;
+
+  for (const ch of text) {
+    // Whitespace delimits words — flush the completed word.
+    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+      if (inWord) {
+        if (wordClass === 3) cyrillicWords++;
+        else if (wordClass === 2) arabicWords++;
+        else if (wordClass === 1) latinWords++;
+        // wordClass 0: pure CJK/kana/Hangul — already counted per-char
+        inWord = false;
+        wordClass = 0;
+      }
+      continue;
     }
+
+    inWord = true;
+
+    // Char-based: count per character, don't upgrade wordClass.
+    if (isCJK(ch)) {
+      cjkChars++;
+      continue;
+    }
+    if (isKana(ch)) {
+      kanaChars++;
+      continue;
+    }
+    if (isHangul(ch)) {
+      hangulChars++;
+      continue;
+    }
+
+    // Word-based: classify the current word (precedence: Cyrillic > Arabic > Latin).
+    if (isCyrillic(ch)) {
+      wordClass = 3;
+    } else if (isArabic(ch)) {
+      if (wordClass < 2) wordClass = 2;
+    } else {
+      if (wordClass < 1) wordClass = 1;
+    }
+  }
+
+  // Flush the last word (text may not end with whitespace).
+  if (inWord) {
+    if (wordClass === 3) cyrillicWords++;
+    else if (wordClass === 2) arabicWords++;
+    else if (wordClass === 1) latinWords++;
   }
 
   return (

@@ -159,9 +159,10 @@ describe("parseDoubaoHistory", () => {
     ]);
   });
 
-  it("stops pairing at the next user (does not match a later bot to an earlier user)", () => {
-    // user → user (no bot between) → bot. The first user must NOT pair forward
-    // past the second user; only the second user pairs with the bot.
+  it('pairs unpaired user with answerText="" when no bot follows', () => {
+    // user → user (no bot between) → bot. The first user has no reply —
+    // count it with answerText="" (stopped/abandoned). The second user pairs
+    // normally with the bot.
     const messages = [
       {
         user_type: 1,
@@ -183,6 +184,13 @@ describe("parseDoubaoHistory", () => {
       },
     ];
     expect(parseDoubaoHistory(messages)).toEqual([
+      {
+        messageId: "db:u0",
+        order: 100,
+        createdAt: 100000,
+        promptText: "Q1 abandoned",
+        answerText: "",
+      },
       {
         messageId: "db:t102",
         order: 102,

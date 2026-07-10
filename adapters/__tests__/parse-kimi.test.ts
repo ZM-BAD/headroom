@@ -138,10 +138,9 @@ describe("parseKimiHistory", () => {
     ]);
   });
 
-  it("skips a failed assistant (exception/no text block) and pairs its retry", () => {
-    // First assistant attempt failed (OVERLOADED → only an exception block);
-    // the user re-sent and the retry (a1b) succeeds. The failed assistant is
-    // skipped (no text); the retry pairs with its own parent user.
+  it('pairs a failed assistant (no text) as a round with answerText="" when the user didn\'t retry', () => {
+    // User stopped generation — the assistant has no text block but the prompt
+    // still consumed tokens. Count it as a round with answerTokens=0.
     const resp = {
       messages: [
         {
@@ -154,7 +153,37 @@ describe("parseKimiHistory", () => {
           role: "assistant",
           parentId: "u1",
           createTime: "2026-06-01T00:00:00Z",
-          // failed assistant: only an exception block, no text → skipped
+          // stopped/failed: only empty id blocks, no text
+          blocks: [{ id: {} }, { id: {} }],
+        },
+      ],
+    };
+    expect(parseKimiHistory(resp)).toEqual([
+      {
+        messageId: "a1_failed",
+        order: 1780272000000,
+        createdAt: 1780272000000,
+        promptText: "Q1",
+        answerText: "",
+      },
+    ]);
+  });
+
+  it("counts both the failed attempt and the retry when the user resends", () => {
+    // First attempt failed (OVERLOADED), user retried with same prompt via a
+    // new user message. Both consumed tokens — count both rounds.
+    const resp = {
+      messages: [
+        {
+          id: "u1",
+          role: "user",
+          blocks: [{ text: { content: "Q1" } }],
+        },
+        {
+          id: "a1_failed",
+          role: "assistant",
+          parentId: "u1",
+          createTime: "2026-06-01T00:00:00Z",
           blocks: [{ exception: { reason: "REASON_COMPLETION_OVERLOADED" } }],
         },
         {
@@ -172,6 +201,13 @@ describe("parseKimiHistory", () => {
       ],
     };
     expect(parseKimiHistory(resp)).toEqual([
+      {
+        messageId: "a1_failed",
+        order: 1780272000000,
+        createdAt: 1780272000000,
+        promptText: "Q1",
+        answerText: "",
+      },
       {
         messageId: "a1_retry",
         order: 1780272010000,

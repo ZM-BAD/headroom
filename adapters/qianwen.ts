@@ -145,6 +145,7 @@ export const qianwenAdapter: PlatformAdapter = {
         }
         nextToken = (json as { next_token?: string }).next_token ?? "";
         if (!nextToken) break;
+        await new Promise((r) => setTimeout(r, 300));
       }
       return ids;
     } catch {

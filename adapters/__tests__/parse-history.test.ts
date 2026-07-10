@@ -241,9 +241,9 @@ describe("parseDeepSeekHistory", () => {
     expect(rounds[0].answerText).toBe("new answer");
   });
 
-  it("skips non-FINISHED ASSISTANT (stopped mid-generation)", () => {
-    // A message stopped mid-generation should NOT count as a round.
-    // When the user continues, it flips to FINISHED → counted then.
+  it("counts CANCELLED assistant as a round (stopped generation)", () => {
+    // A stopped mid-generation reply still consumes the prompt's tokens.
+    // Count it as a round with whatever partial answer the fragments carry.
     const resp = {
       data: {
         biz_data: {
@@ -265,6 +265,14 @@ describe("parseDeepSeekHistory", () => {
         },
       },
     };
-    expect(parseDeepSeekHistory(resp)).toEqual([]);
+    expect(parseDeepSeekHistory(resp)).toEqual([
+      {
+        messageId: "2",
+        order: 2,
+        createdAt: undefined,
+        promptText: "long question",
+        answerText: "partial a",
+      },
+    ]);
   });
 });

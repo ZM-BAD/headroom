@@ -69,7 +69,10 @@ import { adapterForUrl, isSupportedPlatformUrl } from "../utils/match-host";
  * Cap on rounds shipped to the panel for the per-round breakdown. The local
  * record keeps MAX_RETAINED_ROUNDS; the wire payload is trimmed for display.
  */
-const DISPLAY_ROUNDS = 50;
+// 200 covers very long conversations (50+ rounds); the old 50
+// was too tight — verified with a 52-round Kimi conversation that
+// lost the first 2 rounds from the per-round breakdown.
+const DISPLAY_ROUNDS = 200;
 
 const IDLE_STATE: UsageState = {
   platformId: null,
@@ -90,8 +93,14 @@ const IDLE_STATE: UsageState = {
  */
 const tabDialogueTitle = new Map<number, string | null>();
 
-/** webRequest URL filter built from every adapter's completion match-pattern. */
-const URL_FILTER = ADAPTERS.map((a) => a.completionUrl);
+/** webRequest URL filters built from adapter match-patterns.
+ *  completionUrl + continueUrl — both signal "round finished, fetch history".
+ *  stopUrl is handled separately with retry backoff (001-17). */
+const URL_FILTER = ADAPTERS.flatMap((a) =>
+  [a.completionUrl, a.continueUrl].filter(
+    (u): u is string => typeof u === "string",
+  ),
+);
 
 /**
  * Dispatch by request host (unique per platform). Host-based dispatch survives
@@ -106,7 +115,14 @@ function adapterForRequest(url: string): PlatformAdapter | undefined {
   } catch {
     return undefined;
   }
-  return ADAPTERS.find((a) => a.host === host);
+  return ADAPTERS.find((a) => {
+    if (a.host === host) return true;
+    // Subdomain match: some platforms send completion requests from a
+    // different subdomain than the page host (e.g. Doubao pages are on
+    // www.doubao.com but completion requests go to samantha.doubao.com).
+    const base = a.host.replace(/^www\./, "");
+    return host === base || host.endsWith("." + base);
+  });
 }
 
 // --- local per-conversation record store (the gauge's source of truth) ---
@@ -262,8 +278,7 @@ async function projectForTab(
       const response = (await browser.tabs.sendMessage(tabId, {
         type: "GET_TITLE",
       } satisfies HeadroomMessage)) as
-        | { dialogueTitle?: string | null }
-        | undefined;
+        { dialogueTitle?: string | null } | undefined;
       if (response?.dialogueTitle) {
         dialogueTitle = response.dialogueTitle;
         tabDialogueTitle.set(tabId, dialogueTitle); // refresh cache
@@ -287,15 +302,12 @@ export default defineBackground(() => {
   void enableSidePanelOnActionClick();
 
   // ── Zombie cleanup alarm (spec 003) ─────────────────────────────────
-  // 10-min periodic alarm iterates all platforms; for each that has an open
+  // 1-hour periodic alarm iterates all platforms; for each that has an open
   // home-page tab, sends FETCH_CONVERSATION_LIST to trigger a cleanup run.
-  // Falls back to the last-seen list (cached per platform) when no tab is
-  // available — best-effort, stale is acceptable for zombie sweeping.
-  browser.alarms.create("zombie-cleanup", { periodInMinutes: 10 });
-  const lastConversationList = new Map<string, string[]>();
+  browser.alarms.create("zombie-cleanup", { periodInMinutes: 60 });
   browser.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name !== "zombie-cleanup") return;
-    void runZombieCleanupFromAlarm(lastConversationList);
+    void runZombieCleanupFromAlarm();
   });
 
   // Gray out the toolbar action on non-platform tabs so Headroom is only
@@ -348,6 +360,31 @@ export default defineBackground(() => {
     (d) => finishRound(d.url, d.tabId),
     { urls: URL_FILTER },
   );
+
+  // Stop-generation URLs (spec 001-17). Some platforms send a dedicated
+  // "stop" request (e.g. DeepSeek POST /api/v0/chat/stop_stream). The
+  // partial answer is NOT in history at stop time — the platform only
+  // persists it when the conversation moves forward. For immediate UX we
+  // ask the content script to read the partial text from the DOM, estimate
+  // tokens, and display a temporary round. The temporary round is local-
+  // only (never synced to Upstash) and is overwritten by the next real
+  // history fetch (continue or next prompt via applyHistory).
+  const STOP_URL_FILTER = ADAPTERS.map((a) => a.stopUrl).filter(
+    (u): u is string => typeof u === "string",
+  );
+  if (STOP_URL_FILTER.length > 0) {
+    browser.webRequest.onCompleted.addListener(
+      (d) => {
+        if (d.tabId < 0) return;
+        void browser.tabs
+          .sendMessage(d.tabId, {
+            type: "GET_STOP_ROUND",
+          } satisfies HeadroomMessage)
+          .catch(() => {});
+      },
+      { urls: STOP_URL_FILTER },
+    );
+  }
 
   // Delete interception (003 owns cross-device delete-sync; here we only keep
   // the LOCAL gauge accurate). When a platform's "delete conversation" request
@@ -428,10 +465,10 @@ export default defineBackground(() => {
         case "CONVERSATION_LIST":
           // Home page: diff the live conversation list against cloud keys and
           // DEL orphans (spec 003 zombie cleanup). Fire-and-forget.
-          // Cache the list so the alarm fallback can use it when no home-page
-          // tab is open.
-          lastConversationList.set(message.platformId, message.ids);
           void cleanupZombies(message.platformId, message.ids);
+          return;
+        case "STOP_ROUND_DATA":
+          await handleStopRoundData(message, sender?.tab?.id);
           return;
       }
     },
@@ -445,6 +482,78 @@ export default defineBackground(() => {
    * history (REFRESH_HISTORY) — it ships HISTORY_PARSED, which applyHistory
    * REPLACES the record with. No DOM reading, no prompt/answer pairing here:
    * history is the sole authority for round identity + tokens.
+   */
+  /**
+   * User stopped generating — the content script read the partial answer
+   * from the DOM. Create a temporary local-only round so the gauge updates
+   * immediately. Never synced to Upstash — the next real history fetch
+   * (continue or new prompt → applyHistory) rebuilds the record from
+   * scratch, discarding this temporary round.
+   */
+  async function handleStopRoundData(
+    m: { promptText: string; answerText: string },
+    tabId?: number,
+  ): Promise<void> {
+    if (!(await isTabActive(tabId))) return;
+    // Resolve the active tab's platform + dialogue without re-fetching.
+    const [active] = await browser.tabs
+      .query({ active: true, currentWindow: true })
+      .catch(() => []);
+    if (!active?.url) return;
+    const adapter = adapterForUrl(active.url);
+    if (!adapter) return;
+    const dialogueId = adapter.dialogueIdFromUrl?.(active.url) ?? null;
+    if (!dialogueId) return;
+    const key = dialogueKey(adapter.platformId, dialogueId);
+    const settings = await getSettings();
+    const contextLimit = effectiveLimit(settings, adapter);
+    const overrides = settings.tokenCoefficients?.[adapter.platformId];
+    const coeff: TokenCoefficients = overrides
+      ? {
+          cjk: overrides.cjk ?? adapter.tokenCoefficients.cjk,
+          kana: overrides.kana ?? adapter.tokenCoefficients.kana,
+          hangul: overrides.hangul ?? adapter.tokenCoefficients.hangul,
+          cyrillic: overrides.cyrillic ?? adapter.tokenCoefficients.cyrillic,
+          arabic: overrides.arabic ?? adapter.tokenCoefficients.arabic,
+          latin: overrides.latin ?? adapter.tokenCoefficients.latin,
+        }
+      : adapter.tokenCoefficients;
+    const promptTokens = Math.round(estimateTokens(m.promptText, coeff));
+    const answerTokens = Math.round(estimateTokens(m.answerText, coeff));
+    // Read current local record so we can append the synthetic round.
+    const record = await getLocalDialogue(key);
+    const lastOrder = record?.rounds.length
+      ? record.rounds[record.rounds.length - 1].order
+      : 0;
+    const nextN = (record?.roundCount ?? 0) + 1;
+    const now = Date.now();
+    const updated = upsertRound(
+      record,
+      adapter.platformId,
+      dialogueId,
+      contextLimit,
+      {
+        messageId: `stop:${now}`, // synthetic id — won't match any real messageId
+        order: lastOrder + 1,
+        n: nextN,
+        promptTokens,
+        answerTokens,
+        createdAt: now,
+      },
+    );
+    // Write local-only — NEVER sync to Upstash (the next applyHistory
+    // rebuilds the record from scratch, discarding this temporary round).
+    await setLocalDialogue(key, updated);
+    void evictLocalCacheIfNeeded();
+    const title = tabId != null ? (tabDialogueTitle.get(tabId) ?? null) : null;
+    await broadcast(
+      buildState(adapter, contextLimit, updated, dialogueId, title),
+    );
+  }
+
+  /**
+   * Normal round completion: the SSE stream closed on its own. 200ms settle
+   * is pure insurance — the round is in history at ~0ms (verified).
    */
   async function handleStreamComplete(tabId: number): Promise<void> {
     await new Promise((r) => setTimeout(r, 200));
@@ -499,7 +608,7 @@ export default defineBackground(() => {
     const key = dialogueKey(adapter.platformId, dialogueId);
 
     // 1. Estimate history rounds into RoundRecords (history is the live truth).
-    const historyRounds = m.rounds.map((h) => {
+    const historyRounds = m.rounds.map((h, i) => {
       const promptTokens = Math.round(estimateTokens(h.promptText, coeff));
       const answerTokens = Math.round(estimateTokens(h.answerText, coeff));
       // Round at the storage boundary: a token is the smallest unit, so the
@@ -508,7 +617,7 @@ export default defineBackground(() => {
       return {
         messageId: h.messageId,
         order: h.order,
-        n: 0, // display position — assigned by unionRounds post-merge
+        n: i + 1, // display position — unionRounds reassigns when cloud merge runs
         promptTokens,
         answerTokens,
         total: promptTokens + answerTokens,
@@ -516,7 +625,36 @@ export default defineBackground(() => {
       };
     });
 
-    // 2. Read the cloud record (null when unconfigured → history-only path).
+    // Helper: build a DialogueRecord from an array of RoundRecords.
+    const buildRecord = (rounds: typeof historyRounds): DialogueRecord => {
+      let rec = emptyDialogue(adapter.platformId, dialogueId, contextLimit);
+      for (const r of rounds) {
+        rec = upsertRound(rec, adapter.platformId, dialogueId, contextLimit, {
+          messageId: r.messageId,
+          order: r.order,
+          n: r.n,
+          promptTokens: r.promptTokens,
+          answerTokens: r.answerTokens,
+          createdAt: r.createdAt,
+        });
+      }
+      return rec;
+    };
+
+    // 2. Show history-only estimate IMMEDIATELY — don't wait for the cloud
+    //    read (Upstash, 1–3 s). The panel re-renders on STATE_UPDATE instantly.
+    let record = buildRecord(historyRounds);
+    const historyOnlyTotal = record.totalTokens;
+    await setLocalDialogue(key, record);
+    void evictLocalCacheIfNeeded();
+    if (tabId != null) tabDialogueTitle.set(tabId, m.dialogueTitle);
+    if (await isTabActive(tabId)) {
+      await broadcast(
+        buildState(adapter, contextLimit, record, dialogueId, m.dialogueTitle),
+      );
+    }
+
+    // 3. Read the cloud record asynchronously (null when unconfigured).
     let cloudRecord: DialogueRecord | null = null;
     try {
       cloudRecord = await getDialogue(settings.upstash, key);
@@ -526,39 +664,32 @@ export default defineBackground(() => {
       console.warn("[Headroom] cloud read failed for", key, e);
     }
 
-    // 3. Union merge (spec 003 core): history wins on conflict, cloud-only
-    //    rounds survive. Rebuild the record through upsertRound so the
-    //    running-sum (totalTokens) + true-count (roundCount) invariants hold.
-    const mergedRounds = unionRounds(cloudRecord?.rounds ?? [], historyRounds);
-    let record = emptyDialogue(adapter.platformId, dialogueId, contextLimit);
-    for (const r of mergedRounds) {
-      record = upsertRound(
-        record,
-        adapter.platformId,
-        dialogueId,
-        contextLimit,
-        {
-          messageId: r.messageId,
-          order: r.order,
-          n: r.n,
-          promptTokens: r.promptTokens,
-          answerTokens: r.answerTokens,
-          createdAt: r.createdAt,
-        },
+    // 4. Union merge (spec 003 core): if the cloud has rounds not in history,
+    //    merge them in and re-broadcast. Drop the local n — unionRounds
+    //    reassigns display positions for the merged set.
+    if (cloudRecord?.rounds?.length) {
+      const mergedRounds = unionRounds(
+        cloudRecord.rounds,
+        historyRounds.map((r) => ({ ...r, n: 0 })),
       );
-    }
-
-    // 4. Show first: persist locally + broadcast (active-tab guarded so a
-    //    backgrounded tab doesn't clobber the foreground gauge).
-    await setLocalDialogue(key, record);
-    // Best-effort LRU eviction (spec 003): a write may push local usage over
-    // the soft limit. Fire-and-forget — never block the gauge update below.
-    void evictLocalCacheIfNeeded();
-    if (tabId != null) tabDialogueTitle.set(tabId, m.dialogueTitle);
-    if (await isTabActive(tabId)) {
-      await broadcast(
-        buildState(adapter, contextLimit, record, dialogueId, m.dialogueTitle),
-      );
+      record = buildRecord(mergedRounds);
+      // Only re-broadcast if the merged result actually differs from the
+      // history-only snapshot already shown.
+      if (record.totalTokens !== historyOnlyTotal) {
+        await setLocalDialogue(key, record);
+        if (tabId != null) tabDialogueTitle.set(tabId, m.dialogueTitle);
+        if (await isTabActive(tabId)) {
+          await broadcast(
+            buildState(
+              adapter,
+              contextLimit,
+              record,
+              dialogueId,
+              m.dialogueTitle,
+            ),
+          );
+        }
+      }
     }
 
     // 5. Sync later: best-effort cloud write. Not guarded by active-tab — a
@@ -613,10 +744,23 @@ export default defineBackground(() => {
     const { upstash: creds } = await getSettings();
     if (!creds.url || !creds.token) return; // no cloud → nothing to clean
     const state = await getCleanupState();
-    if (!shouldRunCleanup(state, platformId, Date.now())) return;
+    if (!shouldRunCleanup(state, platformId, Date.now())) {
+      console.log("[Headroom] zombie cleanup throttled, skipping", platformId);
+      return;
+    }
     try {
       const cloudKeys = await kvScan(creds, `headroom:conv:${platformId}:*`);
       const zombies = selectZombieKeys(cloudKeys, new Set(liveIds), platformId);
+      console.log(
+        "[Headroom] zombie cleanup for",
+        platformId,
+        "| cloud keys:",
+        cloudKeys.length,
+        "| live ids:",
+        liveIds.length,
+        "| zombies:",
+        zombies.length,
+      );
       await Promise.all(zombies.map((k) => kvDel(creds, k).catch(() => {})));
       // Stamp successful run for throttle.
       const state = await getCleanupState();
@@ -633,9 +777,7 @@ export default defineBackground(() => {
    * FETCH_CONVERSATION_LIST to an open home-page tab. If no tab is available,
    * fall back to the last-seen conversation list (best-effort).
    */
-  async function runZombieCleanupFromAlarm(
-    cachedLists: Map<string, string[]>,
-  ): Promise<void> {
+  async function runZombieCleanupFromAlarm(): Promise<void> {
     for (const adapter of ADAPTERS) {
       if (!adapter.fetchConversationList) continue;
       try {
@@ -643,21 +785,14 @@ export default defineBackground(() => {
         const tabs = await browser.tabs.query({ url: pattern });
         const tabId = tabs[0]?.id;
         if (tabId != null) {
-          // Found an open tab — ask its content script to fetch & ship.
-          // The content script sends CONVERSATION_LIST, which triggers
-          // cleanupZombies with throttle.
           void browser.tabs
             .sendMessage(tabId, {
               type: "FETCH_CONVERSATION_LIST",
             } satisfies HeadroomMessage)
             .catch(() => {});
-        } else {
-          // No tab open — use cached list as fallback.
-          const cached = cachedLists.get(adapter.platformId);
-          if (cached && cached.length > 0) {
-            void cleanupZombies(adapter.platformId, cached);
-          }
         }
+        // No tab open → skip. Zombies for this platform will be cleaned
+        // the next time the user opens its home page.
       } catch {
         // tab query or send failed — skip this platform
       }

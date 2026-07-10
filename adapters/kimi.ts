@@ -14,7 +14,7 @@ import { DEFAULT_COEFFICIENTS } from "../utils/estimate";
 //
 // History API — CONFIRMED live (2026-06, Playwright):
 //   POST https://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/ListMessages
-//   body: {chat_id, page_size:200} → {messages:[...]} (array, NEW→OLD). The
+//   body: {chat_id, page_size} → {messages:[...]} (array, NEW→OLD). The
 //   server returns the WHOLE conversation in one shot — there is NO pagination
 //   field on the response (no nextPageToken / hasMore), so a single request
 //   suffices (same as DeepSeek; verified against a multi-round chat 2026-06).
@@ -27,6 +27,14 @@ import { DEFAULT_COEFFICIENTS } from "../utils/estimate";
 //   assistant still pairs with a later sibling via parentId.
 // DOM selectors CONFIRMED live 2026-06: .chat-content-item-assistant wraps a
 // .markdown-container > .markdown; .chat-content-item-user carries the prompt.
+// Kimi uses a tree structure: every conversation has one system root node,
+// so the message count is always odd (1 + 2N for N rounds). A round has
+// 3–5 messages after counting think/tool blocks, so 100 rounds easily exceed
+// 300–500 messages. The ListMessages API has no pagination — it returns
+// everything in one shot — so page_size must be large enough to cover the
+// longest realistic conversation. 9999 is effectively "unlimited."
+const HISTORY_PAGE_SIZE = 9999;
+
 export const kimiAdapter: PlatformAdapter = {
   platformId: "kimi",
   displayName: "Kimi",
@@ -78,7 +86,10 @@ export const kimiAdapter: PlatformAdapter = {
             "content-type": "application/json",
             authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ chat_id: dialogueId, page_size: 200 }),
+          body: JSON.stringify({
+            chat_id: dialogueId,
+            page_size: HISTORY_PAGE_SIZE,
+          }),
         },
       );
       if (!res.ok) return [];
@@ -119,6 +130,7 @@ export const kimiAdapter: PlatformAdapter = {
         }
         pageToken = json.nextPageToken ?? "";
         if (!pageToken) break;
+        await new Promise((r) => setTimeout(r, 300));
       }
       return ids;
     } catch {
@@ -188,20 +200,42 @@ export function parseKimiHistory(resp: unknown): HistoryRound[] {
     promptText: string;
     answerText: string;
   }[] = [];
+  // Track which user ids have a text-containing assistant → those are paired.
+  const pairedUsers = new Set<string>();
   for (const m of messages) {
     if (m?.role !== "assistant") continue;
+    if (typeof m.id !== "string") continue;
     const answerText = joinKimiTextBlocks(m.blocks);
-    if (!answerText) continue; // no text block (failed/retracted) — skip
-    if (typeof m.id !== "string") continue; // no stable identity — skip
+    if (!answerText) continue; // no text → handle in second pass
     const parent =
       typeof m.parentId === "string" ? byId.get(m.parentId) : undefined;
-    if (!parent) continue; // orphan assistant (no user prompt to pair) — skip
-    const promptText = joinKimiTextBlocks(parent.blocks);
+    if (!parent) continue;
+    pairedUsers.add(parent.id!);
     staged.push({
       ts: typeof m.createTime === "string" ? m.createTime : "",
       assistantId: m.id,
-      promptText,
+      promptText: joinKimiTextBlocks(parent.blocks),
       answerText,
+    });
+  }
+  // Second pass: assistants without text whose parent user was NOT paired
+  // by a text-containing assistant. This covers user-stopped-generation where
+  // the model produced no content — the user's prompt still counts as a round
+  // (answerTokens = 0).
+  for (const m of messages) {
+    if (m?.role !== "assistant") continue;
+    if (typeof m.id !== "string") continue;
+    if (joinKimiTextBlocks(m.blocks)) continue; // already handled above
+    const parentId = typeof m.parentId === "string" ? m.parentId : undefined;
+    if (!parentId) continue;
+    const parent = byId.get(parentId);
+    if (!parent || pairedUsers.has(parentId)) continue;
+    // Unpaired user — this assistant is the only reply, even if empty.
+    staged.push({
+      ts: typeof m.createTime === "string" ? m.createTime : "",
+      assistantId: m.id,
+      promptText: joinKimiTextBlocks(parent.blocks),
+      answerText: "",
     });
   }
   // Order rounds chronologically (oldest first). createTime is an ISO-8601
