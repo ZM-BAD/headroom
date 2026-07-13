@@ -89,19 +89,34 @@ try {
       thresholds: { yellow: 0.5, red: 0.7 },
       language: "auto",
       contextLimits: { deepseek: 1_048_576 },
+      tokenCoefficients: {},
       updatedAt: 12345,
     };
     const json = JSON.stringify(cloud);
-    assert(!json.includes("token"), "token leaked into cloud settings JSON");
-    assert(!json.includes('"upstash"'), "upstash block leaked into cloud settings JSON");
+    // Credential keys must not appear as JSON fields in the cloud settings
+    // payload. Use the key-colon form to avoid matching \"tokenCoefficients\".
+    assert(
+      !/"token"\s*:/.test(json),
+      "token leaked into cloud settings JSON",
+    );
+    assert(
+      !/"upstash"\s*:/.test(json),
+      "upstash block leaked into cloud settings JSON",
+    );
     await cmd(["SET", SETTINGS_KEY, json]);
   });
 
   await step("settings GET matches + carries no credentials", async () => {
     const raw = await cmd(["GET", SETTINGS_KEY]);
     assert(raw !== null, "settings missing after SET");
-    assert(!raw.includes("token"), `creds present in stored settings: ${raw}`);
-    assert(!raw.includes('"upstash"'), `upstash block present in stored settings: ${raw}`);
+    assert(
+      !/"token"\s*:/.test(raw),
+      `creds present in stored settings: ${raw}`,
+    );
+    assert(
+      !/"upstash"\s*:/.test(raw),
+      `upstash block present in stored settings: ${raw}`,
+    );
     const s = JSON.parse(raw);
     assert(s.thresholds.red === 0.7, `thresholds mismatch: ${raw}`);
     assert(s.updatedAt === 12345, `updatedAt mismatch: ${raw}`);

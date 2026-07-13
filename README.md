@@ -8,7 +8,7 @@
 
 ## The Problem
 
-When you're deep in a long conversation with an AI (DeepSeek, Gemini, Claude, ChatGPT...), you've probably experienced this:
+When you're deep in a long conversation with an AI (DeepSeek, Gemini, ChatGPT...), you've probably experienced this:
 
 - The AI forgets a constraint you mentioned 10 rounds ago
 - It starts contradicting earlier parts of the conversation
@@ -21,7 +21,7 @@ This happens because **context windows have limits**, and when they fill up, the
 Headroom sits in your browser's native side panel and gives you a real-time, visual indicator of your context window usage:
 
 - 🟢 **Green** — Plenty of room, keep chatting
-- 🟠 **Orange** — Starting to fill up, be mindful
+- 🟠 **Yellow** — Starting to fill up, be mindful
 - 🔴 **Red** — Almost full, consider starting a new conversation
 
 Thresholds are customizable, and the extension auto-detects which AI platform you're on to match the correct context window limit (you can override it per platform).

@@ -2,7 +2,7 @@
 
 ## Status
 
-union 对账引擎 + 增量上云 + 删除联动（本地 + 云端 DEL）+ 本地缓存 LRU 淘汰已实现，真机验收 pending。僵尸清理统一引擎已实现（定期 alarms + 首页触发，共享 5min 节流）；7 家 `fetchConversationList` 已实现；真机验收 pending。对账频率控制（P1）待实现。7 家拉历史 API 与删除端点已完成真机抓包（2026-06）。
+union 对账引擎 + 增量上云 + 删除联动（本地 + 云端 DEL）+ 本地缓存 LRU 淘汰已实现，真机验收 pending。僵尸清理统一引擎已实现（定期 alarms 60min + 首页触发，共享 5min 节流）；对账频率控制（debounce + REFRESH_HISTORY 即时拉取）已实现。7 家 `fetchConversationList` 与拉历史 API 及删除端点已完成真机抓包（2026-06）。
 
 **范围定位**：跨设备同步语义。把 [001](./001-headroom-core.md) 的估算能力 + [002](./002-upstash-data-layer.md) 的传输管道组合起来，让对话记录跨设备正确。
 
