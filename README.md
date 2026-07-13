@@ -64,6 +64,18 @@ Headroom is **Manifest V3 only** (MV2 is not supported) and requires a recent br
 | Microsoft Edge | ≥ 149           |
 | Firefox        | ≥ 151           |
 
+### Known Platform Differences
+
+| Behavior                                      | Chrome | Edge                     | Firefox                            |
+| --------------------------------------------- | ------ | ------------------------ | ---------------------------------- |
+| Icon grays on non-AI pages                    | ✅     | ✅                       | ✅                                 |
+| Panel auto-closes when leaving AI page        | ✅     | ✅                       | ❌ (content switches to hint page) |
+| Panel auto-restores when returning to AI page | ✅     | ❌ (manual click needed) | ✅ (content restores)              |
+
+**Edge limitation:** `sidePanel.setOptions({ enabled: true })` does not auto-restore the panel after switching back to an AI platform tab. Microsoft confirmed this is "by design" ([issue #222](https://github.com/microsoft/MicrosoftEdge-Extensions/issues/222), open since Nov 2024, no fix). Workaround: click the toolbar icon to reopen.
+
+**Firefox limitation:** `sidebarAction.close()` requires a user gesture and cannot be called on tab switch. The sidebar must be manually closed by the user. When switching to a non-AI page, the sidebar content switches to a hint page via `sidebarAction.setPanel()`. All three AI platforms confirmed this is a hard Firefox platform limit with no workaround.
+
 ## Supported Platforms
 
 | Platform      | Send request | Context (default) |

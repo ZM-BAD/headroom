@@ -125,6 +125,98 @@ function adapterForRequest(url: string): PlatformAdapter | undefined {
   });
 }
 
+// ── 3-D per-tab ACL icons ─────────────────────────────────────────────
+// Color + gray icon paths for the per-tab whitelist state machine.
+// The gray icons are a luminance-preserving grayscale of brand/blue.svg
+// (see scripts/generate-icons.mjs and AGENTS.md MV3 gotchas).
+
+const ICON_COLOR = {
+  16: "icon/16.png",
+  48: "icon/48.png",
+  128: "icon/128.png",
+} as const;
+
+const ICON_GRAY = {
+  16: "icon/16-gray.png",
+  48: "icon/48-gray.png",
+  128: "icon/128-gray.png",
+} as const;
+
+/** Firefox sidebarAction API — not typed by WXT. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const sidebarAction = (browser as any).sidebarAction as
+  | {
+      setIcon(d: {
+        tabId?: number;
+        path: Record<string, string>;
+      }): Promise<void>;
+      setPanel(d: { tabId?: number; panel: string }): Promise<void>;
+      open(): Promise<void>;
+    }
+  | undefined;
+
+/**
+ * Synchronize action icon, title, and sidePanel availability for a tab.
+ * Whitelisted → color icon + sidePanel enabled; non-whitelisted → gray
+ * icon + sidePanel disabled. This replaces action.disable()/enable() which
+ * have no reliable visual feedback in MV3 + sidePanel (known Chrome
+ * platform limitation — see AGENTS.md MV3 gotchas).
+ *
+ * On tab switch (onActivated), Chrome's native per-tab sidePanel model
+ * handles show/hide automatically: disabling the panel on a non-platform
+ * tab hides it, and re-enabling on a platform tab restores it if it was
+ * previously open.
+ */
+async function evaluateTab(
+  tabId: number,
+  url: string | undefined,
+): Promise<void> {
+  const supported = !!(url && isSupportedPlatformUrl(url));
+  const icons = supported ? ICON_COLOR : ICON_GRAY;
+
+  if (browser.sidePanel) {
+    // Chrome/Edge: per-tab icons work correctly.
+    await browser.action.setIcon({ tabId, path: icons }).catch(() => {});
+  } else {
+    // Firefox: action.setIcon requires a reset-then-set sequence — the
+    // first call clears the cached icon state and the second applies the
+    // new one. Without the reset, Firefox silently ignores the update.
+    await browser.action
+      .setIcon({ tabId, imageData: { 16: new ImageData(1, 1) } })
+      .catch(() => {});
+    await new Promise((r) => setTimeout(r, 10));
+    await browser.action.setIcon({ tabId, path: icons }).catch(() => {});
+    if (sidebarAction) {
+      // Sync both sidebarAction icon and panel content. setPanel()
+      // does NOT require a user gesture (unlike close/open/toggle).
+      await sidebarAction.setIcon({ tabId, path: icons }).catch(() => {});
+      await sidebarAction
+        .setPanel({
+          tabId,
+          panel: supported ? "sidepanel.html" : "not-supported.html",
+        })
+        .catch(() => {});
+    }
+  }
+  await browser.action
+    .setTitle({
+      tabId,
+      title: supported ? "Headroom" : "Headroom — 当前页面不支持",
+    })
+    .catch((e: unknown) => console.warn("[Headroom] setTitle failed", e));
+  if (browser.sidePanel) {
+    if (supported) {
+      await browser.sidePanel.setOptions({
+        tabId,
+        enabled: true,
+        path: "sidepanel.html",
+      });
+    } else {
+      await browser.sidePanel.setOptions({ tabId, enabled: false });
+    }
+  }
+}
+
 // --- local per-conversation record store (the gauge's source of truth) ---
 // The conv-index ({ [fullKey]: updatedAt }) mirrors which conversations are
 // cached locally, so LRU eviction can find the oldest without a full scan.
@@ -299,7 +391,7 @@ async function projectForTab(
 }
 
 export default defineBackground(() => {
-  void enableSidePanelOnActionClick();
+  void initSidePanel();
 
   // ── Zombie cleanup alarm (spec 003) ─────────────────────────────────
   // 1-hour periodic alarm iterates all platforms; for each that has an open
@@ -310,35 +402,54 @@ export default defineBackground(() => {
     void runZombieCleanupFromAlarm();
   });
 
-  // Gray out the toolbar action on non-platform tabs so Headroom is only
-  // clickable where it can do something. The gauge (projectForTab) follows the
-  // active tab's platform + conversation independently of this scoping.
+  // 3-D per-tab ACL (see AGENTS.md MV3 gotchas). Close the global side
+  // panel ONLY when switching to a non-platform tab — the panel has no
+  // business there. When switching to a platform tab, leave it alone and
+  // let evaluateTab's setOptions({ enabled: true }) restore it. Avoids a
+  // close-then-reopen race that broke Edge's auto-restore behavior.
   browser.tabs.onActivated.addListener((info) => {
-    void applyPanelScope(info.tabId, {
-      windowId: info.windowId,
-      isActive: true,
-    });
     void projectForTabUrlOf(info.tabId);
+    void (async () => {
+      try {
+        let url: string | undefined;
+        try {
+          url = (await browser.tabs.get(info.tabId)).url;
+        } catch {
+          // Firefox: tabs.get() rejects for non-host-permission tabs
+          // (no `tabs` permission). Treat as non-platform.
+        }
+        const supported = !!(url && isSupportedPlatformUrl(url));
+        if (!supported && browser.sidePanel) {
+          await browser.sidePanel
+            .close({ windowId: info.windowId })
+            .catch(() => {});
+        }
+        await evaluateTab(info.tabId, url);
+      } catch {
+        /* non-fatal */
+      }
+    })();
   });
   browser.tabs.onUpdated.addListener((tabId, change, tab) => {
     if (change.url || change.status === "complete") {
-      void applyPanelScope(tabId, {
-        urlHint: tab?.url ?? change.url,
-        windowId: tab?.windowId,
-        isActive: tab?.active === true,
-      });
+      void evaluateTab(tabId, tab?.url ?? change.url);
     }
-    // An SPA route change on the ACTIVE tab (start / switch a chat within a
-    // platform) changes its URL without reloading — re-project so the gauge
-    // resets to the new conversation's record. (PAGE_READY does NOT re-fire on
-    // an SPA route change.)
     if (change.url && tab?.active) {
       void projectForTab(tab?.url ?? change.url, tabId);
     }
   });
-  // Best-effort initial project for the already-active tab when the service
-  // worker (re)starts — covers install/enable/browser-restart.
-  void syncActiveTab();
+  // Best-effort initial project for the already-active tab on SW (re)start.
+  void (async () => {
+    try {
+      const [active] = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (active?.id) await projectForTabUrlOf(active.id);
+    } catch {
+      /* non-fatal */
+    }
+  })();
 
   // ROOT-CAUSE finish detection: the streaming completion response CLOSING
   // (onCompleted) = the model FINISHED this round. The new round is already in
@@ -798,6 +909,21 @@ export default defineBackground(() => {
       }
     }
   }
+
+  // Whitelist gate for the toolbar click: whitelisted → open side panel;
+  // non-whitelisted → silent return (simulates "not clickable").
+  browser.action.onClicked.addListener(async (tab) => {
+    if (!tab.id || !tab.url || !isSupportedPlatformUrl(tab.url)) {
+      return;
+    }
+    if (browser.sidePanel) {
+      // Chrome/Edge: per-tab side panel.
+      await browser.sidePanel.open({ tabId: tab.id });
+    } else if (sidebarAction) {
+      // Firefox: global sidebar.
+      await sidebarAction.open();
+    }
+  });
 });
 
 // ── Zombie cleanup throttle storage ──────────────────────────────────
@@ -839,116 +965,16 @@ async function projectForTabUrlOf(tabId: number): Promise<void> {
   await projectForTab(url, tabId);
 }
 
-async function enableSidePanelOnActionClick(): Promise<void> {
+async function initSidePanel(): Promise<void> {
   if (!browser.sidePanel) return;
   try {
+    // Must be false — when true, Chrome's system-level sidePanel binding
+    // overrides action.disable() visual feedback AND onClicked interception
+    // (see AGENTS.md MV3 gotchas for the full story).
     await browser.sidePanel.setPanelBehavior({
-      openPanelOnActionClick: true,
+      openPanelOnActionClick: false,
     });
   } catch (error) {
     console.error("[Headroom] failed to set side panel behavior:", error);
-  }
-}
-
-/**
- * Scope Headroom's toolbar action AND side panel to platform tabs only.
- *
- * The side panel is kept PURELY GLOBAL: we never call per-tab setOptions. The
- * manifest side_panel default (enabled + sidepanel.html) already makes the
- * panel openable on click as a GLOBAL panel. This is deliberate —
- * sidePanel.close({ windowId }) ONLY closes a GLOBAL panel, so if we made
- * platform panels tab-specific (via setOptions), the auto-close below would
- * silently no-op (that was the previous bug: Kimi's panel was tab-specific, so
- * close({windowId}) couldn't dismiss it on switch to Bilibili).
- *
- * On a platform tab: action enabled (colored, clickable); the global panel is
- * openable. On a non-platform tab: action disabled (grayed) AND the global
- * panel is force-closed via close({ windowId }) — Chrome 141+, we target ≥149.
- * Trade-off: the panel does NOT auto-reopen when returning to a platform tab
- * (auto-open is blocked by Chrome's user-gesture rule on sidePanel.open); the
- * user clicks the icon again. Also, with no per-tab setOptions the panel stays
- * in Chrome's side-panel dropdown on non-platform sites — accepted, since the
- * action icon is disabled there and it auto-closes on switch.
- *
- * Counting is NOT gated by any of this — the content script + handleRound run
- * on every platform page whether or not the panel is open (see handleRound).
- *
- * Platform detection needs NO `tabs` permission: `Tab.url` is populated for
- * any tab whose URL matches a host_permission (all 7 platforms are listed) and
- * is undefined for everything else (Bilibili, etc.) — read as "not supported".
- */
-async function applyPanelScope(
-  tabId: number,
-  opts: { urlHint?: string; windowId?: number; isActive?: boolean } = {},
-): Promise<void> {
-  let url = opts.urlHint;
-  if (!url) {
-    try {
-      url = (await browser.tabs.get(tabId)).url;
-    } catch {
-      // Tab gone or URL unavailable — still disable the action so a stale
-      // "enabled" state from a previous platform tab doesn't leak here.
-      try {
-        await browser.action.disable(tabId);
-      } catch {
-        // Non-fatal — browser may not support action (Firefox) or tab is gone.
-      }
-      return;
-    }
-  }
-  // url is undefined for tabs without host-permission — treat as unsupported.
-  const supported = url ? isSupportedPlatformUrl(url) : false;
-
-  try {
-    if (supported) await browser.action.enable(tabId);
-    else await browser.action.disable(tabId);
-  } catch {
-    // Some contexts (Firefox without action, dev oddities) — non-fatal.
-  }
-
-  // Chrome/Edge only. Firefox has no browser.sidePanel (uses sidebar_action,
-  // which is global and can't be scoped — acceptable per the playbook). Force-
-  // close the global panel ONLY for the active tab — onUpdated also fires for
-  // background tabs (e.g. a Bilibili tab finishing its load while you're on
-  // DeepSeek), and closing on those would dismiss the panel you're looking at.
-  if (
-    browser.sidePanel &&
-    !supported &&
-    opts.windowId != null &&
-    opts.isActive
-  ) {
-    const close = (
-      browser.sidePanel as {
-        close?: (o: { windowId: number }) => Promise<void>;
-      }
-    ).close;
-    if (close) {
-      try {
-        await close({ windowId: opts.windowId });
-      } catch (e) {
-        console.warn("[Headroom] sidePanel.close failed:", e);
-      }
-    } else {
-      console.warn("[Headroom] sidePanel.close unavailable (Chrome <141?)");
-    }
-  }
-}
-
-/** Sync the action state + project the gauge for the currently active tab. */
-async function syncActiveTab(): Promise<void> {
-  try {
-    const [active] = await browser.tabs.query({
-      active: true,
-      currentWindow: true,
-    });
-    if (!active?.id) return;
-    await applyPanelScope(active.id, {
-      urlHint: active.url,
-      windowId: active.windowId,
-      isActive: true,
-    });
-    await projectForTab(active.url, active.id);
-  } catch {
-    // Non-fatal: the onActivated listener will catch up on the next switch.
   }
 }

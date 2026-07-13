@@ -64,6 +64,18 @@ Headroom **仅支持 Manifest V3**（不支持 MV2），需要较新的浏览器
 | Microsoft Edge | ≥ 149    |
 | Firefox        | ≥ 151    |
 
+### 已知平台差异
+
+| 行为                     | Chrome | Edge                 | Firefox                    |
+| ------------------------ | ------ | -------------------- | -------------------------- |
+| 非 AI 页面图标变灰       | ✅     | ✅                   | ✅                         |
+| 离开 AI 页面面板自动关闭 | ✅     | ✅                   | ❌（侧栏内容切换为提示页） |
+| 回到 AI 页面面板自动恢复 | ✅     | ❌（需手动点击图标） | ✅（内容自动恢复）         |
+
+**Edge 限制：** `sidePanel.setOptions({ enabled: true })` 从非 AI 页面切回后不会自动恢复面板。Microsoft 已确认这是"设计如此"（[issue #222](https://github.com/microsoft/MicrosoftEdge-Extensions/issues/222)，2024年11月创建，至今未修复）。替代方案：点击工具栏图标手动打开。
+
+**Firefox 限制：** `sidebarAction.close()` 需要用户手势，标签页切换不算用户手势，因此侧栏无法程序化关闭，必须用户手动关闭。切换到非 AI 页面时，侧栏内容通过 `sidebarAction.setPanel()` 切换为提示页。三个 AI 平台交叉验证确认这是 Firefox 硬性平台限制，无 workaround。
+
 ## 支持平台
 
 | 平台     | 发送请求  | Context（默认） |

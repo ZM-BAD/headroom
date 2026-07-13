@@ -19,7 +19,17 @@ export default defineConfig({
     default_locale: "en",
     // Persisted settings (warning thresholds, later Upstash creds) live in
     // local storage; the side panel + background both read/write them.
-    permissions: ["storage", "webRequest", "alarms"],
+    // Default gray — the 3-D ACL in the background switches to color on
+    // whitelisted pages (see AGENTS.md MV3 gotchas for the full story).
+    action: {
+      default_title: "Headroom",
+      default_icon: {
+        "16": "icon/16-gray.png",
+        "48": "icon/48-gray.png",
+        "128": "icon/128-gray.png",
+      },
+    },
+    permissions: ["storage", "webRequest", "alarms", "tabs"],
     // Host access for every supported platform's page (content script) AND
     // send-request host (webRequest body read). 通义千问 serves its page from
     // www.qianwen.com but POSTs to chat2.qianwen.com — both needed.
@@ -50,6 +60,13 @@ export default defineConfig({
             required: ["websiteContent"],
           },
         },
+      },
+      // Default sidebar icon and extension icon to gray — evaluateTab
+      // switches to color on whitelisted pages (see AGENTS.md MV3 gotchas).
+      icons: {
+        "16": "icon/16-gray.png",
+        "48": "icon/48-gray.png",
+        "128": "icon/128-gray.png",
       },
     }),
   }),

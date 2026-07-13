@@ -22,7 +22,7 @@
 
 ### 安装与激活
 
-- [ ] **001-01** 非平台页（如 `github.com`）→ 工具栏图标灰化，点击无反应
+- [x] **001-01** 非平台页（如 `github.com`）→ 工具栏图标灰化，点击无反应（三维 ACL 方案：`setIcon` 灰度 + `onClicked` 拦截 + `setOptions({enabled:false})`）
 - [x] **001-02** 打开 `chat.deepseek.com` → 图标变亮，可点击
 - [x] **001-03** 点击图标 → 原生侧边栏打开，显示 Headroom UI
 - [x] **001-04** 侧边栏显示 "DeepSeek" 平台名 + context limit（1,048,576）
@@ -160,14 +160,16 @@
 - [x] **CB-02** DeepSeek 打开对话 → 面板显示累计
 - [x] **CB-03** 一轮问答后面板更新
 - [x] **CB-04** 侧边栏打开/关闭正常
+- [x] **CB-E05** 切回 DeepSeek 面板不自动恢复（已知平台限制，Microsoft issue [#222](https://github.com/microsoft/MicrosoftEdge-Extensions/issues/222) 确认为设计差异，不可修复。需手动点击图标）
 
 ### Firefox
 
 - [x] **CB-05** 能安装（sidebarAction 不是 sidePanel）
 - [x] **CB-06** DeepSeek 打开对话 → 面板显示累计
 - [x] **CB-07** 一轮问答后面板更新
-- [x] **CB-08** 侧边栏打开/关闭正常（Firefox 用 sidebarAction，全局面板）
-- [ ] **CB-09** 非平台页图标灰化（或 Firefox 等效行为）
+- [x] **CB-08** 侧边栏打开/关闭正常（Firefox 用 sidebarAction，全局面板。切标签页不关——这是 Firefox 平台限制，`sidebarAction.close()` 需要用户手势）
+- [x] **CB-09** 非平台页图标灰化，点击无反应（`action.setIcon` reset-then-set + `onClicked` 拦截）
+- [x] **CB-10** 切到非平台页侧栏内容切换为提示页（`sidebarAction.setPanel("not-supported.html")`），切回平台页恢复正常
 
 ---
 

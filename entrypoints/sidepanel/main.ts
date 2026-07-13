@@ -24,8 +24,8 @@ import {
   type TokenCoefficients,
 } from "../../utils/estimate";
 
-// Platform logo imports (SVGs from icon/ directory).
-import defaultIcon from "../../icon/default.svg";
+// Platform logo imports (SVGs from brand/ and icon/ directories).
+import defaultIcon from "../../brand/blue.svg";
 import chatgptIcon from "../../icon/openai.svg";
 import deepseekIcon from "../../icon/deepseek.svg";
 import doubaoIcon from "../../icon/doubao.svg";

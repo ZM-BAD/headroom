@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Headroom</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --fg: #e6ebf5;
+        --fg-muted: #94a3b8;
+        --border: #232b45;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        height: 100%;
+        background: var(--bg);
+        color: var(--fg);
+      }
+
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 48px 24px;
+        text-align: center;
+      }
+
+      .gauge {
+        display: flex;
+        align-items: flex-end;
+        gap: 6px;
+        height: 48px;
+        opacity: 0.4;
+      }
+      .gauge-bar {
+        width: 10px;
+        border-radius: 3px;
+        background: var(--fg-muted);
+      }
+      .gauge-bar:nth-child(1) {
+        height: 28px;
+      }
+      .gauge-bar:nth-child(2) {
+        height: 34px;
+      }
+      .gauge-bar:nth-child(3) {
+        height: 40px;
+      }
+      .gauge-bar:nth-child(4) {
+        height: 48px;
+      }
+      .gauge-bar:nth-child(5) {
+        height: 36px;
+      }
+      .gauge-bar:nth-child(6) {
+        height: 30px;
+      }
+
+      h1 {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--fg-muted);
+        line-height: 1.6;
+      }
+
+      .divider {
+        width: 32px;
+        height: 1px;
+        background: var(--border);
+      }
+
+      .platforms {
+        font-size: 11px;
+        color: var(--fg-muted);
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="gauge">
+      <div class="gauge-bar"></div>
+      <div class="gauge-bar"></div>
+      <div class="gauge-bar"></div>
+      <div class="gauge-bar"></div>
+      <div class="gauge-bar"></div>
+      <div class="gauge-bar"></div>
+    </div>
+
+    <h1>Sorry, Headroom only supports the following platforms:</h1>
+
+    <div class="divider"></div>
+
+    <p class="platforms">
+      DeepSeek · ChatGPT · Gemini · Kimi · Qwen · Qianwen · Doubao
+    </p>
+  </body>
+</html>

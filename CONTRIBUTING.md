@@ -145,16 +145,21 @@ headroom/
 │   ├── cloud-settings.ts    # 云端设置（凭证剥离）
 │   ├── thresholds.ts        # 预警阈值逻辑
 │   └── match-host.ts        # URL → platform 匹配
-├── brand/                   # 项目 logo 源文件（SVG）
-│   ├── blue.svg             # 主 logo（Headroom 仪表盘图标）
+├── brand/                   # Headroom 品牌 logo 源文件（SVG）
+│   ├── blue.svg             # 主 logo（彩色仪表盘图标）
+│   ├── gray.svg             # 灰色变体（已禁用状态的 toolbar icon）
 │   └── white.svg            # 浅色背景备用
-├── icon/                    # 平台 logo（SVG，供 UI 使用）
-│   ├── default.svg          # 默认图标（→ ../brand/blue.svg 软链接）
-│   ├── deepseek.svg — qwen.svg  # 7 个平台品牌 logo
-│   └── openai.svg           # ChatGPT 使用 OpenAI logo
+├── icon/                    # AI 平台品牌 logo（SVG，供 sidePanel UI 使用）
+│   ├── deepseek.svg
+│   ├── doubao.svg
+│   ├── gemini.svg
+│   ├── kimi.svg
+│   ├── openai.svg           # ChatGPT
+│   ├── qianwen.svg          # 通义千问
+│   └── qwen.svg
 ├── public/                  # 静态资源
 │   ├── _locales/            # i18n 翻译（en + zh_CN 完整，其余回退英文）
-│   └── icon/                # 扩展图标 PNG（从 brand/blue.svg 渲染）
+│   └── icon/                # 扩展 toolbar 图标 PNG（从 brand/ 渲染）
 ├── specs/                   # 设计规格 + 验收 checklist
 │   ├── 001-headroom-core.md
 │   ├── 002-upstash-data-layer.md
