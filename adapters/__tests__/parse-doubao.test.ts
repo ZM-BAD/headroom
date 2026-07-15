@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { unionRounds, type RoundRecord } from "../../utils/dialogue-record";
 import { parseDoubaoHistory } from "../doubao";
 
 /**
@@ -31,7 +32,7 @@ describe("parseDoubaoHistory", () => {
     ];
     expect(parseDoubaoHistory(messages)).toEqual([
       {
-        messageId: "db:1",
+        messageId: "db:ut1719500000",
         order: 1719500001,
         createdAt: 1719500001000,
         promptText: "你好,这是测试",
@@ -59,7 +60,7 @@ describe("parseDoubaoHistory", () => {
     ];
     expect(parseDoubaoHistory(messages)).toEqual([
       {
-        messageId: "db:1",
+        messageId: "db:ut100",
         order: 101,
         createdAt: 101000,
         promptText: "old user prompt",
@@ -98,14 +99,14 @@ describe("parseDoubaoHistory", () => {
     ];
     expect(parseDoubaoHistory(messages)).toEqual([
       {
-        messageId: "db:t101",
+        messageId: "db:ut100",
         order: 101,
         createdAt: 101000,
         promptText: "Q1 old",
         answerText: "A1 old",
       },
       {
-        messageId: "db:t201",
+        messageId: "db:ut200",
         order: 201,
         createdAt: 201000,
         promptText: "Q2 new",
@@ -143,14 +144,14 @@ describe("parseDoubaoHistory", () => {
     ];
     expect(parseDoubaoHistory(messages)).toEqual([
       {
-        messageId: "db:t101",
+        messageId: "db:ut100",
         order: 101,
         createdAt: 101000,
         promptText: "Q1",
         answerText: "A1",
       },
       {
-        messageId: "db:t201",
+        messageId: "db:ut200",
         order: 201,
         createdAt: 201000,
         promptText: "Q2",
@@ -185,14 +186,14 @@ describe("parseDoubaoHistory", () => {
     ];
     expect(parseDoubaoHistory(messages)).toEqual([
       {
-        messageId: "db:u0",
+        messageId: "db:ut100",
         order: 100,
         createdAt: 100000,
         promptText: "Q1 abandoned",
         answerText: "",
       },
       {
-        messageId: "db:t102",
+        messageId: "db:ut101",
         order: 102,
         createdAt: 102000,
         promptText: "Q2 real",
@@ -246,7 +247,7 @@ describe("parseDoubaoHistory", () => {
     ];
     expect(parseDoubaoHistory(messages)).toEqual([
       {
-        messageId: "db:t101",
+        messageId: "db:ut100",
         order: 101,
         createdAt: 101000,
         promptText: "real q",
@@ -259,5 +260,71 @@ describe("parseDoubaoHistory", () => {
     expect(parseDoubaoHistory([])).toEqual([]);
     expect(parseDoubaoHistory(undefined as unknown as never[])).toEqual([]);
     expect(parseDoubaoHistory({} as unknown as never[])).toEqual([]);
+  });
+});
+
+/**
+ * Round identity is anchored on the USER message — the zombie-round
+ * regression. Doubao's IM chain persists the bot message 0–1s+ AFTER the
+ * completion stream closes (measured live 2026-07). A fetch inside that
+ * window sees the round answerless; keying the round by the BOT's id gave
+ * the same real round two ids across fetches (answerless vs answered), and
+ * 003's union-merge retained both — double-counting the prompt forever.
+ * Message shapes below are the RAW capture from that live session
+ * (conversation 38435127649220610, texts truncated).
+ */
+describe("parseDoubaoHistory — user-anchored round identity", () => {
+  const USER = {
+    user_type: 1,
+    content_type: 9999,
+    index_in_conv: "1",
+    create_time: "1784123722",
+    content_block: [
+      { content: { text_block: { text: "用三句话介绍一下长城的历史" } } },
+    ],
+  };
+  const BOT = {
+    user_type: 2,
+    content_type: 9999,
+    index_in_conv: "2",
+    create_time: "1784123723",
+    content_block: [
+      { content: { text_block: { text: "1. 长城的修筑始于春秋战国时期…" } } },
+    ],
+  };
+
+  it("keys the round identically whether or not the bot message has landed", () => {
+    const raceState = parseDoubaoHistory([USER]); // the +473ms probe state
+    const settled = parseDoubaoHistory([BOT, USER]); // the +948ms state (NEW→OLD)
+    expect(raceState).toHaveLength(1);
+    expect(settled).toHaveLength(1);
+    expect(raceState[0].answerText).toBe("");
+    expect(settled[0].answerText).not.toBe("");
+    // Same real-world round ⇒ same id — the user's index_in_conv, never
+    // the bot's id and never an array position.
+    expect(raceState[0].messageId).toBe("db:u1");
+    expect(settled[0].messageId).toBe("db:u1");
+  });
+
+  it("union-merge collapses race-state and settled-state into ONE round (no zombie)", () => {
+    const rec = (
+      r: ReturnType<typeof parseDoubaoHistory>[number],
+      n: number,
+    ): RoundRecord => ({
+      messageId: r.messageId,
+      order: r.order,
+      n,
+      promptTokens: 10,
+      answerTokens: r.answerText ? 100 : 0,
+      total: 10 + (r.answerText ? 100 : 0),
+      createdAt: r.createdAt ?? 0,
+    });
+    const cloud = parseDoubaoHistory([USER]).map(rec); // what a lost race shipped
+    const history = parseDoubaoHistory([BOT, USER]).map(rec); // corrected fetch
+    const merged = unionRounds(cloud, history);
+    expect(merged).toHaveLength(1);
+    // "history WINS": the real output overwrites the raced 0.
+    expect(merged[0].answerTokens).toBe(100);
+    expect(merged.reduce((s, r) => s + r.promptTokens, 0)).toBe(10);
   });
 });

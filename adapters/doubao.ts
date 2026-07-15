@@ -194,6 +194,11 @@ export const doubaoAdapter: PlatformAdapter = {
       return [];
     }
   },
+  // IM chain is eventually consistent: the bot message lands 0–1s+ after the
+  // completion stream closes (measured 2026-07, Playwright: onCompleted+473ms
+  // → absent, +948ms → present). Without the settle retry, the round-complete
+  // fetch races the write and records the round with 0 output tokens.
+  historyNeedsSettleRetry: true,
   answerSelector: ".md-box-root",
   userSelector: "[class*='whitespace-pre-wrap']",
   conversationSelector: "[class*='message-list'], main",
@@ -323,7 +328,17 @@ export function parseDoubaoHistory(messages: DoubaoMessage[]): HistoryRound[] {
   const rounds: HistoryRound[] = [];
   for (let i = 0; i < enriched.length; i++) {
     if (enriched[i].userType !== 1) continue;
-    const promptText = enriched[i].text;
+    const user = enriched[i];
+    // messageId = the USER message's index_in_conv (fall back to its
+    // create_time when absent/invalid). The user message is the round's
+    // stable anchor: it exists from send time, while the bot message lands
+    // asynchronously (0–1s+ after the completion stream closes — measured
+    // live 2026-07). Keying on the bot's id gave the same real round TWO
+    // ids across fetches (answerless db:u<arrayPos> → answered db:<botIdx>);
+    // 003's union-merge retained both as a zombie round, double-counting
+    // the prompt forever. One anchor, one id.
+    const messageId = `db:u${user.idx > 0 ? user.idx : "t" + user.ts}`;
+    const promptText = user.text;
     let answer: { text: string; ts: number; idx: number } | undefined;
     for (let j = i + 1; j < enriched.length; j++) {
       if (enriched[j].userType === 2) {
@@ -334,13 +349,9 @@ export function parseDoubaoHistory(messages: DoubaoMessage[]): HistoryRound[] {
       if (enriched[j].userType === 1) break;
     }
     if (answer) {
-      // messageId = the bot's index_in_conv (stable monotonic per conversation);
-      // fall back to its create_time when index_in_conv is absent/invalid (the
-      // M2 edge) so malformed rows still get a unique, stable id instead of all
-      // colliding on `db:0`. order = the bot's create_time. Display n is
-      // assigned post-merge (003).
+      // order = the bot's create_time. Display n is assigned post-merge (003).
       rounds.push({
-        messageId: `db:${answer.idx > 0 ? answer.idx : "t" + answer.ts}`,
+        messageId,
         order: answer.ts,
         promptText,
         answerText: answer.text,
@@ -348,14 +359,17 @@ export function parseDoubaoHistory(messages: DoubaoMessage[]): HistoryRound[] {
         createdAt: answer.ts > 0 ? answer.ts * 1000 : undefined,
       });
     } else {
-      // No bot reply follows this user (e.g. user stopped generation).
-      // Count the round with answerText="" — the prompt still consumed tokens.
+      // No bot reply follows this user (yet): either the write hasn't
+      // settled (the content script retries — utils/history-settle.ts) or
+      // the user stopped generation. Count the round with answerText="" —
+      // the prompt still consumed tokens. Same messageId either way, so a
+      // later fetch that finds the bot replaces this round in-place.
       rounds.push({
-        messageId: `db:u${i}`,
-        order: enriched[i].ts,
+        messageId,
+        order: user.ts,
         promptText,
         answerText: "",
-        createdAt: enriched[i].ts > 0 ? enriched[i].ts * 1000 : undefined,
+        createdAt: user.ts > 0 ? user.ts * 1000 : undefined,
       });
     }
   }

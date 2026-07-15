@@ -147,6 +147,7 @@ export const geminiAdapter: PlatformAdapter = {
       return [];
     }
   },
+  needsDomPollDetection: true, // webRequest onCompleted doesn't fire for StreamGenerate
   answerSelector: "model-response .markdown",
   userSelector: "user-query .query-text-line",
   conversationSelector: "chat-window",

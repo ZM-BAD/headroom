@@ -391,6 +391,9 @@ async function projectForTab(
 }
 
 export default defineBackground(() => {
+  const dbg = (...args: unknown[]) => {
+    if (import.meta.env.DEV) dbg(...args);
+  };
   void initSidePanel();
 
   // ── Zombie cleanup alarm (spec 003) ─────────────────────────────────
@@ -460,15 +463,42 @@ export default defineBackground(() => {
   // is treated the same — history reflects whatever answer persisted.
   const finishRound = (url: string, tabId: number): void => {
     const adapter = adapterForRequest(url);
-    if (!adapter || tabId < 0) return; // <0 ⇒ service-worker / non-tab request
+    if (tabId < 0) {
+      dbg(
+        "[Headroom|BG] finishRound SKIP — tabId<0 (non-tab request), url=",
+        url,
+      );
+      return;
+    }
+    if (!adapter) {
+      dbg("[Headroom|BG] finishRound SKIP — no adapter for url=", url);
+      return;
+    }
+    dbg(
+      `[Headroom|BG] finishRound FIRED adapter=${adapter.platformId} tabId=${tabId} url=`,
+      url,
+    );
     void handleStreamComplete(tabId);
   };
   browser.webRequest.onCompleted.addListener(
-    (d) => finishRound(d.url, d.tabId),
+    (d) => {
+      const adapter = adapterForRequest(d.url);
+      if (!adapter) return;
+      // Respect the adapter's declared HTTP method — default POST.
+      // ChatGPT's completionUrl matches its fetchHistory GET requests
+      // too; this filter prevents a self-amplifying feedback loop.
+      if (d.method !== (adapter.completionMethod ?? "POST")) return;
+      finishRound(d.url, d.tabId);
+    },
     { urls: URL_FILTER },
   );
   browser.webRequest.onErrorOccurred.addListener(
-    (d) => finishRound(d.url, d.tabId),
+    (d) => {
+      const adapter = adapterForRequest(d.url);
+      if (!adapter) return;
+      if (d.method !== (adapter.completionMethod ?? "POST")) return;
+      finishRound(d.url, d.tabId);
+    },
     { urls: URL_FILTER },
   );
 
@@ -546,6 +576,18 @@ export default defineBackground(() => {
     );
   }
 
+  // Diagnostic: log all registered URL filters + adapter configs on startup.
+  dbg("[Headroom|BG] startup — URL_FILTER count:", URL_FILTER.length);
+  URL_FILTER.forEach((u) => dbg("[Headroom|BG]   URL_FILTER:", u));
+  dbg("[Headroom|BG] STOP_URL_FILTER count:", STOP_URL_FILTER.length);
+  STOP_URL_FILTER.forEach((u) => dbg("[Headroom|BG]   STOP_URL_FILTER:", u));
+  dbg("[Headroom|BG] DELETE_URL_FILTER count:", DELETE_URL_FILTER.length);
+  ADAPTERS.forEach((a) => {
+    dbg(
+      `[Headroom|BG]   adapter ${a.platformId}: host=${a.host} completionUrl=${a.completionUrl} matchPattern=${a.matchPattern}`,
+    );
+  });
+
   browser.runtime.onMessage.addListener(
     async (
       message: HeadroomMessage,
@@ -553,13 +595,19 @@ export default defineBackground(() => {
     ): Promise<UsageState | undefined> => {
       switch (message.type) {
         case "PAGE_READY": {
+          dbg(
+            `[Headroom|BG] ← PAGE_READY platform=${message.platformId} url=${message.url} tabActive=${await isTabActive(sender?.tab?.id)}`,
+          );
           // Store the title unconditionally (same as HISTORY_PARSED) — a
           // background-tab load must not clobber the active tab's gauge, but
           // the title must survive so switching to this tab later shows it.
           if (sender?.tab?.id != null) {
             tabDialogueTitle.set(sender.tab.id, message.dialogueTitle);
           }
-          if (!(await isTabActive(sender?.tab?.id))) return;
+          if (!(await isTabActive(sender?.tab?.id))) {
+            dbg(`[Headroom|BG] PAGE_READY SKIP — tab not active`);
+            return;
+          }
           await projectForTab(message.url, sender?.tab?.id);
           return;
         }
@@ -568,6 +616,9 @@ export default defineBackground(() => {
           // broadcast: the panel renders the response directly).
           return await getActiveTabState();
         case "HISTORY_PARSED":
+          dbg(
+            `[Headroom|BG] ← HISTORY_PARSED platform=${message.platformId} rounds=${message.rounds.length} tabActive=${await isTabActive(sender?.tab?.id)}`,
+          );
           await applyHistory(message, sender?.tab?.id);
           return;
         case "STATE_UPDATE":
@@ -657,13 +708,17 @@ export default defineBackground(() => {
    * is pure insurance — the round is in history at ~0ms (verified).
    */
   async function handleStreamComplete(tabId: number): Promise<void> {
+    dbg(
+      `[Headroom|BG] handleStreamComplete — waiting 200ms then sending REFRESH_HISTORY to tab=${tabId}`,
+    );
     await new Promise((r) => setTimeout(r, 200));
     try {
       await browser.tabs.sendMessage(tabId, {
         type: "REFRESH_HISTORY",
       } satisfies HeadroomMessage);
-    } catch {
-      // content script gone / tab closed — nothing to refresh
+      dbg(`[Headroom|BG] REFRESH_HISTORY SENT to tab=${tabId}`);
+    } catch (err) {
+      dbg(`[Headroom|BG] REFRESH_HISTORY FAILED for tab=${tabId}:`, err);
     }
   }
 
@@ -736,6 +791,9 @@ export default defineBackground(() => {
     //    read (Upstash, 1–3 s). The panel re-renders on STATE_UPDATE instantly.
     let record = buildRecord(historyRounds);
     const historyOnlyTotal = record.totalTokens;
+    dbg(
+      `[Headroom|BG] applyHistory platform=${adapter.platformId} historyRounds=${historyRounds.length} totalTokens=${historyOnlyTotal} isActive=${await isTabActive(tabId)}${m.provisional ? " PROVISIONAL" : ""}`,
+    );
     await setLocalDialogue(key, record);
     void evictLocalCacheIfNeeded();
     if (tabId != null) tabDialogueTitle.set(tabId, m.dialogueTitle);
@@ -744,6 +802,14 @@ export default defineBackground(() => {
         buildState(adapter, contextLimit, record, dialogueId, m.dialogueTitle),
       );
     }
+
+    // 2a. Provisional: streaming update — stop after the local broadcast.
+    //     Cloud write is deferred to the final settled ship (non-provisional)
+    //     that fires after DOM quiescence (2s, content-script side). One
+    //     GET+SET pair per round — exactly the design baseline — regardless
+    //     of answer length. Other platforms never set provisional, so the
+    //     guard is a no-op for them.
+    if (m.provisional) return;
 
     // 3. Read the cloud record asynchronously (null when unconfigured).
     let cloudRecord: DialogueRecord | null = null;
@@ -767,6 +833,9 @@ export default defineBackground(() => {
       // Only re-broadcast if the merged result actually differs from the
       // history-only snapshot already shown.
       if (record.totalTokens !== historyOnlyTotal) {
+        dbg(
+          `[Headroom|BG] applyHistory cloud merge: total changed ${historyOnlyTotal} → ${record.totalTokens}, re-broadcasting`,
+        );
         await setLocalDialogue(key, record);
         if (tabId != null) tabDialogueTitle.set(tabId, m.dialogueTitle);
         if (await isTabActive(tabId)) {
@@ -836,13 +905,13 @@ export default defineBackground(() => {
     if (!creds.url || !creds.token) return; // no cloud → nothing to clean
     const state = await getCleanupState();
     if (!shouldRunCleanup(state, platformId, Date.now())) {
-      console.log("[Headroom] zombie cleanup throttled, skipping", platformId);
+      dbg("[Headroom] zombie cleanup throttled, skipping", platformId);
       return;
     }
     try {
       const cloudKeys = await kvScan(creds, `headroom:conv:${platformId}:*`);
       const zombies = selectZombieKeys(cloudKeys, new Set(liveIds), platformId);
-      console.log(
+      dbg(
         "[Headroom] zombie cleanup for",
         platformId,
         "| cloud keys:",

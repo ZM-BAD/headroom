@@ -1,7 +1,12 @@
 import type { HistoryRound, PlatformAdapter } from "../utils/platform-adapter";
 import { DEFAULT_COEFFICIENTS } from "../utils/estimate";
 
-// ChatGPT — request shape CONFIRMED (POST /backend-api/conversation, SSE).
+// ChatGPT — completion CONFIRMED live (2026-07, Playwright): OpenAI moved the
+// send to POST /backend-api/f/conversation (SSE; the old /backend-api/conversation
+// send path is retired on current cohorts). The SSE closes when the answer
+// finishes (reqEnd ≈ DOM stream end — no Doubao-style trailing window), and
+// the history API is already settled at onCompleted+200ms (probed +200ms →
+// +3000ms, all identical) — no settle retry needed.
 //
 // History API — CONFIRMED live (2026-06, Playwright):
 //   GET https://chatgpt.com/backend-api/conversation/<id> → a `mapping` object
@@ -22,7 +27,17 @@ export const chatgptAdapter: PlatformAdapter = {
   platformId: "chatgpt",
   displayName: "ChatGPT",
   host: "chatgpt.com",
-  completionUrl: "*://chatgpt.com/backend-api/conversation*",
+  // The live send endpoint (2026-07). The trailing * tolerates a future query
+  // string; it also matches POST /f/conversation/prepare (fires at SEND time),
+  // which costs one harmless early refresh per round — history then simply
+  // re-ships the pre-round state and the real completion corrects it.
+  completionUrl: "*://chatgpt.com/backend-api/f/conversation*",
+  // Legacy send path, kept as a second completion trigger for cohorts OpenAI
+  // has not migrated to /f/. Also matched by fetchHistory's GET and
+  // /conversation/init POST: the GETs are dropped by the completionMethod
+  // filter (default POST) — the a6f92a9 feedback-loop fix — and init only
+  // adds a redundant refresh at page load.
+  continueUrl: "*://chatgpt.com/backend-api/conversation*",
   matchPattern: "*://chatgpt.com/*",
   contextLimit: 131_072, // 128K (1 << 17); overridable
   tokenCoefficients: DEFAULT_COEFFICIENTS, // v1 default; calibrate in spec 004

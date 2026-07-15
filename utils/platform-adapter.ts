@@ -8,6 +8,14 @@ import type { TokenCoefficients } from "./estimate";
  * script fetches the conversation history (adapter.fetchHistory) on open /
  * switch / round-completion (REFRESH_HISTORY from the background); the DOM
  * selectors below are a fallback, unused by the history-authoritative core.
+ *
+ * ⚠️  ZERO-COUPLING RULE (see AGENTS.md § "Adapter zero-coupling rule"):
+ * A bug fix for one platform MUST NOT change the behaviour of any other.
+ * Use optional fields on this interface (with sensible defaults) to carry
+ * platform-specific policy. Never hardcode a platform's quirk in the shared
+ * pipeline (background.ts / platform.content.ts). The 7 AI platforms are
+ * independent companies — what's true for all of them today may not be true
+ * for one of them tomorrow.
  */
 /**
  * One historical round reconstructed from a platform's history API
@@ -38,6 +46,13 @@ export interface PlatformAdapter {
    * "*://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat".
    */
   completionUrl: string;
+  /**
+   * HTTP method the completion/continue requests use. Defaults to "POST".
+   * Only this method will trigger finishRound → REFRESH_HISTORY; other
+   * methods matching completionUrl are ignored (e.g. ChatGPT's fetchHistory
+   * GET hits the same URL pattern and must not trigger completion).
+   */
+  completionMethod?: string;
   /**
    * webRequest match-pattern for the platform's "stop generating" request, if
    * the platform uses a dedicated endpoint (e.g. DeepSeek POST
@@ -134,6 +149,24 @@ export interface PlatformAdapter {
    * skipped for this platform. Must never throw — return [] on failure.
    */
   fetchConversationList?(): Promise<string[]>;
+  /**
+   * When true, the content script's 1.5s poll watches for new DOM elements
+   * matching answerSelector as a fallback completion detector. Needed by
+   * platforms whose webRequest onCompleted does not reliably fire for the
+   * streaming completion endpoint (Gemini — DOM-only, no history API).
+   * Defaults to false.
+   */
+  needsDomPollDetection?: boolean;
+  /**
+   * When true, the platform's history store is eventually consistent: the
+   * bot message lands 0–1s+ AFTER the completion request closes (measured
+   * live on Doubao's IM chain, 2026-07: onCompleted+473ms → bot absent,
+   * +948ms → present). The content script then re-fetches with bounded
+   * backoff while the newest round's answer is empty (see
+   * utils/history-settle.ts) instead of shipping a 0-output-token round.
+   * Defaults to false — platforms that persist synchronously never retry.
+   */
+  historyNeedsSettleRetry?: boolean;
   /** DOM selector for a single AI/assistant message (content-script side). */
   answerSelector: string;
   /** DOM selector for a single user message (optional; DOM prompt fallback). */

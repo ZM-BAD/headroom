@@ -97,6 +97,26 @@ Six writing systems, each with an independent coefficient:
 
 Char-based scripts are NOT double-counted as words. Coefficients are user-overridable per platform in the Advanced Settings panel. The engine lives in `utils/estimate.ts`; coefficients flow through `Settings.tokenCoefficients` → Upstash cloud sync.
 
+### Adapter zero-coupling rule ⚠️
+
+**A platform bug fix MUST NOT change the behaviour of any other platform. Zero exceptions.**
+
+The `background.ts` and `platform.content.ts` pipelines are generic engines over `PlatformAdapter` — they route all 7 platforms through the same code. A bug that only affects one platform (e.g. ChatGPT) must be fixed **in the adapter layer** (`adapters/chatgpt.ts` or the `PlatformAdapter` interface), never by changing the shared pipeline for everyone.
+
+| ❌ Wrong                                                                       | ✅ Right                                                                                               |
+| ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------ |
+| `if (d.method !== "POST") return` in background.ts to fix ChatGPT              | Add `completionMethod?: string` to the adapter interface, let ChatGPT's adapter declare its constraint |
+| Run DOM-based answer-count polling for all platforms to fix Gemini             | Add `needsDomPollDetection?: boolean` to the adapter interface, only Gemini sets it to `true`          |
+| Change `completionUrl` pattern for one platform in the shared URL_FILTER logic | Each adapter's `completionUrl` is its own — if one is wrong, fix it in that adapter file               |
+
+**Why this matters.** These 7 AI platforms are independent products from different companies — DeepSeek, OpenAI, Google, Moonshot, Alibaba, ByteDance. They change their APIs on their own schedules, with zero coordination. What's true for all of them today (e.g. "all completion endpoints use POST") may not be true for one of them tomorrow. The adapter is the abstraction boundary that isolates that volatility.
+
+When you need platform-specific behaviour:
+
+1. Add an **optional** field to `PlatformAdapter` in `utils/platform-adapter.ts` (with a sensible default)
+2. Set it on the adapter(s) that need the non-default value
+3. Read it in the pipeline code: `adapter.<field> ?? <default>`
+
 ### Adding a new platform
 
 1. Create `adapters/<platform>.ts` implementing `PlatformAdapter` (see `utils/platform-adapter.ts`)

@@ -58,6 +58,13 @@ export interface HistoryParsedMessage {
   rounds: HistoryRound[];
   /** Conversation title scraped from the DOM, re-sent in case it changed (rename). */
   dialogueTitle: string | null;
+  /**
+   * When true, the background skips cloud read/write — this is a real-time
+   * streaming update (local broadcast only). The final settled ship is
+   * non-provisional and writes the cloud in one GET+SET pair. Absent ⇒
+   * full path with cloud sync (legacy; every other platform).
+   */
+  provisional?: boolean;
 }
 
 /**
