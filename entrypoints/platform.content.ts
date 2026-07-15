@@ -3,8 +3,8 @@ import type {
   HeadroomMessage,
   HistoryParsedMessage,
 } from "../utils/messages";
-import type { PlatformAdapter } from "../utils/platform-adapter";
 import { ADAPTERS } from "../adapters";
+import { adapterForHost } from "../utils/match-host";
 
 /**
  * The ONE content script for every supported platform. WXT injects it on any
@@ -24,7 +24,7 @@ import { ADAPTERS } from "../adapters";
 export default defineContentScript({
   matches: ADAPTERS.map((a) => a.matchPattern),
   main(ctx) {
-    const adapter = adapterForPage();
+    const adapter = adapterForHost(location.hostname);
     if (!adapter) return;
 
     const send = (msg: HeadroomMessage): void => {
@@ -213,13 +213,3 @@ export default defineContentScript({
     }, 1500);
   },
 });
-
-/** Match location.hostname against each adapter's matchPattern host. */
-function adapterForPage(): PlatformAdapter | undefined {
-  return ADAPTERS.find((a) => {
-    const m = a.matchPattern.match(/^\*:\/\/([^/]+)/);
-    const host = m?.[1];
-    if (!host) return false;
-    return location.hostname === host || location.hostname.endsWith(`.${host}`);
-  });
-}

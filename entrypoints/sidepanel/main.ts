@@ -289,7 +289,8 @@ async function discardSettingsChanges(): Promise<void> {
   setUpstashStatus(null, "");
   renderTokenToggle();
   buildContextLimitRows();
-  buildCoefficientRows();
+  coeffInputs = buildCoefficientRows();
+  els.coeffHint.hidden = true;
   applyThresholdsToSliders(currentThresholds);
   applyI18n();
   render(currentState, currentThresholds);
@@ -358,7 +359,7 @@ els.langSelect.addEventListener("change", () => {
   // Rebuild programmatically-localized sections so labels, units, and
   // descriptions reflect the new language.
   buildContextLimitRows();
-  buildCoefficientRows();
+  coeffInputs = buildCoefficientRows();
   buildPlatformReference();
   buildEstimationGuide();
   buildAbout();
@@ -484,8 +485,9 @@ const COEFF_I18N: Record<
   latin: { label: "coeffLatin", unit: "coeffUnitWord" },
 };
 
-/** Per-platform coefficient input elements, keyed as `${platformId}:${field}`. */
-const coeffInputs: Record<string, HTMLInputElement> = {};
+/** Per-platform coefficient input elements, keyed as `${platformId}:${field}`.
+ *  Owned by the caller — buildCoefficientRows returns a fresh map each call. */
+let coeffInputs: Record<string, HTMLInputElement> = {};
 
 function coeffInputKey(
   platformId: string,
@@ -494,12 +496,12 @@ function coeffInputKey(
   return `${platformId}:${field}`;
 }
 
-/** Build the coefficient-rows DOM for every platform, seeded from currentTokenCoefficients. */
-function buildCoefficientRows(): void {
+/** Build the coefficient-rows DOM for every platform, seeded from currentTokenCoefficients.
+ *  Returns a fresh input-element map — the caller owns it. */
+function buildCoefficientRows(): Record<string, HTMLInputElement> {
   const list = document.querySelector<HTMLElement>("#coeff-list");
-  if (!list) return;
-  // Drop stale DOM references before destroying elements (see Issue 4).
-  for (const k of Object.keys(coeffInputs)) delete coeffInputs[k];
+  if (!list) return {};
+  const inputs: Record<string, HTMLInputElement> = {};
   list.innerHTML = "";
 
   // Section-level description: what the numbers mean
@@ -549,7 +551,7 @@ function buildCoefficientRows(): void {
       unit.textContent = t(COEFF_I18N[f].unit);
 
       const key = coeffInputKey(a.platformId, f);
-      coeffInputs[key] = input;
+      inputs[key] = input;
 
       field.append(label, input, unit);
       fields.append(field);
@@ -561,7 +563,7 @@ function buildCoefficientRows(): void {
     resetBtn.textContent = t("coeffReset");
     resetBtn.addEventListener("click", () => {
       for (const f of COEFF_KEYS) {
-        const inp = coeffInputs[coeffInputKey(a.platformId, f)];
+        const inp = inputs[coeffInputKey(a.platformId, f)];
         if (inp) inp.value = String(defaults[f] ?? DEFAULT_COEFFICIENTS[f]);
       }
       delete currentTokenCoefficients[a.platformId];
@@ -574,6 +576,7 @@ function buildCoefficientRows(): void {
     details.append(fields);
     list.append(details);
   }
+  return inputs;
 }
 
 /** Read coefficient overrides from the DOM. Only stores values that differ from defaults. */
@@ -1003,7 +1006,7 @@ void (async () => {
   els.upstashUrl.value = currentUpstash.url;
   els.upstashToken.value = currentUpstash.token;
   buildContextLimitRows();
-  buildCoefficientRows();
+  coeffInputs = buildCoefficientRows();
   buildPlatformReference();
   buildEstimationGuide();
   buildAbout();
@@ -1078,7 +1081,7 @@ browser.storage.onChanged.addListener((changes, area) => {
   }
   if (next.tokenCoefficients) {
     currentTokenCoefficients = next.tokenCoefficients;
-    buildCoefficientRows();
+    coeffInputs = buildCoefficientRows();
   }
   render(currentState, currentThresholds);
 });

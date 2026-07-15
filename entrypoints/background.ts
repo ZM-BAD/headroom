@@ -5,7 +5,7 @@ import type {
 } from "../utils/messages";
 import type { PlatformAdapter } from "../utils/platform-adapter";
 import { ADAPTERS } from "../adapters";
-import { estimateTokens, type TokenCoefficients } from "../utils/estimate";
+import { estimateTokens, resolveCoefficients } from "../utils/estimate";
 import {
   emptyDialogue,
   projectUsage,
@@ -618,17 +618,7 @@ export default defineBackground(() => {
     const key = dialogueKey(adapter.platformId, dialogueId);
     const settings = await getSettings();
     const contextLimit = effectiveLimit(settings, adapter);
-    const overrides = settings.tokenCoefficients?.[adapter.platformId];
-    const coeff: TokenCoefficients = overrides
-      ? {
-          cjk: overrides.cjk ?? adapter.tokenCoefficients.cjk,
-          kana: overrides.kana ?? adapter.tokenCoefficients.kana,
-          hangul: overrides.hangul ?? adapter.tokenCoefficients.hangul,
-          cyrillic: overrides.cyrillic ?? adapter.tokenCoefficients.cyrillic,
-          arabic: overrides.arabic ?? adapter.tokenCoefficients.arabic,
-          latin: overrides.latin ?? adapter.tokenCoefficients.latin,
-        }
-      : adapter.tokenCoefficients;
+    const coeff = resolveCoefficients(adapter, settings);
     const promptTokens = Math.round(estimateTokens(m.promptText, coeff));
     const answerTokens = Math.round(estimateTokens(m.answerText, coeff));
     // Read current local record so we can append the synthetic round.
@@ -704,17 +694,7 @@ export default defineBackground(() => {
     if (!dialogueId) return;
 
     const settings = await getSettings();
-    const overrides = settings.tokenCoefficients?.[adapter.platformId];
-    const coeff: TokenCoefficients = overrides
-      ? {
-          cjk: overrides.cjk ?? adapter.tokenCoefficients.cjk,
-          kana: overrides.kana ?? adapter.tokenCoefficients.kana,
-          hangul: overrides.hangul ?? adapter.tokenCoefficients.hangul,
-          cyrillic: overrides.cyrillic ?? adapter.tokenCoefficients.cyrillic,
-          arabic: overrides.arabic ?? adapter.tokenCoefficients.arabic,
-          latin: overrides.latin ?? adapter.tokenCoefficients.latin,
-        }
-      : adapter.tokenCoefficients;
+    const coeff = resolveCoefficients(adapter, settings);
     const contextLimit = effectiveLimit(settings, adapter);
     const key = dialogueKey(adapter.platformId, dialogueId);
 

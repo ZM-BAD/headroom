@@ -51,6 +51,27 @@ export const DEFAULT_COEFFICIENTS: TokenCoefficients = {
   latin: 0.5,
 };
 
+/**
+ * Resolve the effective token coefficients for a platform: user override
+ * takes precedence, then the adapter default. Pure — the caller supplies
+ * adapter + settings and gets back a complete TokenCoefficients.
+ */
+export function resolveCoefficients(
+  adapter: { platformId: string; tokenCoefficients: TokenCoefficients },
+  settings: { tokenCoefficients?: Record<string, Partial<TokenCoefficients>> },
+): TokenCoefficients {
+  const overrides = settings.tokenCoefficients?.[adapter.platformId];
+  if (!overrides) return adapter.tokenCoefficients;
+  return {
+    cjk: overrides.cjk ?? adapter.tokenCoefficients.cjk,
+    kana: overrides.kana ?? adapter.tokenCoefficients.kana,
+    hangul: overrides.hangul ?? adapter.tokenCoefficients.hangul,
+    cyrillic: overrides.cyrillic ?? adapter.tokenCoefficients.cyrillic,
+    arabic: overrides.arabic ?? adapter.tokenCoefficients.arabic,
+    latin: overrides.latin ?? adapter.tokenCoefficients.latin,
+  };
+}
+
 // ---- Unicode property-escape regexes (all require `u` flag) ----
 // RegExp constructors bypass TS's limited Unicode property-name validation
 // (regex literals with \p{…} trigger TS1529 for non-ASCII property names).

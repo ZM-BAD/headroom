@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { ADAPTERS } from "../adapters";
-import { adapterForUrl, isSupportedPlatformUrl } from "./match-host";
+import {
+  adapterForHost,
+  adapterForUrl,
+  isSupportedPlatformUrl,
+} from "./match-host";
 
 /**
  * isSupportedPlatformUrl decides whether the toolbar action is enabled
@@ -49,6 +53,35 @@ describe("isSupportedPlatformUrl — non-platform URLs return false", () => {
   it("returns false for malformed/empty input", () => {
     expect(isSupportedPlatformUrl("")).toBe(false);
     expect(isSupportedPlatformUrl("not a url")).toBe(false);
+  });
+});
+
+describe("adapterForHost", () => {
+  it("returns the matching adapter for an exact host match", () => {
+    const a = adapterForHost("chat.deepseek.com");
+    expect(a?.platformId).toBe("deepseek");
+  });
+
+  it("returns undefined for a non-platform host", () => {
+    expect(adapterForHost("example.com")).toBeUndefined();
+  });
+
+  it("does NOT match subdomains of a known host", () => {
+    // MV3 content-script `matches` patterns are exact (no *. wildcard), so
+    // the content script is never injected on subdomains. adapterForHost
+    // must mirror this: subdomains are not platform pages.
+    expect(adapterForHost("m.chat.deepseek.com")).toBeUndefined();
+    expect(adapterForHost("sub.www.doubao.com")).toBeUndefined();
+  });
+
+  it("matches every adapter's own matchPattern host", () => {
+    // Each adapter must be reachable via its declared matchPattern host.
+    for (const a of ADAPTERS) {
+      const m = a.matchPattern.match(/^\*:\/\/([^/]+)/);
+      const host = m?.[1];
+      expect(host).toBeTruthy();
+      expect(adapterForHost(host!), "host=" + host).toBeDefined();
+    }
   });
 });
 

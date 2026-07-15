@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_COEFFICIENTS,
   estimateTokens,
+  resolveCoefficients,
   type TokenCoefficients,
 } from "./estimate";
 
@@ -144,5 +145,89 @@ describe("estimateTokens", () => {
     expect(estimateTokens("你 あ 한 д ع a", custom)).toBeCloseTo(
       1 + 2 + 3 + 4 + 5 + 6,
     );
+  });
+});
+
+// ---- resolveCoefficients ----
+
+const adapterDefaults: TokenCoefficients = {
+  cjk: 0.6,
+  kana: 0.5,
+  hangul: 0.5,
+  cyrillic: 0.5,
+  arabic: 0.5,
+  latin: 0.5,
+};
+
+const adapter = {
+  platformId: "test-platform",
+  tokenCoefficients: adapterDefaults,
+};
+
+describe("resolveCoefficients", () => {
+  it("returns adapter defaults when settings has no overrides for this platform", () => {
+    const result = resolveCoefficients(adapter, { tokenCoefficients: {} });
+    expect(result).toEqual(adapterDefaults);
+  });
+
+  it("returns adapter defaults when tokenCoefficients is absent from settings", () => {
+    const result = resolveCoefficients(adapter, {});
+    expect(result).toEqual(adapterDefaults);
+  });
+
+  it("applies a full override", () => {
+    const result = resolveCoefficients(adapter, {
+      tokenCoefficients: {
+        "test-platform": {
+          cjk: 0.8,
+          kana: 0.7,
+          hangul: 0.7,
+          cyrillic: 0.6,
+          arabic: 0.6,
+          latin: 0.6,
+        },
+      },
+    });
+    expect(result).toEqual({
+      cjk: 0.8,
+      kana: 0.7,
+      hangul: 0.7,
+      cyrillic: 0.6,
+      arabic: 0.6,
+      latin: 0.6,
+    });
+  });
+
+  it("applies a partial override — missing fields fall back to adapter defaults", () => {
+    const result = resolveCoefficients(adapter, {
+      tokenCoefficients: {
+        "test-platform": { cjk: 0.9 },
+      },
+    });
+    expect(result.cjk).toBe(0.9);
+    expect(result.kana).toBe(adapterDefaults.kana);
+    expect(result.hangul).toBe(adapterDefaults.hangul);
+    expect(result.cyrillic).toBe(adapterDefaults.cyrillic);
+    expect(result.arabic).toBe(adapterDefaults.arabic);
+    expect(result.latin).toBe(adapterDefaults.latin);
+  });
+
+  it("does not leak overrides between platforms", () => {
+    const result = resolveCoefficients(adapter, {
+      tokenCoefficients: {
+        "other-platform": { cjk: 0.3 },
+      },
+    });
+    expect(result).toEqual(adapterDefaults);
+  });
+
+  it("handles null override value correctly (falls back)", () => {
+    // A null override is not a valid coefficient — fall back to default.
+    const result = resolveCoefficients(adapter, {
+      tokenCoefficients: {
+        "test-platform": { cjk: null as unknown as number },
+      },
+    });
+    expect(result.cjk).toBe(adapterDefaults.cjk);
   });
 });
