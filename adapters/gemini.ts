@@ -1,5 +1,15 @@
 import type { HistoryRound, PlatformAdapter } from "../utils/platform-adapter";
-import { DEFAULT_COEFFICIENTS } from "../utils/estimate";
+import type { TokenCoefficients } from "../utils/estimate";
+
+/** Measured via Gemma 4 — Google states Gemma ships the same tokenizer as Gemini (spec 004 §4.3; scripts/calibrate-hf.mjs). */
+const GEMINI_COEFFICIENTS: TokenCoefficients = {
+  cjk: 0.7,
+  kana: 0.52,
+  hangul: 0.62,
+  cyrillic: 1.73,
+  arabic: 1.96,
+  latin: 1.35,
+};
 
 // Gemini — the ONLY platform without a usable history API (investigated live
 // 2026-06). Every Gemini RPC folds into POST /_/BardChatUi/data/batchexecute?
@@ -33,7 +43,7 @@ export const geminiAdapter: PlatformAdapter = {
     "*://gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate",
   matchPattern: "*://gemini.google.com/*",
   contextLimit: 1_048_576, // 1M (1 << 20); overridable
-  tokenCoefficients: DEFAULT_COEFFICIENTS, // v1 default; calibrate in spec 004
+  tokenCoefficients: GEMINI_COEFFICIENTS, // spec 004 §4.3 calibrated (incl. markdown overhead)
   // Delete endpoint: CONFIRMED live (2026-06). Gemini folds EVERY RPC
   // (send/list/delete) into POST /_/BardChatUi/data/batchexecute, so the
   // deleteUrl pattern matches all Gemini traffic. Disambiguation happens in

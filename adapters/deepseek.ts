@@ -1,5 +1,15 @@
 import type { HistoryRound, PlatformAdapter } from "../utils/platform-adapter";
-import { DEFAULT_COEFFICIENTS } from "../utils/estimate";
+import type { TokenCoefficients } from "../utils/estimate";
+
+/** Measured against the open DeepSeek-V4-Flash tokenizer — exact (spec 004 §4.3; scripts/calibrate-hf.mjs). */
+const DEEPSEEK_COEFFICIENTS: TokenCoefficients = {
+  cjk: 0.62,
+  kana: 0.74,
+  hangul: 0.78,
+  cyrillic: 2.1,
+  arabic: 2.15,
+  latin: 1.33,
+};
 
 /** DeepSeek `history_messages` fragment (REQUEST / RESPONSE / THINKING / ...). */
 interface DsFragment {
@@ -160,7 +170,7 @@ export const deepseekAdapter: PlatformAdapter = {
   continueUrl: "*://chat.deepseek.com/api/v0/chat/continue*",
   matchPattern: "*://chat.deepseek.com/*",
   contextLimit: 1_048_576, // 1M (1 << 20); overridable
-  tokenCoefficients: DEFAULT_COEFFICIENTS, // v1 reference (cjk 0.6 / latin 0.5); calibrate in spec 004
+  tokenCoefficients: DEEPSEEK_COEFFICIENTS, // spec 004 §4.3 calibrated (incl. markdown overhead)
   // Delete endpoint: CONFIRMED live (2026-06, Playwright → delete a throwaway
   // chat). POST /api/v0/chat_session/delete with body {"chat_session_id":"<id>"}
   // — singular string field (NOT the batch array that reverse-eng projects

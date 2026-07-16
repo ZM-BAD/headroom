@@ -86,16 +86,18 @@ New keys only need to be added to `en/messages.json` and `zh_CN/messages.json`; 
 
 Six writing systems, each with an independent coefficient:
 
-| Script                   | Counting unit | Default coeff |
-| ------------------------ | ------------- | ------------- |
-| CJK (中日韩统一表意文字) | per character | 0.6 tok/ch    |
-| Kana (仮名)              | per character | 0.5 tok/ch    |
-| Hangul (한글)            | per character | 0.5 tok/ch    |
-| Cyrillic                 | per word      | 0.5 tok/wd    |
-| Arabic                   | per word      | 0.5 tok/wd    |
-| Latin (fallback)         | per word      | 0.5 tok/wd    |
+| Script                   | Counting unit |
+| ------------------------ | ------------- |
+| CJK (中日韩统一表意文字) | per character |
+| Kana (仮名)              | per character |
+| Hangul (한글)            | per character |
+| Cyrillic                 | per word      |
+| Arabic                   | per word      |
+| Latin (fallback)         | per word      |
 
 Char-based scripts are NOT double-counted as words. Coefficients are user-overridable per platform in the Advanced Settings panel. The engine lives in `utils/estimate.ts`; coefficients flow through `Settings.tokenCoefficients` → Upstash cloud sync.
+
+**Coefficient values are measured, never guessed.** Per-platform defaults live in each adapter's `tokenCoefficients`; the calibrated matrix + method are in spec 004 §4.3–4.4. To re-calibrate (e.g. after a platform swaps models): `npm i --no-save tiktoken @huggingface/transformers`, then `node --experimental-strip-types scripts/calibrate-chatgpt.mjs` and `scripts/calibrate-hf.mjs`. **Landmine (2026-07):** the BPE-era rule of thumb "1 Chinese char ≈ 1.5–2.5 tokens" is wrong for modern 129K–262K vocabs — measured CJK is 0.58–0.83 tok/char (multi-char words pack into single tokens). An "informed estimate" shipped as calibration overestimated CJK 2–3×; only an actual tokenizer run counts as calibration.
 
 ### Adapter zero-coupling rule ⚠️
 

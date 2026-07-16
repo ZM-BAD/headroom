@@ -95,11 +95,11 @@ sequenceDiagram
 
 - **打开即全量对账（核心）**：content script `PAGE_READY` → background `fetchHistory` → 平台完整历史 → 逐条用 001 引擎估 token → union 合并 → 覆盖写本地缓存 + Upstash → 重投影仪表盘。
 - **union 合并（by messageId）**：`getDialogue` → `union(cloudRounds, historyRounds)` → `setDialogue`。002 的 `setDialogue` 是纯覆盖写；合并编排在本 spec。
-- **僵尸清理（统一引擎，两触发入口）**：定期 alarms(10min) + 打开首页 → 共享节流(5min) → `fetchConversationList` → 对比 Upstash keys → 删差集。
+- **僵尸清理（统一引擎，两触发入口）**：定期 alarms(60min) + 打开首页 → 共享节流(5min) → `fetchConversationList` → 对比 Upstash keys → 删差集。
 - **本地多对话缓存 + LRU 淘汰**。
 - **产品边界声明**：Headroom 只精确记录"在装了扩展的设备上打开过"的对话。跨设备靠"打开即同步"——只要在任一装扩展的设备打开过，就全量同步；没在装扩展设备打开过的对话不在数据里。README/PRIVACY 如实声明。
 
-**不采用**：outbox（增量丢失靠"下次打开重算"兜底，见上 Motivation）。**采用 `chrome.alarms` 仅用于僵尸清理调度**(10min 周期,非增量 drain)。仪表盘直接从缓存 record 派生（`projectUsage`），不另存运行态镜像。
+**不采用**：outbox（增量丢失靠"下次打开重算"兜底，见上 Motivation）。**采用 `chrome.alarms` 仅用于僵尸清理调度**(60min 周期,非增量 drain)。仪表盘直接从缓存 record 派生（`projectUsage`），不另存运行态镜像。
 
 ## Requirements
 
@@ -114,7 +114,7 @@ sequenceDiagram
 
 ### P1 — 增强
 
-- [x] **僵尸清理（统一引擎）**：`chrome.alarms`(10min 周期) + 打开首页 → 共享节流(5min) → `fetchConversationList` → 对比 Upstash → 删差集。
+- [x] **僵尸清理（统一引擎）**：`chrome.alarms`(60min 周期) + 打开首页 → 共享节流(5min) → `fetchConversationList` → 对比 Upstash → 删差集。
 - [x] **对账频率控制**：快速切多个对话时 debounce / 只对停留 >N 秒的对话触发全量对账。
 - [x] 7 家拉历史 API 验证（2026-06 真机抓包，全平台文本可取）。
 - [x] 7 家删除端点实测（拦截层就绪）。
@@ -192,7 +192,7 @@ headroom:conv-index         → { <full-key>: updatedAt } 元数据（LRU 淘汰
 - **读用量**：`GET_STATE` → 读本地缓存 record → `projectUsage`（秒开）；后台对账完成后纠正。
 - **网页端删对话（D）**：webRequest 命中 `deleteUrl` → `parseDelete` → 删本地缓存 + Upstash `DEL`（best-effort）。
 - **移动端删对话**：下次打开首页或定期 alarm → `fetchConversationList` 差集清理。
-- **僵尸清理（A）**：定期 alarms(10min) + 打开首页 → 共享节流(5min) → `fetchConversationList` → 对比 Upstash keys → 删差集。
+- **僵尸清理（A）**：定期 alarms(60min) + 打开首页 → 共享节流(5min) → `fetchConversationList` → 对比 Upstash keys → 删差集。
 
 ### Adapter 字段归属（原语 vs 编排）
 
@@ -241,10 +241,10 @@ async function cleanupZombies(
 
 #### 两触发入口
 
-| 触发器            | 实现                                                              | 调用                                                                                      |
-| ----------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| **定期（10min）** | `chrome.alarms.create("zombie-cleanup", { periodInMinutes: 10 })` | `onAlarm` → 遍历 7 平台 → 有 tab 则发 `FETCH_CONVERSATION_LIST`；无 tab 则用缓存列表兜底  |
-| **打开首页**      | content script 检测主页 URL（`dialogueIdFromUrl === null`）       | content script 主动发 `CONVERSATION_LIST` → background 调 `cleanupZombies(platform, ids)` |
+| 触发器            | 实现                                                              | 调用                                                                                                                 |
+| ----------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **定期（60min）** | `chrome.alarms.create("zombie-cleanup", { periodInMinutes: 60 })` | `onAlarm` → 遍历 7 平台 → 有 tab 则发 `FETCH_CONVERSATION_LIST`；无 tab 则跳过（用户未在该平台活动，不触发后台行为） |
+| **打开首页**      | content script 检测主页 URL（`dialogueIdFromUrl === null`）       | content script 主动发 `CONVERSATION_LIST` → background 调 `cleanupZombies(platform, ids)`                            |
 
 #### 节流逻辑
 
@@ -263,7 +263,7 @@ async function cleanupZombies(
                           更新 lastCleanupTime
 ```
 
-**为什么 5 分钟**：定期 10min + 首页触发可能同时发生 → 5min 节流保证最多执行一次。
+**为什么 5 分钟**：定期 60min + 首页触发可能同时发生 → 5min 节流保证最多执行一次。
 
 #### 执行流程图
 
@@ -271,7 +271,7 @@ async function cleanupZombies(
 ┌─────────────────────────────────────────────────────────────────┐
 │                         触发层                                   │
 │                                                                 │
-│       chrome.alarms(10min)         CONVERSATION_LIST(首页)       │
+│       chrome.alarms(60min)         CONVERSATION_LIST(首页)       │
 │              │                            │                     │
 │              ▼                            ▼                     │
 │  ┌──────────────────────────────────────────────────────────┐   │
@@ -281,18 +281,18 @@ async function cleanupZombies(
 │  └──────────────────────────────────────────────────────────┘   │
 │              │                                                  │
 │              ▼ (alarm 无 tab 时)                                │
-│        用 lastConversationList 缓存兜底                         │
+│        跳过 — 用户未在该平台活动，不触发后台清理               │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 #### 前置条件与降级
 
-| 条件                             | 不满足时                         |
-| -------------------------------- | -------------------------------- |
-| 有打开的平台 tab                 | 定期清理跳过（无法拉活跃列表）   |
-| 用户已登录平台                   | content script 拉不到列表 → 跳过 |
-| Upstash 已配置                   | 只清本地（云端无东西可清）       |
-| `fetchConversationList` 真机准确 | 清理效果打折扣（根本依赖）       |
+| 条件                             | 不满足时                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------ |
+| 有打开的平台 tab                 | 定期清理跳过。用户未在该平台活动时不触发后台行为（"don't touch my shit" 边界） |
+| 用户已登录平台                   | content script 拉不到列表 → 跳过                                               |
+| Upstash 已配置                   | 只清本地（云端无东西可清）                                                     |
+| `fetchConversationList` 真机准确 | 清理效果打折扣（根本依赖）                                                     |
 
 #### 平台覆盖
 
@@ -335,7 +335,7 @@ headroom:cleanup-state → { <platform>: lastCleanupTimestamp }
 
 ### Browser APIs
 
-`webRequest`（已有，send + 删除监听）。`fetchHistory` / `fetchConversationList` 用普通 `fetch`（同源，吃平台 cookie 会话）。`chrome.alarms`（僵尸清理定期调度,10min 周期,需 `alarms` 权限）。
+`webRequest`（已有，send + 删除监听）。`fetchHistory` / `fetchConversationList` 用普通 `fetch`（同源，吃平台 cookie 会话）。`chrome.alarms`（僵尸清理定期调度,60min 周期,需 `alarms` 权限）。
 
 ## Implementation Plan
 
@@ -357,7 +357,7 @@ headroom:cleanup-state → { <platform>: lastCleanupTimestamp }
 - **union 按稳定 messageId 合并**：平台返回的轮集变化（截断 / 单条删除 / 重生成移位）时，`totalTokens` 仍正确——不重复计、不丢早期轮（回归测试：50 轮截断到 30 轮 → `totalTokens` 不变；旧实现会算成 1875≠1275）
 - 网页端删对话 → 本地缓存 + Upstash 对应 key 都消失
 - 移动端删对话 → 下次首页打开或定期 alarm → Upstash 记录被差集清理
-- **定期僵尸清理**：`chrome.alarms` 每 10min 触发 → 有平台 tab 时自动清理死 record；与首页触发共享 5min 节流
+- **定期僵尸清理**：`chrome.alarms` 每 60min 触发 → 有平台 tab 时自动清理死 record；与首页触发共享 5min 节流
 - 切 tab / 开面板读本地缓存（秒开），不阻塞网络
 
 ## Open Questions
@@ -365,6 +365,6 @@ headroom:cleanup-state → { <platform>: lastCleanupTimestamp }
 - ChatGPT 的 mapping 树遍历：取主线（current_node 回溯）还是取所有 user→assistant 对？重生成分支怎么处理？
 - Gemini 历史内容抓取方式（2026-06 真机确认：内容在 SSR HTML / DOM，`fetchHistory` 走 DOM 抓取作兜底，文本可取；是否升级为更稳的 batchexecute RPC 留 [004](./004-optimizations.md)）。
 - `fetchHistory` 的频率控制阈值：快速切对话时，debounce 多少 / 停留几秒才触发全量对账？
-- 僵尸清理触发频率：定期 alarms(10min) + 首页触发,共享 5min 节流（已设计）。
+- 僵尸清理触发频率：定期 alarms(60min) + 首页触发,共享 5min 节流（已设计）。
 - 新会话首条无 dialogueId（Kimi 等）→ 首轮无法 fetchHistory；要等 dialogueId 出现。
 - `MAX_RETAINED_ROUNDS`（200）在全量对账下是否仍合理？平台历史可能更长，对账要不要截断？

@@ -1,212 +1,310 @@
-# 004: Token 估算体系升级 — 书写系统扩展 + 平台系数 + 用户覆盖
+# 004: Token Estimation System Upgrade — Writing System Expansion + Per-Platform Coefficients + User Overrides
 
 ## Status
 
-开发中。代码基础设施先行（类型扩展 + estimateTokens 升级 + Settings UI 分层 + Advanced 面板），系数标定独立推进（纯配置数据，不阻塞代码）。
+In progress. Phase A code infrastructure complete (type extensions + estimateTokens upgrade + Settings UI layering + Advanced panel). Phase B calibration **measured** against real tokenizers, locally and exactly, for 6 of 7 platforms (method §4.4; harness `scripts/calibration-lib.mjs`) and applied to all 7 adapters. Remaining: live mixed-script spot-check (B8).
 
 ## Summary
 
-把 Token 估算从 v1 的 2 种书写系统升级到 v2 的 6 种，每平台独立系数，用户可在 Advanced Settings 按平台覆盖。
+Upgrade token estimation from v1's 2 writing systems to v2's 6, with independent coefficients per platform, user-overridable per platform in Advanced Settings.
 
-**不在本 spec 范围**：跨浏览器深度 QA（归 [`acceptance-checklist.md`](./acceptance-checklist.md)）。
+**Out of scope for this spec**: cross-browser deep QA (goes to [`acceptance-checklist.md`](./acceptance-checklist.md)).
 
 ## Motivation
 
-v1 的三个问题：
+Three problems with v1:
 
-1. **书写系统覆盖面窄**：日文假名、韩文 Hangul 被错误归入 Latin 桶计词，偏差显著
-2. **不区分平台分词器**：DeepSeek 和 ChatGPT 对同一汉字的 token 数不同，但 7 家平台用同一套系数
-3. **用户不可控**：代码通路已参数化（`TokenCoefficients` → `estimateTokens(text, coeff)`），但设置面板没暴露
+1. **Narrow writing-system coverage**: Japanese kana and Korean Hangul are incorrectly bucketed into Latin and counted as words; significant deviation.
+2. **No per-platform tokenizer distinction**: DeepSeek and ChatGPT produce different token counts for the same Chinese character, but all 7 platforms share one coefficient set.
+3. **User has no control**: Code path is already parameterized (`TokenCoefficients` → `estimateTokens(text, coeff)`), but the settings panel does not expose it.
 
 ## Design
 
-### 1. 书写系统扩展
+### 1. Writing System Expansion
 
-从 2 种扩展到 6 种，每种独立系数：
+Expand from 2 to 6 writing systems, each with independent coefficients:
 
-| 书写系统     | Unicode 范围               | 计数方式 | 优先级 |
-| ------------ | -------------------------- | -------- | ------ |
-| CJK 汉字     | `\p{Unified_Ideograph}`    | 按字     | —      |
-| 日文假名     | `\p{Hiragana}\p{Katakana}` | 按字     | 高     |
-| 韩文 Hangul  | `\p{Hangul}`               | 按字     | 高     |
-| 西里尔       | `\p{Cyrillic}`             | 按词     | 中     |
-| 阿拉伯       | `\p{Arabic}`               | 按词     | 中     |
-| Latin 及其他 | 剩余                       | 按词     | —      |
+| Writing System        | Unicode Range              | Counting Unit | Priority |
+| --------------------- | -------------------------- | ------------- | -------- |
+| CJK Unified Ideograph | `\p{Unified_Ideograph}`    | per character | —        |
+| Japanese Kana         | `\p{Hiragana}\p{Katakana}` | per character | High     |
+| Korean Hangul         | `\p{Hangul}`               | per character | High     |
+| Cyrillic              | `\p{Cyrillic}`             | per word      | Medium   |
+| Arabic                | `\p{Arabic}`               | per word      | Medium   |
+| Latin & others        | remainder                  | per word      | —        |
 
-> **按字 vs 按词**：CJK/假名/韩文按字符计（一字 ≈ 1-3 token，方差小），西里尔/阿拉伯/Latin 按空白分隔词计（词长变化大，按词更稳）。
+> **Per-character vs. per-word**: CJK / Kana / Hangul counted per character (one character ≈ 1–3 tokens, low variance); Cyrillic / Arabic / Latin counted per whitespace-separated word (word length varies widely, per-word is more stable).
 
-**v2 估算公式**：
+**v2 estimation formula**:
 
 ```
 tokens(text) = Σ over scripts s [ count_chars_or_words(text, s) × coeff[s] ]
 ```
 
-其中 `coeff[s]` 从 adapter 的 `tokenCoefficients` 读取。
+where `coeff[s]` is read from the adapter's `tokenCoefficients`.
 
-### 2. TokenCoefficients 类型
+### 2. TokenCoefficients Type
 
 ```typescript
 // utils/estimate.ts
 interface TokenCoefficients {
-  cjk: number; // CJK 汉字
-  kana: number; // 日文假名
-  hangul: number; // 韩文 Hangul
-  cyrillic: number; // 西里尔
-  arabic: number; // 阿拉伯
-  latin: number; // Latin 及其他（兜底桶）
+  cjk: number; // CJK Unified Ideograph
+  kana: number; // Japanese Kana
+  hangul: number; // Korean Hangul
+  cyrillic: number; // Cyrillic
+  arabic: number; // Arabic
+  latin: number; // Latin & others (fallback bucket)
 }
 ```
 
-所有字段必填。`estimateTokens` 内部按 Unicode property escapes（`\p{...}`，`u` flag）逐字符分类 → 分桶计数 → 乘系数求和。
+All fields required. `estimateTokens` internally classifies per character via Unicode property escapes (`\p{...}`, `u` flag) → bucket counting → multiply and sum by coefficient.
 
-### 3. 系数解析链（两级）
+### 3. Coefficient Resolution Chain (Two-Level)
 
 ```
-Settings.tokenCoefficients[platformId].cjk   ← 用户覆盖（最高优先）
-  ?? adapter.tokenCoefficients.cjk            ← 平台默认（每个 adapter 必提供）
+Settings.tokenCoefficients[platformId].cjk   ← user override (highest priority)
+  ?? adapter.tokenCoefficients.cjk            ← platform default (each adapter must provide)
 ```
 
-没有第三级全局兜底——每个 adapter 的 `tokenCoefficients` 是必填字段，adapter 自己就是该平台的默认值。"重置"操作即清空用户覆盖，回到 adapter 自带值。
+No third-level global fallback — each adapter's `tokenCoefficients` is a required field; the adapter itself is that platform's default. "Reset" action clears the user override, returning to the adapter's built-in value.
 
-`DEFAULT_COEFFICIENTS` 常量仅用于 `estimateTokens` 单测的参考值，不参与运行时解析链。
+`DEFAULT_COEFFICIENTS` constant is only used as a reference value in `estimateTokens` unit tests; it does not participate in the runtime resolution chain.
 
-### 4. 各平台分词器与标定策略
+### 4. Per-Platform Default Models, Tokenizers, and Coefficient Estimation
 
-**核心原则**：Headroom 不打包 tokenizer。只需要**系数**——"该分词器下每种书写系统平均几个字符/词换 1 个 token"。系数通过经验方法标定，不需要分词器开源。
+**Core principle**: Headroom does not bundle tokenizers. It only needs **coefficients** — "how many characters/words per token does each writing system average under this tokenizer." Coefficients are calibrated empirically; tokenizer source code is not required.
 
-| 平台            | 分词器                              | 标定方法                                  |
-| --------------- | ----------------------------------- | ----------------------------------------- |
-| ChatGPT         | tiktoken `o200k_base`（开源）       | tiktoken 库离线精确计算                   |
-| DeepSeek        | DeepSeek tokenizer（BPE，模型开源） | 服务端 `accumulated_token_usage` 回归     |
-| Qwen / 通义千问 | Qwen tokenizer（BPE，模型开源）     | 服务端 `usage.total_tokens` 回归          |
-| Kimi            | Moonshot 未公开                     | 经验估算（同类 BPE 系数作基线）           |
-| Gemini          | Google 未公开                       | 经验估算（同类 SentencePiece 系数作基线） |
-| 豆包            | 字节跳动未公开                      | 经验估算（同类 BPE 系数作基线）           |
+#### 4.1 Default Models
 
-> 标定工作是纯配置数据工作，不涉及代码改动。占位值先行，调研 + 社区采样后填入。
+Current default models per platform web version (2026-07, adversarially verified web research — 3-vote per claim):
 
-### 5. 占位系数矩阵
+| Platform       | Default Model           | Verification                                                                                             |
+| -------------- | ----------------------- | -------------------------------------------------------------------------------------------------------- |
+| ChatGPT        | GPT-5.5 Instant         | Confirmed — default since 2026-05-05, replaced GPT-5.3 Instant; API alias `chat-latest`                  |
+| DeepSeek       | DeepSeek V4 Preview     | Confirmed — Instant Mode (V4-Flash, 284B MoE) is the default; Expert Mode (V4-Pro) opt-in                |
+| Qwen           | Qwen 3.7 preview family | Partial — 3.7-Max/Plus previews live since 2026-05; which variant is the homepage default is unconfirmed |
+| Tongyi Qianwen | Qwen 3.7 (presumed)     | Unverified — no direct claims found; presumed same Qwen family                                           |
+| Kimi           | Kimi K2.6               | Confirmed — "default across web, mobile app, and Kimi Code" (2026-04-22)                                 |
+| Gemini         | Gemini 3.5 Flash        | Confirmed — default on gemini.google.com since 2026-05-19                                                |
+| Doubao         | Unknown                 | Unconfirmed — "Doubao 2.1" could not be verified; production model name unknown                          |
 
-标定前所有平台使用同一套占位值：
+Key verification sources: [DeepSeek V4 official announcement](https://api-docs.deepseek.com/news/news260424/) · [Kimi K2.6 default coverage](https://pandaily.com/moonshot-ai-open-sources-kimi-k2-6-advancing-multi-agent-collaboration/) · GPT-5.5 Instant default (TechCrunch / VentureBeat / itbrief, consistent secondaries) · Gemini 3.5 Flash default (DigitalTrends / deeplearning.ai) · [o200k_base for gpt-4o and later](https://community.openai.com/t/tokenizer-latest-chat-gpt-models/1371076) · [Gemma ships the same tokenizer as Gemini](https://developers.googleblog.com/en/gemma-explained-whats-new-in-gemma-3/). Full research report with the evidence chain: git `d9ec75d` (`report.md`).
 
-| 平台          | CJK  | Kana | Hangul | Cyrillic | Arabic | Latin | 来源         |
-| ------------- | ---- | ---- | ------ | -------- | ------ | ----- | ------------ |
-| **全部 7 家** | 0.60 | 0.50 | 0.50   | 0.50     | 0.50   | 0.50  | 占位，待标定 |
+#### 4.2 Tokenizers and Vocabularies
 
-系数精度 **2 位小数**。0.01 差异在 1M context window 下 ≈ 200 token 估算偏差，百分比显示不可见。
+A tokenizer is bound to a model at training time. Types and vocab sizes below are **measured from the actual tokenizer files** (not model-card claims):
 
-即使系数未标定，分桶细化本身就能减少误差（假名和韩文不再被错误归入 Latin 桶）。
+| Platform       | Tokenizer                                                                       | Vocab Size | Calibration source (fidelity)                                                                                                                                                          |
+| -------------- | ------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ChatGPT        | tiktoken `o200k_base` (byte-BPE)                                                | 200,019    | `tiktoken` npm, o200k_base (**exact** — gpt-4o through latest chat models all use o200k_base)                                                                                          |
+| DeepSeek       | BPE `tokenizer.json` (`PreTrainedTokenizerFast`)                                | 129,280    | [deepseek-ai/DeepSeek-V4-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash) (**exact** — production model is open; same vocab as V3)                                         |
+| Qwen           | BBPE, `Qwen2Tokenizer` lineage                                                  | 248,320    | [Qwen/Qwen3.6-27B](https://huggingface.co/Qwen/Qwen3.6-27B) (**sibling** — web 3.7 is closed; 3.6 is the newest open sibling. NOT the old dense-Qwen3 151,936 vocab)                   |
+| Tongyi Qianwen | Same as Qwen                                                                    | 248,320    | Same as above                                                                                                                                                                          |
+| Kimi           | tiktoken-format BPE (`tiktoken.model` + Han-aware `pat_str`, no tokenizer.json) | 163,840    | [moonshotai/Kimi-K2.6](https://huggingface.co/moonshotai/Kimi-K2.6) (**exact** — production model is open)                                                                             |
+| Gemini         | SentencePiece (Gemini-family)                                                   | 262,144    | [google/gemma-4-12B-it-qat-q4_0-unquantized](https://huggingface.co/google/gemma-4-12B-it-qat-q4_0-unquantized) (**proxy** — Google states Gemma ships "the same tokenizer as Gemini") |
+| Doubao         | BPE + ByteLevel (`PreTrainedTokenizerFast`)                                     | 155,136    | [ByteDance-Seed/Seed-OSS-36B-Instruct](https://huggingface.co/ByteDance-Seed/Seed-OSS-36B-Instruct) (**proxy** — same ByteDance Seed team; production model closed)                    |
 
-### 6. Settings 分层：General vs Advanced
+**Vocab size vs. compression rate**: larger vocab → common characters/word groups more likely encoded as a single token → lower coefficient. **Measured reality (2026 vocabs, 129K–262K)**: Chinese-heavy vocabs pack multi-character _words_ into single tokens, so CJK lands at **0.58–0.83 tokens per character** — below 1.0 on every platform. The older BPE rule of thumb "1 Chinese char ≈ 1.5–2.5 tokens" is a cl100k-era artifact and must not be used for estimation.
 
-当前设置面板是平铺的。加入系数矩阵后拆为两层：
+#### 4.3 Measured Coefficient Matrix
 
-**General Settings**（已有，不变）：
+Fitted by joint 6-variable least squares against each real tokenizer over the shared calibration corpus (`scripts/calibration-lib.mjs`: 58 samples, prose + markdown + LLM-answer-shaped per writing system; bucket counts from the real `estimateTokens` engine via one-hot coefficients). **Coefficients already include markdown format overhead** (see §5) — no runtime markdown parsing needed. Reproduce with `scripts/calibrate-chatgpt.mjs` + `scripts/calibrate-hf.mjs` (`npm i --no-save tiktoken @huggingface/transformers`).
 
-| 设置项             | 说明                               |
-| ------------------ | ---------------------------------- |
-| 预警阈值           | 双滑块：黄/红阈值                  |
-| UI 语言            | Auto / en / zh_CN / …              |
-| Context Limit 覆盖 | 按平台覆盖 context window 上限     |
-| Upstash 配置       | REST URL / Token / 测试连接 / 清空 |
+| Platform           | CJK  | Kana | Hangul | Cyrillic | Arabic | Latin | Fidelity |
+| ------------------ | ---- | ---- | ------ | -------- | ------ | ----- | -------- |
+| **ChatGPT**        | 0.83 | 0.78 | 0.66   | 1.76     | 1.84   | 1.30  | exact    |
+| **DeepSeek**       | 0.62 | 0.74 | 0.78   | 2.10     | 2.15   | 1.33  | exact    |
+| **Qwen**           | 0.61 | 0.52 | 0.55   | 1.77     | 1.71   | 1.36  | sibling  |
+| **Tongyi Qianwen** | 0.61 | 0.52 | 0.55   | 1.77     | 1.71   | 1.36  | sibling  |
+| **Kimi**           | 0.58 | 0.85 | 0.98   | 2.77     | 2.78   | 1.31  | exact    |
+| **Gemini**         | 0.70 | 0.52 | 0.62   | 1.73     | 1.96   | 1.35  | proxy    |
+| **Doubao**         | 0.68 | 1.27 | 0.82   | 2.04     | 2.30   | 1.38  | proxy    |
 
-**Advanced Settings**（新增）：
+Coefficient precision **two decimal places**. Platform quirks: Kimi's `[\p{Han}]+` pre-tokenization makes Chinese ultra-cheap but non-Latin words expensive (Cyrillic/Arabic ≈ 2.8/wd); Seed-OSS carries little Japanese (kana 1.27, ~2× the others) — treat Doubao's kana as low-confidence.
 
-| 设置项         | 说明                   |
-| -------------- | ---------------------- |
-| Token 估算系数 | 按平台覆盖书写系统系数 |
+**Accepted error modes** (held-out mixed-script validation; recur across all six tokenizers, property of the linear model, not of any coefficient value):
 
-**UI 交互**：
+- Code-heavy English: underestimates 19–29% (code tokenizes denser than prose; one Latin coefficient averages both).
+- Korean+English mix: overestimates 20–36% (tech loanwords in Hangul prose tokenize cheaper than pure Hangul).
+- Everything else lands within the ±15% target.
 
-- 设置面板底部「Advanced」折叠区，默认收起
-- 展开后按平台分组，每个平台一个折叠行（`<details>` 或 accordion）
-- 展开平台行 → 显示 6 个系数输入框（`<input type="number" step="0.01">`）
-- 每个平台行右侧一个「重置」按钮 → 恢复到该 adapter 默认值
-- 「全部重置」按钮 → 清空所有用户覆盖
-- 保存设置后弹提示："系数修改需刷新平台页面后生效"
+> **History**: an earlier estimated matrix (CJK 1.3–1.8, derived from the "1.5–2.5 tok/char" rule of thumb) was applied to the adapters before measurement; it overestimated char-based scripts 2–3× and underestimated Cyrillic/Arabic on Kimi/DeepSeek/Doubao. Measurement supersedes it. Full evidence: git `d9ec75d` (`report.md`).
 
-### 7. 数据模型
+#### 4.4 Calibration Method (done)
 
-**Settings（本地）新增字段**：
+All six tokenizers were calibrated **offline and locally** — no server-side regression was needed, because every platform family turned out to have a public tokenizer or a vendor-stated-equivalent proxy (§4.2). Loaders: `tiktoken` npm (ChatGPT o200k_base; Kimi's `tiktoken.model` + moonshotai's own `pat_str` through the same wasm core) and `@huggingface/transformers` (DeepSeek / Qwen / Gemma / Seed-OSS `tokenizer.json`). Server-side spot-checks (DeepSeek `accumulated_token_usage`, Qwen `usage.total_tokens`) remain useful only to measure per-round chat-template overhead — an optional follow-up, not part of the coefficients.
+
+### 5. Markdown Format Overhead Estimation
+
+LLMs output in markdown by default; formatting symbols consume additional tokens. Headroom estimates the **full output text** (including formatting), so coefficients must absorb this overhead.
+
+#### 5.1 Typical Token Overhead per Format Element
+
+| Format           | Example              | Extra Token Overhead | Notes                               |
+| ---------------- | -------------------- | -------------------- | ----------------------------------- |
+| Table row        | `\| col1 \| col2 \|` | 5–7 tokens / row     | includes `\|` separators and spaces |
+| Table separator  | `\|--- \|--- \|`     | 3–5 tokens           | includes `\|` and `-` characters    |
+| Code block fence | ` ```python `        | 2–3 tokens           | includes backticks and language tag |
+| Heading          | `## Heading`         | 3–5 tokens           | `#` × level + space + content       |
+| List item        | `- item`             | 2–3 tokens           | `-` + space + content               |
+| Bold             | `**bold**`           | 3–5 tokens           | 4 `*` + content                     |
+| Blockquote       | `> quote`            | 2–3 tokens           | `>` + space + content               |
+| Link             | `[text](url)`        | 4–6 tokens           | brackets + content                  |
+
+#### 5.2 Impact on Overall Estimation
+
+Token composition of a typical LLM reply (500 Chinese chars + markdown formatting, ChatGPT measured coefficients):
+
+```
+Pure text content (500 Chinese chars):  ~415 tokens (measured CJK coefficient 0.83)
+Markdown format overhead:              ~55–105 tokens (~12–15%)
+  ├── 1 table (3 cols × 4 rows):       +40 tokens
+  ├── 1 code block (10 lines):         +30 tokens
+  ├── 3 headings:                      +10 tokens
+  ├── 5 list items:                    +10 tokens
+  └── 8 bold/italic:                   +15 tokens
+─────────────────────────────────────────
+Total:                                 ~470–520 tokens
+```
+
+#### 5.3 Implementation Rationale
+
+**Choice: directly estimate raw text (including formatting); do not strip markdown.**
+
+Rationale:
+
+1. **Tokens actually consumed by the LLM include formatting symbols** — these are real cost, not "noise." Users pay for these tokens (token-billed APIs) or occupy context window with them.
+2. **Format proportion is relatively stable** (10–15% of total tokens), absorbed by the coefficient's ±15% error band.
+3. **Different platforms' markdown usage varies** (ChatGPT likes tables, DeepSeek likes code blocks), but the difference is within the error band.
+4. **Simple to implement** — no need to introduce a markdown parser, avoiding added code complexity and performance cost.
+5. **Stripping markdown is expensive**: requires parsing AST → judging which symbols are "formatting" vs. "content" (e.g. `|` is formatting in tables, content in math formulas) → easily introduces new errors.
+
+**Conclusion**: Sample texts for coefficient calibration should **include typical markdown formatting**, so calibrated coefficients naturally include format overhead; no special handling needed at runtime.
+
+> **Implementation status**: §4.3's coefficient matrix was measured on a corpus that "includes markdown formatting" — i.e., coefficient values already fold in format overhead. At runtime, `estimateTokens` directly applies coefficients to raw text (including markdown syntax symbols), with no stripping or special handling.
+
+### 6. Settings Layering: General vs. Advanced
+
+Current settings panel is flat. After adding the coefficient matrix, split into two layers:
+
+**General Settings** (existing, unchanged):
+
+| Setting                | Description                                |
+| ---------------------- | ------------------------------------------ |
+| Warning Thresholds     | dual slider: yellow / red threshold        |
+| UI Language            | Auto / en / zh_CN / …                      |
+| Context Limit Override | per-platform context window override       |
+| Upstash Config         | REST URL / Token / Test Connection / Clear |
+
+**Advanced Settings** (new):
+
+| Setting                       | Description                                      |
+| ----------------------------- | ------------------------------------------------ |
+| Token Estimation Coefficients | per-platform writing system coefficient override |
+
+**UI interaction**:
+
+- "Advanced" collapsible section at the bottom of the settings panel, collapsed by default
+- When expanded, grouped by platform with one collapsible row per platform (`<details>` or accordion)
+- Expand platform row → shows 6 coefficient input boxes (`<input type="number" step="0.01">`)
+- Per-platform "Reset" button on the right → restores that adapter's default values
+- "Reset All" button → clears all user overrides
+- After saving settings, toast: "Coefficient changes take effect after refreshing the platform page"
+
+### 7. Data Model
+
+**Settings (local) new field**:
 
 ```typescript
 // utils/settings.ts
 interface Settings {
-  // ... 现有字段 ...
+  // ... existing fields ...
   tokenCoefficients: Record<string, Partial<TokenCoefficients>>;
-  // 按 platformId 索引，只存用户覆盖的部分。未覆盖字段从 adapter 默认值读取。
+  // indexed by platformId, stores only overridden fields. Unoverridden fields read from adapter defaults.
 }
 ```
 
-**CloudSettings（云端）新增字段**：
+**CloudSettings (cloud) new field**:
 
 ```typescript
 // utils/cloud-settings.ts
 interface CloudSettings {
-  // ... 现有字段 ...
+  // ... existing fields ...
   tokenCoefficients: Record<string, Partial<TokenCoefficients>>;
 }
 ```
 
-`toCloudSettings` 携带、`mergeCloudSettings` 做 LWW 合并。凭证永不包含在 `tokenCoefficients` 中（与现有字段一致的剥离逻辑）。
+`toCloudSettings` carries it; `mergeCloudSettings` does LWW merge. Credentials are never included in `tokenCoefficients` (consistent stripping logic with existing fields).
 
-**PlatformAdapter 类型变更**：
+**PlatformAdapter type change**:
 
-`tokenCoefficients` 从可选（`?`）改为必填。每个 adapter 必须提供一套默认系数。
+`tokenCoefficients` changed from optional (`?`) to required. Every adapter must provide a default coefficient set.
 
-### 8. 运行时生效时机
+### 8. Runtime Effect Timing
 
-用户保存系数覆盖 → 设置面板弹提示"需刷新平台页面" → 用户手动 F5 → 页面重载 → content script 注入 → `PAGE_READY` → `fetchHistory` → `applyHistory` → `estimateTokens` 读取新系数。
+User saves coefficient override → settings panel displays a toast "Refresh the platform page for changes to take effect" → user manually F5 → page reloads → content script injects → `PAGE_READY` → `fetchHistory` → `applyHistory` → `estimateTokens` reads new coefficients.
 
-不追求"保存即生效"——对话历史已用旧系数估算过，改系数后需全量重估。
+Hot-reload on save is not supported — conversation history has already been estimated with old coefficients; after a coefficient change, full re-estimation is needed.
 
 ## Implementation
 
-分两阶段。标定工作（阶段 B）是纯配置数据，不阻塞阶段 A。
+Split into two phases. Calibration work (Phase B) is pure config data and does not block Phase A.
 
-### 阶段 A — 代码基础设施
+### Phase A — Code Infrastructure
 
-| 步骤 | 文件                                                         | 改动                                                                                                                                               |
-| ---- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A1   | `utils/estimate.ts`                                          | `TokenCoefficients` 扩展为 6 字段；`estimateTokens` 新增假名/韩文/西里尔/阿拉伯字符分类与分桶计数；Unicode property escapes `\p{...}` 替换手动范围 |
-| A2   | `utils/estimate.test.ts`                                     | 新增 6 种书写系统分桶测试 + 混排测试                                                                                                               |
-| A3   | `utils/platform-adapter.ts`                                  | `tokenCoefficients?` → `tokenCoefficients`（必填）                                                                                                 |
-| A4   | `adapters/*.ts`（7 文件）                                    | 无需改动——已引用占位值，类型自动跟随                                                                                                               |
-| A5   | `utils/settings.ts`                                          | `Settings` 加 `tokenCoefficients` 字段；`getSettings` 读                                                                                           |
-| A6   | `utils/settings.test.ts`                                     | 加系数覆盖优先级测试                                                                                                                               |
-| A7   | `utils/cloud-settings.ts`                                    | `CloudSettings` 加 `tokenCoefficients`；`toCloudSettings` 传递；`mergeCloudSettings` LWW 合并                                                      |
-| A8   | `utils/cloud-settings.test.ts`                               | 加系数字段同步 + 凭证剥离测试                                                                                                                      |
-| A9   | `entrypoints/background.ts`                                  | `applyHistory` 解析链改为：`settings.tokenCoefficients[platformId] ?? adapter.tokenCoefficients`                                                   |
-| A10  | `entrypoints/sidepanel/main.ts` + `index.html` + `style.css` | 设置面板重构：General 区 + Advanced 折叠区；按平台分组的系数输入 + 重置按钮 + 全部重置                                                             |
-| A11  | `_locales/*/messages.json`                                   | 新增 Advanced Settings 相关文案 key                                                                                                                |
+| Step | File                                                         | Change                                                                                                                                                                                                    |
+| ---- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A1   | `utils/estimate.ts`                                          | `TokenCoefficients` expanded to 6 fields; `estimateTokens` adds kana / hangul / cyrillic / arabic character classification and bucket counting; Unicode property escapes `\p{...}` replaces manual ranges |
+| A2   | `utils/estimate.test.ts`                                     | New 6-writing-system bucket tests + mixed-script tests                                                                                                                                                    |
+| A3   | `utils/platform-adapter.ts`                                  | `tokenCoefficients?` → `tokenCoefficients` (required)                                                                                                                                                     |
+| A4   | `adapters/*.ts` (7 files)                                    | No change needed — already reference placeholder values, type follows automatically                                                                                                                       |
+| A5   | `utils/settings.ts`                                          | `Settings` adds `tokenCoefficients` field; `getSettings` reads                                                                                                                                            |
+| A6   | `utils/settings.test.ts`                                     | Add coefficient override priority tests                                                                                                                                                                   |
+| A7   | `utils/cloud-settings.ts`                                    | `CloudSettings` adds `tokenCoefficients`; `toCloudSettings` carries; `mergeCloudSettings` LWW merge                                                                                                       |
+| A8   | `utils/cloud-settings.test.ts`                               | Add coefficient sync + credential-stripping tests                                                                                                                                                         |
+| A9   | `entrypoints/background.ts`                                  | `applyHistory` resolution chain changed to: `settings.tokenCoefficients[platformId] ?? adapter.tokenCoefficients`                                                                                         |
+| A10  | `entrypoints/sidepanel/main.ts` + `index.html` + `style.css` | Settings panel refactor: General section + Advanced collapsible section; per-platform grouped coefficient inputs + Reset buttons + Reset All                                                              |
+| A11  | `_locales/*/messages.json`                                   | New Advanced Settings copy keys                                                                                                                                                                           |
 
-### 阶段 B — 系数标定（配置数据，独立推进）
+### Phase B — Coefficient Calibration (Config Data, Independent Track)
 
-| 步骤 | 内容                                                  |
-| ---- | ----------------------------------------------------- |
-| B1   | ChatGPT：tiktoken 离线计算 6 种书写系统系数           |
-| B2   | DeepSeek：采集样本 → 服务端 token 回归                |
-| B3   | Qwen / 通义千问：采集样本 → 服务端 token 回归         |
-| B4   | Kimi / Gemini / 豆包：同类分词器系数作基线 + 人工抽检 |
-| B5   | 更新 7 个 adapter 的 `tokenCoefficients` 为标定值     |
+Output is 7 adapters × one line of config data change each; no logic changes.
 
-> 阶段 B 产出仅为 7 个 adapter 各一行的配置数据变更，不影响代码逻辑。
+#### B.1 Research + Measurement (done — see §4)
+
+- Default models verified per platform (§4.1); tokenizer types and vocab sizes measured from actual tokenizer files (§4.2)
+- Measured coefficient matrix via joint least-squares fit against all six tokenizers (§4.3); markdown overhead folded in (§5)
+- Calibration harness checked in: `scripts/calibration-lib.mjs` (shared corpus + fit + validation), `scripts/calibrate-chatgpt.mjs`, `scripts/calibrate-hf.mjs`
+
+#### B.2 Remaining
+
+| Step | Task                                                                                                                          |
+| ---- | ----------------------------------------------------------------------------------------------------------------------------- |
+| B8   | Live spot-check 2–3 platforms with mixed-script conversations; optional server-side check of per-round chat-template overhead |
+
+#### B.3 Sample Construction Requirements
+
+Embodied in `scripts/calibration-lib.mjs` (the shared corpus all calibration scripts import):
+
+- 8–10 samples per writing system (pure prose + markdown-formatted + LLM-answer-shaped), 80–400 chars each
+- Samples **include typical markdown formatting** so format overhead is absorbed by coefficients (see §5)
+- Mixed-script samples (zh/ja/ko/ru + en, code blocks) are held OUT of the fit and used as validation against the ±15% target
 
 ## Acceptance Criteria
 
-> 详细操作步骤见 [`specs/acceptance-checklist.md`](./acceptance-checklist.md)。
+> Detailed steps in [`specs/acceptance-checklist.md`](./acceptance-checklist.md).
 
-- 日文/韩文/西里尔/阿拉伯混排文本估算误差在目标范围内（标定时确定）
-- 各平台默认系数标定完毕，矩阵表不再有占位标记
-- 用户在 Advanced Settings 改系数 → 保存 → 刷新页面 → 下一轮估算用新系数
-- 平台行「重置」恢复到该 adapter 默认值；「全部重置」清空所有覆盖
-- 保存系数后弹提示"需刷新平台页面"
-- 系数覆盖跨设备同步
-- 未配置 Upstash 时系数覆盖仅本地生效
+- Japanese / Korean / Cyrillic / Arabic mixed-text estimation error within target range (determined during calibration)
+- Per-platform default coefficients calibrated; matrix table has no placeholder markers remaining
+- User changes coefficient in Advanced Settings → saves → refreshes page → next round estimated with new coefficient
+- Per-platform "Reset" restores that adapter's default value; "Reset All" clears all overrides
+- Toast after saving coefficients: "refresh platform page required"
+- Coefficient overrides sync across devices
+- When Upstash not configured, coefficient overrides only take effect locally
 
 ## Open Questions
 
-- 各书写系统 × 平台系数的标定基准与可接受误差带
-- 是否引入轻量 tokenizer 作可选精度升级（仍非默认路径）
-- 对于"未知"分词器平台的经验估算，可接受的误差带是多少
-- 是否需要定期（平台升级模型时）重新采样校准
+- Whether to introduce a lightweight tokenizer as an optional precision upgrade (still not the default path); would fix the two accepted error modes (§4.3) — code-heavy under, ko+en over
+- Re-calibration trigger: platforms swap models without notice — rerun `scripts/calibrate-*.mjs` when a default-model change is observed (tokenizer files are far more stable than product defaults)
+- ChatGPT web-tier context limit: GPT-5.5 Instant model max is reported 400K–1M (sources conflict), but the web product caps per tier are unknown — adapter keeps 131,072 until verified
+- Doubao production model identity (and whether its tokenizer matches Seed-OSS) remains unknown; kana coefficient is the least trustworthy value in the matrix

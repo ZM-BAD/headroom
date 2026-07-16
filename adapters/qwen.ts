@@ -1,5 +1,15 @@
 import type { HistoryRound, PlatformAdapter } from "../utils/platform-adapter";
-import { DEFAULT_COEFFICIENTS } from "../utils/estimate";
+import type { TokenCoefficients } from "../utils/estimate";
+
+/** Measured against Qwen3.6-27B — closest open sibling of web Qwen 3.7 (spec 004 §4.3; scripts/calibrate-hf.mjs). */
+const QWEN_COEFFICIENTS: TokenCoefficients = {
+  cjk: 0.61,
+  kana: 0.52,
+  hangul: 0.55,
+  cyrillic: 1.77,
+  arabic: 1.71,
+  latin: 1.36,
+};
 
 // Qwen Chat (chat.qwen.ai) — request CONFIRMED (POST /api/v2/chat/completions
 // ?chat_id=<id>). dialogueId = chat_id (URL query). `messages[0].content` may
@@ -25,7 +35,7 @@ export const qwenAdapter: PlatformAdapter = {
   completionUrl: "*://chat.qwen.ai/api/v2/chat/completions*",
   matchPattern: "*://chat.qwen.ai/*",
   contextLimit: 1_048_576, // 1M (1 << 20); overridable
-  tokenCoefficients: DEFAULT_COEFFICIENTS, // v1 default; calibrate in spec 004
+  tokenCoefficients: QWEN_COEFFICIENTS, // spec 004 §4.3 calibrated (incl. markdown overhead)
   // Delete endpoint: CONFIRMED live (2026-06). Real RESTful DELETE:
   // DELETE /api/v2/chats/<id> (id in the URL path, body empty). deleteMethod:
   // "DELETE" disambiguates from GET /api/v2/chats/<id> (view a single chat)

@@ -1,5 +1,19 @@
 import type { HistoryRound, PlatformAdapter } from "../utils/platform-adapter";
-import { DEFAULT_COEFFICIENTS } from "../utils/estimate";
+import type { TokenCoefficients } from "../utils/estimate";
+
+/**
+ * Measured via ByteDance's open Seed-OSS-36B as proxy — the production
+ * tokenizer is closed (spec 004 §4.3; scripts/calibrate-hf.mjs). Kana is the
+ * least trustworthy value (Seed-OSS carries little Japanese).
+ */
+const DOUBAO_COEFFICIENTS: TokenCoefficients = {
+  cjk: 0.68,
+  kana: 1.27,
+  hangul: 0.82,
+  cyrillic: 2.04,
+  arabic: 2.3,
+  latin: 1.38,
+};
 
 // Doubao (豆包) — request CONFIRMED (POST /samantha/chat/completion, aliased
 // as /chat/completion). messages[0].content is a STRINGIFIED JSON
@@ -39,7 +53,7 @@ export const doubaoAdapter: PlatformAdapter = {
   completionUrl: "*://www.doubao.com/chat/completion*",
   matchPattern: "*://www.doubao.com/*",
   contextLimit: 262_144, // 256K (1 << 18); overridable
-  tokenCoefficients: DEFAULT_COEFFICIENTS, // v1 default; calibrate in spec 004
+  tokenCoefficients: DOUBAO_COEFFICIENTS, // spec 004 §4.3 calibrated (incl. markdown overhead)
   // Delete endpoint: CONFIRMED live (2026-06). ByteDance IM-protocol style:
   // POST /im/conversation/batch_del_user_conv with a deeply-nested body —
   // uplink_body.batch_delete_user_conversation_uplink_body.conversation_id is

@@ -1,5 +1,15 @@
 import type { HistoryRound, PlatformAdapter } from "../utils/platform-adapter";
-import { DEFAULT_COEFFICIENTS } from "../utils/estimate";
+import type { TokenCoefficients } from "../utils/estimate";
+
+/** Same tokenizer family as Qwen — measured against Qwen3.6-27B (spec 004 §4.3; scripts/calibrate-hf.mjs). */
+const QIANWEN_COEFFICIENTS: TokenCoefficients = {
+  cjk: 0.61,
+  kana: 0.52,
+  hangul: 0.55,
+  cyrillic: 1.77,
+  arabic: 1.71,
+  latin: 1.36,
+};
 
 // 通义千问 consumer chat — request CONFIRMED live (2026-06):
 //   POST https://chat2.qianwen.com/api/v2/chat?...
@@ -31,7 +41,7 @@ export const qianwenAdapter: PlatformAdapter = {
   completionUrl: "*://chat2.qianwen.com/api/v2/chat*",
   matchPattern: "*://www.qianwen.com/*",
   contextLimit: 1_048_576, // 1M (1 << 20); overridable
-  tokenCoefficients: DEFAULT_COEFFICIENTS, // v1 default; calibrate in spec 004
+  tokenCoefficients: QIANWEN_COEFFICIENTS, // spec 004 §4.3 calibrated (incl. markdown overhead)
   // Live-confirmed (2026-06): the `-question`/`-answer` prefix is stable even
   // though the trailing hash (`-oonUAN`) rotates per build.
   // Delete endpoint: CONFIRMED live (2026-06). The delete API rides a

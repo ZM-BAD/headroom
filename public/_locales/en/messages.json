@@ -2,117 +2,245 @@
   "extDescription": {
     "message": "Monitor your AI chat context-window usage in a native side panel."
   },
-  "subtitle": { "message": "Context window monitor" },
-  "openSettings": { "message": "Settings" },
-  "detectingPlatform": { "message": "Detecting platform…" },
-  "noContext": { "message": "— context" },
-  "untitledDialogue": { "message": "Untitled conversation" },
-  "contextSuffix": { "message": "context" },
-  "tokensUnit": { "message": "tokens" },
-  "round": { "message": "Round" },
-  "lastRound": { "message": "Current round" },
-  "statusIdle": { "message": "Waiting for conversation…" },
-  "statusGreen": { "message": "Safe · plenty of room" },
-  "statusYellow": { "message": "Moderate · watch usage" },
-  "statusRed": { "message": "Tight · start a new chat" },
-  "settingsTitle": { "message": "Settings" },
-  "back": { "message": "Back" },
-  "thresholdsTitle": { "message": "Warning thresholds" },
-  "yellowLabel": { "message": "Yellow (moderate)" },
-  "redLabel": { "message": "Red (tight)" },
-  "legendGreen": { "message": "Plenty of room" },
-  "legendYellow": { "message": "Getting tight" },
-  "legendRed": { "message": "Likely to forget" },
-  "resetDefaults": { "message": "Reset to defaults" },
-  "contextLimitsTitle": { "message": "Context window limits" },
+  "subtitle": {
+    "message": "Context window monitor"
+  },
+  "openSettings": {
+    "message": "Settings"
+  },
+  "detectingPlatform": {
+    "message": "Detecting platform…"
+  },
+  "noContext": {
+    "message": "— context"
+  },
+  "untitledDialogue": {
+    "message": "Untitled conversation"
+  },
+  "contextSuffix": {
+    "message": "context"
+  },
+  "tokensUnit": {
+    "message": "tokens"
+  },
+  "round": {
+    "message": "Round"
+  },
+  "lastRound": {
+    "message": "Current round"
+  },
+  "statusIdle": {
+    "message": "Waiting for conversation…"
+  },
+  "statusGreen": {
+    "message": "Safe · plenty of room"
+  },
+  "statusYellow": {
+    "message": "Moderate · watch usage"
+  },
+  "statusRed": {
+    "message": "Tight · start a new chat"
+  },
+  "settingsTitle": {
+    "message": "Settings"
+  },
+  "back": {
+    "message": "Back"
+  },
+  "thresholdsTitle": {
+    "message": "Warning thresholds"
+  },
+  "yellowLabel": {
+    "message": "Yellow (moderate)"
+  },
+  "redLabel": {
+    "message": "Red (tight)"
+  },
+  "legendGreen": {
+    "message": "Plenty of room"
+  },
+  "legendYellow": {
+    "message": "Getting tight"
+  },
+  "legendRed": {
+    "message": "Likely to forget"
+  },
+  "resetDefaults": {
+    "message": "Reset to defaults"
+  },
+  "contextLimitsTitle": {
+    "message": "Context window limits"
+  },
   "contextLimitsHint": {
     "message": "Auto-detected per platform — override any value to match your plan."
   },
-  "resetContextLimits": { "message": "Reset to defaults" },
-  "ctxLimitInvalid": { "message": "Enter a whole number ≥ 1" },
-  "roundsTitle": { "message": "Rounds" },
-  "roundHeaderN": { "message": "Round" },
-  "roundHeaderInput": { "message": "Input" },
-  "roundHeaderOutput": { "message": "Output" },
-  "roundHeaderCumulative": { "message": "Total" },
-  "languageLabel": { "message": "Language" },
-  "langAuto": { "message": "Auto (follow browser)" },
-  "upstashTitle": { "message": "Upstash sync" },
-  "upstashUrlLabel": { "message": "REST URL" },
-  "upstashTokenLabel": { "message": "REST Token" },
-  "showToken": { "message": "Show token" },
-  "hideToken": { "message": "Hide token" },
+  "resetContextLimits": {
+    "message": "Reset to defaults"
+  },
+  "ctxLimitInvalid": {
+    "message": "Enter a whole number ≥ 1"
+  },
+  "roundsTitle": {
+    "message": "Rounds"
+  },
+  "roundHeaderN": {
+    "message": "Round"
+  },
+  "roundHeaderInput": {
+    "message": "Input"
+  },
+  "roundHeaderOutput": {
+    "message": "Output"
+  },
+  "roundHeaderCumulative": {
+    "message": "Total"
+  },
+  "languageLabel": {
+    "message": "Language"
+  },
+  "langAuto": {
+    "message": "Auto (follow browser)"
+  },
+  "upstashTitle": {
+    "message": "Upstash sync"
+  },
+  "upstashUrlLabel": {
+    "message": "REST URL"
+  },
+  "upstashTokenLabel": {
+    "message": "REST Token"
+  },
+  "showToken": {
+    "message": "Show token"
+  },
+  "hideToken": {
+    "message": "Hide token"
+  },
   "upstashHint": {
     "message": "Use the REST API credentials from the Upstash console — not the Redis password."
   },
-  "testConnection": { "message": "Test connection" },
-  "clearUpstash": { "message": "Clear" },
-  "testingConnection": { "message": "Testing…" },
-  "saveSettings": { "message": "Save settings" },
-  "settingsSaved": { "message": "Saved" },
-  "upstashOk": { "message": "Connected ✓" },
-  "upstashErrMissing": { "message": "Enter both URL and token first." },
+  "testConnection": {
+    "message": "Test connection"
+  },
+  "clearUpstash": {
+    "message": "Clear"
+  },
+  "testingConnection": {
+    "message": "Testing…"
+  },
+  "saveSettings": {
+    "message": "Save settings"
+  },
+  "settingsSaved": {
+    "message": "Saved"
+  },
+  "upstashOk": {
+    "message": "Connected ✓"
+  },
+  "upstashErrMissing": {
+    "message": "Enter both URL and token first."
+  },
   "upstashErrAuth": {
     "message": "Unauthorized — check the token (REST token ≠ Redis password)."
   },
-  "upstashErrUnexpected": { "message": "Connected, but unexpected response." },
-  "upstashErrStatus": { "message": "Request failed" },
-  "upstashErrNetwork": { "message": "Network error" },
+  "upstashErrUnexpected": {
+    "message": "Connected, but unexpected response."
+  },
+  "upstashErrStatus": {
+    "message": "Request failed"
+  },
+  "upstashErrNetwork": {
+    "message": "Network error"
+  },
   "upstashErrNotHttps": {
     "message": "Upstash URL must use https:// — http would expose your token."
   },
-  "advancedSettings": { "message": "Advanced" },
+  "advancedSettings": {
+    "message": "Advanced"
+  },
   "advancedSettingsHint": {
     "message": "Override token estimation coefficients per platform. Changes require refreshing the AI platform page."
   },
-  "resetAllCoefficients": { "message": "Reset all to defaults" },
-  "coeffReset": { "message": "Reset" },
+  "resetAllCoefficients": {
+    "message": "Reset all to defaults"
+  },
+  "coeffReset": {
+    "message": "Reset"
+  },
   "coeffRefreshHint": {
     "message": "Coefficient changes saved — refresh the AI platform page for them to take effect."
   },
-  "coeffCjk": { "message": "CJK" },
-  "coeffKana": { "message": "Kana" },
-  "coeffHangul": { "message": "Hangul" },
-  "coeffCyrillic": { "message": "Cyrillic" },
-  "coeffArabic": { "message": "Arabic" },
-  "coeffLatin": { "message": "Latin" },
-  "coeffUnitChar": { "message": "tok/ch" },
-  "coeffUnitWord": { "message": "tok/wd" },
+  "coeffCjk": {
+    "message": "CJK"
+  },
+  "coeffKana": {
+    "message": "Kana"
+  },
+  "coeffHangul": {
+    "message": "Hangul"
+  },
+  "coeffCyrillic": {
+    "message": "Cyrillic"
+  },
+  "coeffArabic": {
+    "message": "Arabic"
+  },
+  "coeffLatin": {
+    "message": "Latin"
+  },
+  "coeffUnitChar": {
+    "message": "tok/ch"
+  },
+  "coeffUnitWord": {
+    "message": "tok/wd"
+  },
   "coeffDescription": {
     "message": "Estimate tokens per character (CJK/Kana/Hangul) or per word (Cyrillic/Arabic/Latin). Higher = more tokens for that script."
   },
-  "platformRefTitle": { "message": "Platform Reference" },
-  "platformRefModel": { "message": "Model" },
-  "platformRefContext": { "message": "Context window" },
-  "platformRefTokenizer": { "message": "Tokenizer" },
-  "estimationGuideTitle": { "message": "How token estimation works" },
+  "platformRefTitle": {
+    "message": "Platform Reference"
+  },
+  "platformRefModel": {
+    "message": "Model"
+  },
+  "platformRefContext": {
+    "message": "Context window"
+  },
+  "platformRefTokenizer": {
+    "message": "Tokenizer"
+  },
+  "estimationGuideTitle": {
+    "message": "How token estimation works"
+  },
   "estimationGuideText": {
     "message": "Headroom estimates token counts from the conversation text using per-script coefficients — it never trusts the platform's own count. CJK ideographs, Japanese kana, and Korean Hangul are counted per character. Cyrillic, Arabic, and Latin (and anything else) are counted per whitespace-separated word. Each script has a coefficient that represents the average tokens per counting unit for that model's tokenizer, calibrated by observing real tokenizer output. You can adjust these coefficients per platform in the Advanced settings above."
   },
-  "aboutTitle": { "message": "About" },
+  "aboutTitle": {
+    "message": "About"
+  },
   "aboutContribute": {
     "message": "Contributions welcome — open an issue or pull request at"
   },
   "platformRefNoteDeepseek": {
-    "message": "Optimised for Chinese + English. CJK ~1.5 tok/ch, Latin ~0.25 tok/ch on typical text."
+    "message": "Measured against the open DeepSeek-V4 tokenizer (exact). Chinese is cheap: ~0.6 tok/ch; Cyrillic/Arabic ~2.1 tok/wd."
   },
   "platformRefNoteChatgpt": {
-    "message": "OpenAI's latest tokenizer. CJK characters 0.5–2 tok/ch depending on rarity; Latin ~0.75 tok/word."
+    "message": "Measured offline with tiktoken o200k_base (exact). CJK ~0.8 tok/ch; Latin ~1.3 tok/wd."
   },
   "platformRefNoteGemini": {
-    "message": "Multilingual BPE. CJK ~1.0–2.0 tok/ch; the widest variance across scripts."
+    "message": "Tokenizer not public; measured via Gemma, which Google states is the same tokenizer. CJK ~0.7 tok/ch."
   },
   "platformRefNoteKimi": {
-    "message": "Similar to tiktoken in behaviour. Chinese-heavy texts benefit most from coefficient tuning."
+    "message": "Measured against the open K2.6 tiktoken vocab (exact). Chinese ~0.6 tok/ch; Cyrillic/Arabic words are costly (~2.8 tok/wd)."
   },
   "platformRefNoteQwen": {
-    "message": "Well-balanced across scripts. CJK ~0.6 tok/ch, Latin ~0.25 tok/word."
+    "message": "Measured against the open Qwen3.6 tokenizer — the closest open sibling of the web model. CJK ~0.6 tok/ch."
   },
   "platformRefNoteQianwen": {
-    "message": "Same tokenizer family as Qwen Chat. The consumer app may serve a different quant."
+    "message": "Same tokenizer family as Qwen — shares the same measured coefficients."
   },
   "platformRefNoteDoubao": {
-    "message": "Closed tokenizer. Coefficients are approximate — tune if the gauge drifts."
+    "message": "Closed tokenizer; measured via ByteDance's open Seed-OSS as proxy. Tune if the gauge drifts — kana is the least reliable value."
   },
   "aboutStack": {
     "message": "Built with WXT, Vitest, and TypeScript."

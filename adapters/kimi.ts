@@ -1,5 +1,19 @@
 import type { HistoryRound, PlatformAdapter } from "../utils/platform-adapter";
-import { DEFAULT_COEFFICIENTS } from "../utils/estimate";
+import type { TokenCoefficients } from "../utils/estimate";
+
+/**
+ * Measured against Kimi-K2.6's tiktoken vocab — exact (spec 004 §4.3;
+ * scripts/calibrate-hf.mjs). K2.6 pre-tokenizes [\p{Han}]+ separately, so
+ * Chinese is ultra-cheap while non-Latin words run ~2.8 tok/word.
+ */
+const KIMI_COEFFICIENTS: TokenCoefficients = {
+  cjk: 0.58,
+  kana: 0.85,
+  hangul: 0.98,
+  cyrillic: 2.77,
+  arabic: 2.78,
+  latin: 1.31,
+};
 
 // Kimi — request CONFIRMED live 2026-06. Kimi migrated OFF the legacy
 // /api/chat/{id}/completion/stream REST path to a Connect-RPC (gRPC-gateway)
@@ -42,7 +56,7 @@ export const kimiAdapter: PlatformAdapter = {
   completionUrl: "*://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat",
   matchPattern: "*://www.kimi.com/*",
   contextLimit: 262_144, // 256K (1 << 18); overridable
-  tokenCoefficients: DEFAULT_COEFFICIENTS, // v1 default; calibrate in spec 004
+  tokenCoefficients: KIMI_COEFFICIENTS, // spec 004 §4.3 calibrated (incl. markdown overhead)
   // Delete endpoint: CONFIRMED live (2026-06). Same gRPC-Gateway style as
   // send: POST /apiv2/kimi.chat.v1.ChatService/DeleteChat, body {"chat_id":"<id>"}
   // (singular — the dialogue id field is the same name as in the send body).

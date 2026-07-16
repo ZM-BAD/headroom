@@ -1,5 +1,15 @@
 import type { HistoryRound, PlatformAdapter } from "../utils/platform-adapter";
-import { DEFAULT_COEFFICIENTS } from "../utils/estimate";
+import type { TokenCoefficients } from "../utils/estimate";
+
+/** Measured against tiktoken o200k_base — exact (spec 004 §4.3; scripts/calibrate-chatgpt.mjs). */
+const CHATGPT_COEFFICIENTS: TokenCoefficients = {
+  cjk: 0.83,
+  kana: 0.78,
+  hangul: 0.66,
+  cyrillic: 1.76,
+  arabic: 1.84,
+  latin: 1.3,
+};
 
 // ChatGPT — completion CONFIRMED live (2026-07, Playwright): OpenAI moved the
 // send to POST /backend-api/f/conversation (SSE; the old /backend-api/conversation
@@ -40,7 +50,7 @@ export const chatgptAdapter: PlatformAdapter = {
   continueUrl: "*://chatgpt.com/backend-api/conversation*",
   matchPattern: "*://chatgpt.com/*",
   contextLimit: 131_072, // 128K (1 << 17); overridable
-  tokenCoefficients: DEFAULT_COEFFICIENTS, // v1 default; calibrate in spec 004
+  tokenCoefficients: CHATGPT_COEFFICIENTS, // spec 004 §4.3 calibrated (incl. markdown overhead)
   // Delete endpoint: CONFIRMED live (2026-06). ChatGPT soft-deletes via
   // PATCH /backend-api/conversation/<id> (not a real DELETE) — body is a
   // {is_visible:false} flag, id rides in the URL path. deleteMethod:"PATCH"
