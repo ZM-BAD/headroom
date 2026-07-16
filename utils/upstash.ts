@@ -98,8 +98,16 @@ export async function kvScan(
       console.warn("[Headroom] unexpected SCAN response shape:", res);
       break;
     }
-    const [next, batch] = res as [string, string[]];
-    cursor = String(next);
+    const [next, batch] = res;
+    // Type guard + infinite-loop guard: cursor must be a string. A non-zero
+    // cursor that doesn't advance means the server is stuck — break instead
+    // of looping forever. ("0" always means end-of-iteration, even if it
+    // equals the initial cursor, so it's excluded from the stall check.)
+    if (typeof next !== "string" || (next !== "0" && next === cursor)) {
+      console.warn("[Headroom] SCAN cursor stalled or malformed:", next);
+      break;
+    }
+    cursor = next;
     if (Array.isArray(batch)) keys.push(...batch);
   } while (cursor && cursor !== "0");
   return keys;

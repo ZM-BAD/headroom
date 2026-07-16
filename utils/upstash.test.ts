@@ -225,6 +225,33 @@ describe("kvScan", () => {
     expect(mock).toHaveBeenCalledOnce();
   });
 
+  it("stalled cursor (non-zero, unchanged) → breaks instead of looping forever", async () => {
+    // Server keeps returning the same non-zero cursor — without the guard
+    // this would loop infinitely. First call advances cursor to "42",
+    // second call sees "42" === "42" and breaks. Total: 2 calls.
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: ["42", ["headroom:conv:p:a"]] }),
+    });
+    globalThis.fetch = mock as unknown as typeof fetch;
+    const keys = await kvScan(CREDS, "headroom:conv:p:*");
+    expect(keys).toEqual(["headroom:conv:p:a"]);
+    expect(mock).toHaveBeenCalledTimes(2);
+  });
+
+  it("malformed cursor (non-string) → breaks with warning", async () => {
+    const mock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ result: [999, ["headroom:conv:p:a"]] }),
+    });
+    globalThis.fetch = mock as unknown as typeof fetch;
+    const keys = await kvScan(CREDS, "headroom:conv:p:*");
+    expect(keys).toEqual([]);
+    expect(mock).toHaveBeenCalledOnce();
+  });
+
   it("absent creds → [] no fetch", async () => {
     const mock = vi.fn().mockResolvedValue({
       ok: true,
