@@ -1,123 +1,123 @@
-# 003: 跨设备对账引擎
+# 003: Cross-Device Reconciliation Engine
 
 ## Status
 
-union 对账引擎 + 增量上云 + 删除联动（本地 + 云端 DEL）+ 本地缓存 LRU 淘汰已实现，真机验收 pending。僵尸清理统一引擎已实现（定期 alarms 60min + 首页触发，共享 5min 节流）；对账频率控制（debounce + REFRESH_HISTORY 即时拉取）已实现。7 家 `fetchConversationList` 与拉历史 API 及删除端点已完成真机抓包（2026-06）。
+Union reconciliation engine, incremental cloud push, delete linkage (local + cloud DEL), and local cache LRU eviction implemented; live acceptance pending. Zombie cleanup unified engine implemented (periodic alarms 60min + home-page trigger, shared 5min throttle); reconciliation frequency control (debounce + REFRESH_HISTORY immediate pull) implemented. All 7 platforms' `fetchConversationList`, history-fetch APIs, and deletion endpoints reverse-engineered and live-captured (2026-06).
 
-**范围定位**：跨设备同步语义。把 [001](./001-headroom-core.md) 的估算能力 + [002](./002-upstash-data-layer.md) 的传输管道组合起来，让对话记录跨设备正确。
+**Scope**: Cross-device sync semantics. Combines [001](./001-headroom-core.md)'s estimation capability with [002](./002-upstash-data-layer.md)'s transport pipeline to make dialogue records correct across devices.
 
 ## Summary
 
-**真值 = 平台历史的文本内容；token = 我们的估算**（001 引擎）。打开对话 → 从平台拉完整历史 → 逐条估 token → 与 Upstash 现有记录按**稳定 messageId** union 合并（位置 `n` 仅作显示序，合并后按时间重排） → **先在面板显示，再后台同步到 Redis**。平台服务器存历史文本，Upstash 是跨设备汇聚层，`browser.storage.local` 是加速缓存。增量拦截（001）在本 spec 里降级为"两次全量之间的即时反馈"。
+**Truth = platform history text content; tokens = our estimates** (001 engine). Open conversation → pull full history from platform → estimate tokens per round → union-merge with Upstash existing records by **stable messageId** (positional `n` is display-only, re-sorted by time after merge) → **display in panel first, then sync to Redis in background**. Platform servers store history text; Upstash is the cross-device aggregation layer; `browser.storage.local` is the acceleration cache. Incremental interception (001) is downgraded in this spec to "immediate feedback between two full reconciliations."
 
-四个同步动作（产品交互，以 DeepSeek 为例）：
+Four sync actions (product-level interactions; DeepSeek as example):
 
-| 动作               | 触发                       | 做什么                                                                       |
-| ------------------ | -------------------------- | ---------------------------------------------------------------------------- |
-| **A 僵尸清理**     | 打开平台首页、未进具体对话 | 后台拉对话列表 ↔ 对比 Upstash keys → 删差集（他设备/移动端删了但云没同步的） |
-| **B 打开即对账**   | 点进某个具体对话           | 拉平台全量历史 → 逐条估 token → 与云记录 union 合并 → **先显示后同步**       |
-| **C 实时增量上云** | 对话中、模型输出完毕       | 估本轮 input/output token → best-effort 上云                                 |
-| **D 删除联动**     | 页面手动删对话             | 拦截删除请求 → 删 Upstash + 本地缓存                                         |
+| Action                           | Trigger                                  | What it does                                                                                                                                     |
+| -------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **A Zombie Cleanup**             | Open platform home page, no conv. opened | Background pulls conversation list ↔ diff against Upstash keys → DEL the difference (deleted on another device / mobile but not synced to cloud) |
+| **B Open-and-Reconcile**         | Click into a specific conversation       | Pull full platform history → estimate tokens per round → union-merge with cloud records → **display first, then sync**                           |
+| **C Real-Time Incremental Push** | Mid-conversation, model output done      | Estimate this round's input/output tokens → best-effort push to cloud                                                                            |
+| **D Delete Linkage**             | Manually delete conversation on page     | Intercept delete request → DEL Upstash + local cache                                                                                             |
 
 ## Motivation
 
-### 为什么不能只靠增量拦截
+### Why Not Rely Solely on Incremental Interception
 
-移动端聊的轮次，插件根本拦截不到——那些轮次不在我们的累加里。要"跨设备"名副其实，就得在用户**打开对话**时，从平台拉全量历史一次性算清。像微信：不打开收不到消息，但一打开历史全量同步。移动端聊的、别的设备聊的、断网期间丢的——全部在下次打开时自然纠正。
+Rounds chatted on mobile are simply never intercepted by the extension — those rounds are not in our cumulative tally. For "cross-device" to be real, we must pull full history from the platform in one shot when the user **opens a conversation**. Like WeChat: you don't receive messages without opening, but once opened, full history syncs. Rounds chatted on mobile, on other devices, or lost during network outages — all naturally corrected on next open.
 
-### 为什么 union 合并，不覆盖写
+### Why Union Merge, Not Overwrite
 
-token 永远是从文本现估的，每次对账都把所有轮次重估一遍——只要"保留曾见过的所有轮次"即可。**union（by 稳定 messageId）**：平台每条消息/每轮都有一个**稳定身份**（DeepSeek `message_id`、ChatGPT mapping 节点 id、Kimi msg `id`、Qwen 对象 map 键、豆包 `index_in_conv`，均 2026-06 真机实测确认）。合并**按 messageId 配对**：平台还返回的轮以平台文本为准重估；平台不再返回的旧轮保留旧估算。
+Tokens are always re-estimated from text; every reconciliation re-estimates all rounds — we only need to "preserve all rounds ever seen." **Union (by stable messageId)**: each platform message / round has a **stable identity** (DeepSeek `message_id`, ChatGPT mapping node id, Kimi msg `id`, Qwen object map key, Doubao `index_in_conv`, all live-confirmed 2026-06). Merging **pairs rounds by messageId**: rounds still returned by platform are re-estimated from platform text; old rounds no longer returned keep their old estimates.
 
-> **为什么不用位置 round-n 作合并 key**：位置 `n` 是"本次返回数组的下标"，不是稳定身份。当平台返回的轮集**变化**（截断、分页走取失败、单条删除、重生成移位）时，位置 `n` 整体漂移，把不同真实轮错配到同一 `n` → `totalTokens` 静默算错。实测复现（真实 `unionRounds`/`upsertRound`）：50 轮对话、设备 B 只拿到后 30 轮被重排成 `n=1..30`，合并后 `totalTokens` 算成 **1875 而非真实 1275**（后 20 轮重复计、前 20 轮丢失）。故 `n` 仅作**显示序**，合并后按时间重排分配；合并 key 必须是稳定 messageId。
+> **Why positional round-n should not be used as the merge key**: Positional `n` is "the index in this response array," not a stable identity. When the platform's returned round set **changes** (truncation, pagination fetch failure, single-round deletion, regenerate shift), positional `n` drifts as a whole, mismapping different real rounds to the same `n` → `totalTokens` silently miscalculated. Verified reproduction (real `unionRounds` / `upsertRound`): 50-round conversation, Device B only gets the last 30 rounds re-indexed as `n=1..30`; after merge `totalTokens` evaluates to **1875 instead of the real 1275** (last 20 rounds double-counted, first 20 lost). Hence `n` is **display-only**, reassigned after merge by time order; the merge key must be a stable messageId.
 
-> **截断的实际情况（2026-06 实测 7 平台）**：正常情况下**都不截断**——DeepSeek/Kimi/Qwen 一次返回全量；ChatGPT 返回整棵 mapping 树；豆包/通义千问分页但**走完全部页**。union"保留旧轮"的价值存在于边缘情形：超长会话撞分页上限（豆包/通义千问 50 页 cap）、分页走取中断、单条删除/重生成改变轮集。覆盖写在这些情形下会丢轮。
+> **Truncation in practice (2026-06 live test, 7 platforms)**: Under normal circumstances **none truncate** — DeepSeek / Kimi / Qwen return full history in one call; ChatGPT returns the entire mapping tree; Doubao / Tongyi Qianwen paginate but **walk all pages**. The value of the union's "preserve old rounds" behavior exists only in edge cases: ultra-long sessions hitting pagination caps (Doubao / Tongyi Qianwen 50-page cap), pagination fetch interruption, single-round deletion / regenerate changing the round set. Overwrite would lose rounds in these cases.
 
-### 为什么不要 outbox / alarms drain
+### Why No Outbox / Alarms Drain
 
-增量丢失（断网期间）的代价从"永久丢"降为"下次打开重算补回"。outbox + alarms drain 的复杂度换不来跨设备正确性（移动端绕过拦截才是真问题），全量对账才是根本解法。
+The cost of incremental loss (during network outages) drops from "permanently lost" to "recomputed and recovered on next open." The complexity of outbox + alarms drain adds no value for cross-device correctness (mobile bypassing interception is the real problem); full reconciliation is the fundamental solution.
 
-## 用户交互场景（跨设备目标）
+## User Interaction Scenarios (Cross-Device Goal)
 
-> 6 种用户交互（详见 [001](./001-headroom-core.md)「用户交互场景（本地层）」）在 001 已有本地行为；本节只标出**003 接线后哪些交互升级、升级成什么**。一张"交互 × 003 动作"矩阵，避免与 001 的本地描述各说各话。
+> 6 user interactions (see [001](./001-headroom-core.md) "User Interaction Scenarios (Local Layer)") already have local behavior in 001; this section only marks **which interactions get upgraded after 003 wiring and what they upgrade to**. One "interaction × 003 action" matrix to avoid contradicting 001's local descriptions.
 
-| #   | 交互           | 001 本地行为（现状）                       | 003 升级（目标）                                                                        |
-| --- | -------------- | ------------------------------------------ | --------------------------------------------------------------------------------------- |
-| 1   | 打开平台主页   | IDLE 态                                    | **+僵尸清理（P1）**：`fetchConversationList` ↔ 对比 Upstash keys → 删差集（他设备删的） |
-| 2   | 开启新对话首轮 | REPLACE 本地 record                        | 退化为 union（云记录为空，语义同 REPLACE）；新轮 best-effort 推云                       |
-| 3   | 打开已有对话   | REPLACE 本地 record                        | **★核心：union 合并 + 先显示后同步**（见时序图）                                        |
-| 4a  | 追加新一轮问答 | REPLACE 本地 record                        | 改 union；本地写完 best-effort 推整条 record 上云（失败 warn，下次打开补回）            |
-| 4b  | 重新生成/停止  | REPLACE（轮数不变，第 N 轮 token 更新）    | union 天然处理：平台第 N 轮新文本重估覆盖旧估算，轮数不变                               |
-| 5   | 删除对话       | `onBeforeRequest` + `parseDelete` → 删本地 | **+Upstash DEL**（best-effort）；移动端删走定期 alarm / 首页差集清理                    |
+| #   | Interaction                         | 001 Local Behavior (current)                           | 003 Upgrade (goal)                                                                                                              |
+| --- | ----------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Open platform home page             | IDLE state                                             | **+ Zombie Cleanup (P1)**: `fetchConversationList` ↔ diff against Upstash keys → DEL the difference (deleted on another device) |
+| 2   | Start new conversation, first round | REPLACE local record                                   | Degrades to union (cloud record empty, semantics same as REPLACE); new round best-effort pushed to cloud                        |
+| 3   | Open existing conversation          | REPLACE local record                                   | **★Core: union merge + display-first-then-sync** (see sequence diagram)                                                         |
+| 4a  | Append new Q&A round                | REPLACE local record                                   | Changed to union; after local write, best-effort push entire record to cloud (failure warns, recovered on next open)            |
+| 4b  | Regenerate / Stop                   | REPLACE (round count unchanged, round N token updated) | Union handles naturally: platform round N new text re-estimates and overwrites old estimate, round count unchanged              |
+| 5   | Delete conversation                 | `onBeforeRequest` + `parseDelete` → delete local       | **+ Upstash DEL** (best-effort); mobile deletion goes through periodic alarm / home-page diff cleanup                           |
 
-**矩阵读法**：标"—"或"退化"的交互，003 不改变其本地行为，只加 best-effort 推云；标"★核心"的交互3 是 003 存在的主要理由，其余是伴随的同步动作。
+**How to read the matrix**: Interactions marked "—" or "degrades" — 003 does not change their local behavior, only adds best-effort cloud push; interaction 3 marked "★Core" is the primary reason 003 exists; the rest are accompanying sync actions.
 
-### 场景时序图 · 打开已有对话（交互3，003 核心升级）
+### Scenario Sequence Diagram · Open Existing Conversation (Interaction 3, 003 Core Upgrade)
 
-对账一次 = 拉历史 → 逐条估 → union 合并 → **先显示后同步**。"先显示"用本地缓存/估算秒开仪表盘，不等网络；"后同步"后台 best-effort 推 Upstash，失败不阻塞。
+One reconciliation = pull history → estimate per round → union merge → **display first, then sync**. "Display first" uses local cache / estimation to open the gauge in milliseconds, not waiting for the network; "sync later" is best-effort background push to Upstash; failure does not block the UI.
 
 ```mermaid
 sequenceDiagram
-    actor U as 用户
+    actor U as User
     participant C as Content Script
     participant B as Background SW
-    participant H as 平台历史 API
-    participant L as 本地缓存
+    participant H as Platform History API
+    participant L as Local Cache
     participant R as Upstash Redis
     participant S as Side Panel
-    U->>C: 点进已有对话（他设备聊过）
+    U->>C: Click into existing conversation (chatted on another device)
     C->>B: PAGE_READY
-    B->>L: 读本地缓存（秒开兜底，001 已有：projectForTab 副作用）
-    B->>S: STATE_UPDATE（先显示：旧记录/0）
+    B->>L: Read local cache (instant fallback, 001 already has: projectForTab side effect)
+    B->>S: STATE_UPDATE (display first: old record / 0)
     C->>H: fetchHistory(dialogueId)
-    H-->>C: 全量历史文本（含他设备/移动端轮次）
+    H-->>C: Full history text (including rounds from other devices / mobile)
     C->>B: HISTORY_PARSED(rounds)
     B->>R: getDialogue(key)
-    R-->>B: cloudRecord（可能为空）
-    Note over B,R: ===== 以下为 003 新增编排 =====
-    B->>B: 逐条 estimateTokens
+    R-->>B: cloudRecord (may be empty)
+    Note over B,R: ===== 003 new orchestration below =====
+    B->>B: estimateTokens per round
     B->>B: union(cloudRecord.rounds, historyRounds)
-    B->>L: setLocalDialogue(合并后 record)
-    B->>S: STATE_UPDATE（纠正显示：真实累计）
-    B--)R: setDialogue(覆盖写整条, best-effort)
-    Note over B,R: 失败只 warn，不阻塞 UI；<br/>下次打开重算补回
+    B->>L: setLocalDialogue (merged record)
+    B->>S: STATE_UPDATE (corrected display: real cumulative)
+    B--)R: setDialogue (overwrite entire record, best-effort)
+    Note over B,R: Failure only warns, does not block UI;<br/>recomputed and recovered on next open
 ```
 
-**与 001 图 A 的关系**：001 图 A 是该流程的**单设备前身**（无 Upstash 参与，REPLACE 本地）。003 接线后保留两样、改一样、加一样：① `fetchHistory` 原语不变；②「读缓存先显示」001 已有（`projectForTab` 在 `PAGE_READY` 时读本地缓存并广播），003 沿用；③ 把 REPLACE 升级为 **union 合并**；④ 新增「后台 best-effort 推云」的后同步。**003 的真正新增是 union + 后同步，不是「先显示」**。
+**Relationship to 001 Diagram A**: 001 Diagram A is this flow's **single-device predecessor** (no Upstash involved, REPLACE locally). After 003 wiring, two items are preserved, one is modified, and one is added: ① `fetchHistory` primitive unchanged; ② "read cache first to display" already in 001 (`projectForTab` reads local cache and broadcasts on `PAGE_READY`), 003 reuses it; ③ REPLACE is upgraded to **union merge**; ④ new "background best-effort cloud push" post-sync added. **003's real additions are union + post-sync, not "display first"**.
 
-**保留**：
+**Preserved**:
 
-- **两层存储**：本地缓存（加速打开、离线仍可用）+ Upstash（跨设备汇聚）。职责不变。
-- **删除联动**（拦截 + 存储效果）。
-- **增量拦截保留**，但降级为"两次全量之间的即时反馈"（不再当真值来源）。
+- **Two-layer storage**: local cache (accelerates opening, still available offline) + Upstash (cross-device aggregation). Roles unchanged.
+- **Delete linkage** (interception + storage effect).
+- **Incremental interception is preserved**, downgraded to "immediate feedback between two full reconciliations" (no longer the truth source).
 
-**新增**：
+**Added**:
 
-- **打开即全量对账（核心）**：content script `PAGE_READY` → background `fetchHistory` → 平台完整历史 → 逐条用 001 引擎估 token → union 合并 → 覆盖写本地缓存 + Upstash → 重投影仪表盘。
-- **union 合并（by messageId）**：`getDialogue` → `union(cloudRounds, historyRounds)` → `setDialogue`。002 的 `setDialogue` 是纯覆盖写；合并编排在本 spec。
-- **僵尸清理（统一引擎，两触发入口）**：定期 alarms(60min) + 打开首页 → 共享节流(5min) → `fetchConversationList` → 对比 Upstash keys → 删差集。
-- **本地多对话缓存 + LRU 淘汰**。
-- **产品边界声明**：Headroom 只精确记录"在装了扩展的设备上打开过"的对话。跨设备靠"打开即同步"——只要在任一装扩展的设备打开过，就全量同步；没在装扩展设备打开过的对话不在数据里。README/PRIVACY 如实声明。
+- **Open-and-full-reconciliation (core)**: content script `PAGE_READY` → background `fetchHistory` → full platform history → estimate tokens per round with 001 engine → union merge → overwrite-write local cache + Upstash → re-project gauge.
+- **Union merge (by messageId)**: `getDialogue` → `union(cloudRounds, historyRounds)` → `setDialogue`. 002's `setDialogue` is pure overwrite-write; merge orchestration is in this spec.
+- **Zombie cleanup (unified engine, two trigger entries)**: periodic alarms (60min) + home-page open → shared throttle (5min) → `fetchConversationList` → diff against Upstash keys → DEL difference.
+- **Multi-conversation local cache + LRU eviction**.
+- **Product boundary statement**: Headroom only accurately records conversations "opened on a device with the extension installed." Cross-device relies on "open-and-sync" — as long as a conversation is opened on any device with the extension, it fully syncs; conversations never opened on an extension-installed device are not in the data. README / PRIVACY state this explicitly.
 
-**不采用**：outbox（增量丢失靠"下次打开重算"兜底，见上 Motivation）。**采用 `chrome.alarms` 仅用于僵尸清理调度**(60min 周期,非增量 drain)。仪表盘直接从缓存 record 派生（`projectUsage`），不另存运行态镜像。
+**Not adopted**: outbox (incremental loss is covered by "recompute on next open," see Motivation above). **`chrome.alarms` is adopted only for zombie cleanup scheduling** (60min period, not incremental drain). The gauge is derived directly from the cache record (`projectUsage`); no separate runtime state snapshot is stored.
 
 ## Requirements
 
-### P0 — 核心
+### P0 — Core
 
-- [x] **打开即全量对账引擎**：`PAGE_READY` → `fetchHistory` → 逐条估 token → union 合并本地+Upstash → **先显示后同步**。
-- [x] **union 合并语义（by messageId）**：平台有的轮以平台为准；平台不再返回的旧轮保留；`totalTokens`/`roundCount` 重算为合并后真实累计。
-- [x] **本地多对话缓存**：`headroom:conv:{p}:{id}` 存最近一次对账/增量结果；仪表盘从缓存秒开（GET_STATE 投影）。LRU 淘汰见 P1。
-- [x] **增量上云**：本轮历史落地后（`onCompleted` → `fetchHistory` → `applyHistory`）→ best-effort 推 Upstash（覆盖写整条）；失败只 warn，下次打开重算补回。
-- [x] **删除联动（存储效果）**：webRequest 命中 `deleteUrl` → `parseDelete` 取 id → 删本地缓存 + Upstash `DEL`（best-effort）。
-- [x] **仪表盘从本地缓存 record 派生**（`projectUsage`）：001 已落地，003 沿用。
+- [x] **Open-and-full-reconciliation engine**: `PAGE_READY` → `fetchHistory` → estimate tokens per round → union merge local + Upstash → **display first, then sync**.
+- [x] **Union merge semantics (by messageId)**: rounds present on platform take priority; old rounds no longer returned are preserved; `totalTokens` / `roundCount` recomputed as real cumulative after merge.
+- [x] **Multi-conversation local cache**: `headroom:conv:{p}:{id}` stores the latest reconciliation / incremental result; gauge opens instantly from cache (GET_STATE projection). LRU eviction in P1.
+- [x] **Incremental cloud push**: after this round's history lands (`onCompleted` → `fetchHistory` → `applyHistory`) → best-effort push to Upstash (overwrite entire record); failure only warns, recovered on next open.
+- [x] **Delete linkage (storage effect)**: webRequest hits `deleteUrl` → `parseDelete` extracts id → delete local cache + Upstash `DEL` (best-effort).
+- [x] **Gauge derived from local cache record** (`projectUsage`): already landed in 001, 003 reuses.
 
-### P1 — 增强
+### P1 — Enhancement
 
-- [x] **僵尸清理（统一引擎）**：`chrome.alarms`(60min 周期) + 打开首页 → 共享节流(5min) → `fetchConversationList` → 对比 Upstash → 删差集。
-- [x] **对账频率控制**：快速切多个对话时 debounce / 只对停留 >N 秒的对话触发全量对账。
-- [x] 7 家拉历史 API 验证（2026-06 真机抓包，全平台文本可取）。
-- [x] 7 家删除端点实测（拦截层就绪）。
+- [x] **Zombie cleanup (unified engine)**: `chrome.alarms` (60min period) + home-page open → shared throttle (5min) → `fetchConversationList` → diff against Upstash → DEL difference.
+- [x] **Reconciliation frequency control**: debounce when rapidly switching conversations / only trigger full reconciliation for conversations stayed >N seconds.
+- [x] All 7 platforms' history-fetch APIs verified (2026-06 live capture, text extractable on all platforms).
+- [x] All 7 platforms' deletion endpoints confirmed (interception layer ready).
 
 ## Design
 
@@ -125,96 +125,96 @@ sequenceDiagram
 
 ```
 Side Panel (UI)  ↔ GET_STATE / STATE_UPDATE
-Background (SW, 短命)
-  ├─ 打开对话: PAGE_READY → fetchHistory → 全量对账 → union 合并 → 先显示后同步
-  ├─ webRequest: send(+pending) / 删除(+DEL)   [即时反馈 / 网页删跟随]
-  └─ 读: 本地缓存优先(秒开) → 后台对账纠正
-       ↕                                    ↕ (best-effort 覆盖写)
+Background (SW, ephemeral)
+  ├─ Open conversation: PAGE_READY → fetchHistory → full reconciliation → union merge → display first, then sync
+  ├─ webRequest: send (+pending) / delete (+DEL)   [immediate feedback / web delete follow]
+  └─ Read: local cache first (instant) → background reconciliation corrects
+       ↕                                    ↕ (best-effort overwrite)
   browser.storage.local ──────────────→ Upstash Redis KV
-  (缓存 + 加速)                          (跨设备汇聚)
+  (cache + acceleration)                 (cross-device aggregation)
                                           ↑
-                                  AI 平台服务器 (历史文本 = 真值)
+                                  AI Platform Server (history text = truth)
 ```
 
-### 本地 key
+### Local Keys
 
 ```
-headroom:settings           → 全量含凭证 + updatedAt
-headroom:conv:{p}:{id}      → DialogueRecord（最近一次对账/增量结果）
-headroom:conv-index         → { <full-key>: updatedAt } 元数据（LRU 淘汰用，免全量扫描）
+headroom:settings           → full object including credentials + updatedAt
+headroom:conv:{p}:{id}      → DialogueRecord (latest reconciliation / incremental result)
+headroom:conv-index         → { <full-key>: updatedAt } metadata (for LRU eviction, avoids full scan)
 ```
 
-### union 合并（by messageId）
+### Union Merge (by messageId)
 
 ```
-对账一次：
-  cloudRecord  = getDialogue(key)                     // 可能为空
-  historyRounds = fetchHistory(dialogueId)            // 平台全量历史，每轮带稳定 messageId
-  newRounds = historyRounds.map(h => ({ messageId: h.messageId, ...估算(h) }))
-  mergedRounds = union(cloudRecord.rounds, newRounds)  // by messageId：history 胜；cloud-only messageId 保留
-  mergedRounds.sort(by 时间序).forEach((r,i)=> r.n = i+1)   // n 仅显示序，合并后按时间重排
+One reconciliation:
+  cloudRecord  = getDialogue(key)                     // may be empty
+  historyRounds = fetchHistory(dialogueId)            // full platform history, each round carries stable messageId
+  newRounds = historyRounds.map(h => ({ messageId: h.messageId, ...estimate(h) }))
+  mergedRounds = union(cloudRecord.rounds, newRounds)  // by messageId: history wins; cloud-only messageIds preserved
+  mergedRounds.sort(by time-order).forEach((r,i)=> r.n = i+1)   // n is display-only, reassigned after merge by time
   record = { ...cloudRecord,
              rounds: mergedRounds,
-             totalTokens: Σ mergedRounds.total,        // 真实累计重算
-             roundCount: mergedRounds.length,          // = 合并集中不同 messageId 的数量
+             totalTokens: Σ mergedRounds.total,        // real cumulative recomputed
+             roundCount: mergedRounds.length,          // = number of distinct messageIds in merged set
              updatedAt: now }
 ```
 
-- **平台还返回的轮** → 用平台文本重估，覆盖旧估算（平台是文本真值）。
-- **平台不再返回的轮**（截断/分页遗漏）→ 保留 `cloudRecord` 里的旧估算，不丢。
-- **`totalTokens` / `roundCount`** 从合并集重算：`totalTokens = Σ mergedRounds.total`；`roundCount = 合并集中不同 messageId 的数量`（稳定身份去重后计数，天然抗截断/抗重复）。两者均不受 `rounds[]` 裁剪影响（见 001 不变式）。
+- **Rounds still returned by platform** → re-estimated from platform text, overwriting old estimates (platform is text truth).
+- **Rounds no longer returned by platform** (truncation / pagination miss) → keep old estimates from `cloudRecord`, not lost.
+- **`totalTokens` / `roundCount`** recomputed from merged set: `totalTokens = Σ mergedRounds.total`; `roundCount = number of distinct messageIds in merged set` (stable-identity dedup, naturally truncation-resistant / duplicate-resistant). Both unaffected by `rounds[]` trimming (see 001 invariants).
 
-> **常态 = 全量覆盖写**：平台返回完整历史时，每一轮都以重估值胜出、云端旧值整体被替换——故系数升级（分词器换代 / 004 校准 / 用户覆盖）能被每次打开刷新，旧估算不会卡住。union 的"选择性"仅在平台**截断/分页**时体现：被丢的早期轮保留云端旧估算；代价是这些轮停留在当初那套系数上（`DialogueRecord` 只存计数不存文本，无文本则无法重估），收益是不丢这些轮的累计。DeepSeek 全量返回、无分页（见 001），此限制不存在。
+> **Normal case = full overwrite write**: When platform returns complete history, every round wins with a re-estimated value, old cloud values replaced as a whole — so coefficient upgrades (tokenizer change / 004 calibration / user override) are refreshed on every open; old estimates don't get stuck. Union's "selectivity" only manifests when platform **truncates / paginates**: dropped early rounds keep old cloud estimates; the cost is those rounds stay on whatever coefficient set they were estimated with (`DialogueRecord` stores only counts, no text, so no text means no re-estimation); the benefit is not losing those rounds' cumulative totals. DeepSeek returns full history, no pagination (see 001), so this limitation does not exist.
 
-**先显示后同步**（关键 UX）：对账算出 record → 立即写本地缓存 + 广播仪表盘（用户秒看到，不等网络）→ 后台 best-effort `setDialogue` 推 Upstash（失败只 warn，不阻塞 UI，下次打开补回）。
+**Display-first-then-sync** (key UX): reconciliation computes record → immediately write local cache + broadcast gauge (user sees in ms, not waiting for network) → background best-effort `setDialogue` pushes to Upstash (failure only warns, does not block UI, recovered on next open).
 
-### 本地缓存淘汰（LRU）
+### Local Cache Eviction (LRU)
 
-引入本地多对话缓存后，`storage.local` 随使用增长。需要淘汰——但本地是**缓存不是真值**（Upstash 有完整记录，淘汰后可从云端重新拉取），所以淘汰是常规空间管理，不丢数据。
+After introducing multi-conversation local cache, `storage.local` grows with use. Eviction is needed — but local is **cache, not truth** (Upstash has complete records; after eviction, can re-pull from cloud), so eviction is routine space management, not data loss.
 
-**配额实测（2026-06）**：
+**Quota measured (2026-06)**:
 
-| 浏览器                        | `storage.local` 默认限额                  | 加 `unlimitedStorage` 后 |
-| ----------------------------- | ----------------------------------------- | ------------------------ |
-| Chrome / Edge（Chromium MV3） | ~10 MB（Chrome 113 前是 5MB）             | 解除                     |
-| Firefox                       | 跟随 IndexedDB 配额（通常到可用磁盘 50%） | 解除                     |
+| Browser                      | `storage.local` default quota                                   | With `unlimitedStorage` |
+| ---------------------------- | --------------------------------------------------------------- | ----------------------- |
+| Chrome / Edge (Chromium MV3) | ~10 MB (was 5MB before Chrome 113)                              | Removed                 |
+| Firefox                      | Follows IndexedDB quota (typically up to 50% of available disk) | Removed                 |
 
-单条 `DialogueRecord`：50 轮 ≈ 4 KB，满 200 轮 ≈ 16 KB（`RoundRecord` 只存 token 计数，不存文本）。10 MB 可缓存 ~2,500 个 50 轮对话 / ~600 个 200 轮对话，对个人用户够用。
+Single `DialogueRecord`: 50 rounds ≈ 4 KB, full 200 rounds ≈ 16 KB (`RoundRecord` stores only token counts, no text). 10 MB can cache ~2,500 50-round conversations / ~600 200-round conversations — sufficient for individual users.
 
-**算法：LRU，按 `updatedAt` 排序淘汰**（`DialogueRecord.updatedAt` 每次写都刷新，天然就是 LRU 时间戳，零额外存储）。`conv-index` 存 `{ <full-key>: updatedAt }` 映射，避免全量 `storage.local.get(null)` 扫描。**触发**：本地总量超**软阈值 8 MB**（留 2 MB 给 settings）→ 按 `updatedAt` 升序删最旧（同步删 conv-index 项）→ 降到 **6 MB**（滞后区，避免频繁淘汰）。淘汰**只删本地**，不删 Upstash；下次打开该对话从云端重新拉取。
+**Algorithm: LRU, evict by `updatedAt`** (`DialogueRecord.updatedAt` is refreshed on every write, naturally an LRU timestamp, zero extra storage). `conv-index` stores `{ <full-key>: updatedAt }` mapping, avoiding full `storage.local.get(null)` scan. **Trigger**: local total exceeds **soft threshold 8 MB** (leaves 2 MB for settings) → evict oldest by `updatedAt` ascending (synchronously delete conv-index entry) → down to **6 MB** (hysteresis zone, avoids frequent eviction). Eviction **only deletes local**, not Upstash; next open of that conversation re-pulls from cloud.
 
-**不加 `unlimitedStorage` 权限**：多一个权限 = 商店审核多一项辩护 + 用户多一个授权提示 + reload 可能灰卡（见 `AGENTS.md`）；Firefox 上行为依赖磁盘配额，不保证持久。10 MB + LRU 对个人用户足够，且淘汰不丢真值。
+**No `unlimitedStorage` permission added**: one more permission = one more store-review defense + one more user consent prompt + reload may gray-card (see `AGENTS.md`); Firefox behavior depends on disk quota, not guaranteed persistent. 10 MB + LRU is sufficient for individual users, and eviction does not lose truth.
 
 ### Data Flow
 
-- **打开对话（B）**：`PAGE_READY` → `fetchHistory` → 逐条估 → union 合并 → 本地 SET + 广播仪表盘 → 后台 Upstash SET。
-- **继续聊（C）**：`onCompleted` 拉到新轮并 `applyHistory` 落地后 → best-effort 推 Upstash（覆盖整条）；失败 warn，下次打开补回。
-- **读用量**：`GET_STATE` → 读本地缓存 record → `projectUsage`（秒开）；后台对账完成后纠正。
-- **网页端删对话（D）**：webRequest 命中 `deleteUrl` → `parseDelete` → 删本地缓存 + Upstash `DEL`（best-effort）。
-- **移动端删对话**：下次打开首页或定期 alarm → `fetchConversationList` 差集清理。
-- **僵尸清理（A）**：定期 alarms(60min) + 打开首页 → 共享节流(5min) → `fetchConversationList` → 对比 Upstash keys → 删差集。
+- **Open conversation (B)**: `PAGE_READY` → `fetchHistory` → estimate per round → union merge → local SET + broadcast gauge → background Upstash SET.
+- **Continue chatting (C)**: after `onCompleted` pulls new round and `applyHistory` lands it → best-effort push to Upstash (overwrite entire record); failure warns, recovered on next open.
+- **Read usage**: `GET_STATE` → read local cache record → `projectUsage` (instant); corrected after background reconciliation completes.
+- **Web delete conversation (D)**: webRequest hits `deleteUrl` → `parseDelete` → delete local cache + Upstash `DEL` (best-effort).
+- **Mobile delete conversation**: next home-page open or periodic alarm → `fetchConversationList` diff cleanup.
+- **Zombie cleanup (A)**: periodic alarms (60min) + home-page open → shared throttle (5min) → `fetchConversationList` → diff against Upstash keys → DEL difference.
 
-### Adapter 字段归属（原语 vs 编排）
+### Adapter Field Ownership (Primitive vs. Orchestration)
 
-`fetchHistory` 容易误读为"003 专属"。实际它分两层，必须钉死：
+`fetchHistory` is easily misread as "003-exclusive." In reality it has two layers that must be nailed down:
 
-- **原语（契约定义 + DeepSeek 实现）归 [001](./001-headroom-core.md)** —— 接口签名 `fetchHistory?(dialogueId) → HistoryRound[]`、DeepSeek 的逆向实现、`HistoryRound` 类型，都在 001 定义并已落地（`utils/platform-adapter.ts`、`adapters/deepseek.ts`）。001 的"打开/切对话/回答完成都拉历史 → REPLACE 本地 record"也用它。
-- **编排（拉完历史后怎么合并）归 003** —— 001 用 REPLACE（历史即真值，单设备够用）；003 在原语之上加 **union 合并 + 先显示后同步**，让同样的拉历史动作获得跨设备能力。002 的 `setDialogue` 是纯覆盖写；"读云 record → union → 写"的编排是 003 的职责。
+- **Primitive (contract definition + DeepSeek implementation) goes to [001](./001-headroom-core.md)** — interface signature `fetchHistory?(dialogueId) → HistoryRound[]`, DeepSeek's reverse-engineered implementation, `HistoryRound` type, all defined in 001 and already landed (`utils/platform-adapter.ts`, `adapters/deepseek.ts`). 001's "open / switch / reply-complete all pull history → REPLACE local record" also uses it.
+- **Orchestration (how to merge after pulling history) goes to 003** — 001 uses REPLACE (history is truth, sufficient for single device); 003 adds **union merge + display-first-then-sync** on top of the primitive, giving the same pull-history action cross-device capability. 002's `setDialogue` is pure overwrite-write; "read cloud record → union → write" orchestration is 003's responsibility.
 
-003 在 adapter 契约上**新增**的字段（原语层面仍归 001 定义，这里只标 003 使用）：
+Fields **newly added** by 003 on the adapter contract (primitives still defined by 001, here only marking 003 usage):
 
-- **`fetchConversationList?() → string[]`**：拉对话 id 列表（僵尸清理用）。
-- **`deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?`**：删除拦截的原语（001 已实现本地删除联动；003 在其上加 Upstash DEL，见删除场景）。
+- **`fetchConversationList?() → string[]`**: pull conversation id list (for zombie cleanup).
+- **`deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?`**: delete-interception primitives (001 already implements local delete linkage; 003 adds Upstash DEL on top, see delete scenario).
 
-无 `fetchHistory` 的平台 → 003 对账跳过，退化为纯增量模式（该平台跨设备不覆盖）。
+Platforms without `fetchHistory` → 003 reconciliation skips, degrades to pure incremental mode (that platform does not overwrite cross-device).
 
-### 僵尸清理（统一引擎，两触发入口）
+### Zombie Cleanup (Unified Engine, Two Trigger Entries)
 
-**问题**：对话已被删除（网页端手动删 / 移动端删 / 平台回收），但 Upstash 还留着对应的 `headroom:conv:{p}:{id}` key，占用存储且污染数据。
+**Problem**: Conversations have been deleted (manual web delete / mobile delete / platform recycling), but Upstash still holds the corresponding `headroom:conv:{p}:{id}` key, wasting storage and polluting data.
 
-**设计原则**：两种触发场景（定期、首页）共享同一个清理引擎和节流逻辑，避免重复执行。
+**Design principle**: Two trigger scenarios (periodic, home page) share one cleanup engine and throttle logic, avoiding duplicate execution.
 
-#### 清理引擎（平台无关）
+#### Cleanup Engine (Platform-Agnostic)
 
 ```typescript
 // background.ts
@@ -223,148 +223,149 @@ async function cleanupZombies(
   platformId: string,
   liveIds: string[],
 ): Promise<void> {
-  // 1. 节流: <5min 前刚跑过则跳过
+  // 1. Throttle: skip if last run <5min ago
   const state = await getCleanupState();
   if (!shouldRunCleanup(state, platformId, Date.now())) return;
 
-  // 2. SCAN Upstash 该平台的 key
+  // 2. SCAN Upstash keys for this platform
   const cloudKeys = await kvScan(creds, `headroom:conv:${platformId}:*`);
 
-  // 3. 算差集 → DEL
+  // 3. Compute diff → DEL
   const zombies = selectZombieKeys(cloudKeys, new Set(liveIds), platformId);
   await Promise.all(zombies.map((k) => kvDel(creds, k).catch(() => {})));
 
-  // 4. 记录本次清理时间
+  // 4. Record this cleanup time
   await setCleanupState(cleanupStateAfterRun(state, platformId, Date.now()));
 }
 ```
 
-#### 两触发入口
+#### Two Trigger Entries
 
-| 触发器            | 实现                                                              | 调用                                                                                                                 |
-| ----------------- | ----------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| **定期（60min）** | `chrome.alarms.create("zombie-cleanup", { periodInMinutes: 60 })` | `onAlarm` → 遍历 7 平台 → 有 tab 则发 `FETCH_CONVERSATION_LIST`；无 tab 则跳过（用户未在该平台活动，不触发后台行为） |
-| **打开首页**      | content script 检测主页 URL（`dialogueIdFromUrl === null`）       | content script 主动发 `CONVERSATION_LIST` → background 调 `cleanupZombies(platform, ids)`                            |
+| Trigger              | Implementation                                                    | Call                                                                                                                                                                |
+| -------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Periodic (60min)** | `chrome.alarms.create("zombie-cleanup", { periodInMinutes: 60 })` | `onAlarm` → iterate 7 platforms → if tab exists, send `FETCH_CONVERSATION_LIST`; if no tab, skip (user not active on this platform, no background action triggered) |
+| **Home page open**   | content script detects home URL (`dialogueIdFromUrl === null`)    | content script proactively sends `CONVERSATION_LIST` → background calls `cleanupZombies(platform, ids)`                                                             |
 
-#### 节流逻辑
+#### Throttle Logic
 
 ```
-任何批量触发(定期/首页) ──→ runZombieCleanup(platform)
+Any batch trigger (periodic / home) ──→ runZombieCleanup(platform)
                                 │
                                 ▼
-                      检查 lastCleanupTime[platform]
+                      Check lastCleanupTime[platform]
                                 │
                     ┌──── <5min? ────┐
                     │ YES            │ NO
                     ▼                ▼
-                  跳过          执行清理
+                  Skip          Run cleanup
                                  │
                                  ▼
-                          更新 lastCleanupTime
+                          Update lastCleanupTime
 ```
 
-**为什么 5 分钟**：定期 60min + 首页触发可能同时发生 → 5min 节流保证最多执行一次。
+**Why 5 minutes**: periodic 60min + home-page trigger may fire simultaneously → 5min throttle guarantees at most one execution.
 
-#### 执行流程图
+#### Execution Flow
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         触发层                                   │
+│                         Trigger Layer                            │
 │                                                                 │
-│       chrome.alarms(60min)         CONVERSATION_LIST(首页)       │
+│       chrome.alarms(60min)         CONVERSATION_LIST(home)       │
 │              │                            │                     │
 │              ▼                            ▼                     │
 │  ┌──────────────────────────────────────────────────────────┐   │
 │  │            cleanupZombies(platform, liveIds)              │   │
 │  │                                                          │   │
-│  │  节流检查(5min) → kvScan → diff → kvDel → stamp 时间     │   │
+│  │  Throttle check (5min) → kvScan → diff → kvDel → stamp   │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │              │                                                  │
-│              ▼ (alarm 无 tab 时)                                │
-│        跳过 — 用户未在该平台活动，不触发后台清理               │
+│              ▼ (when alarm has no tab)                          │
+│        Skip — user not active on this platform,                 │
+│        no background cleanup triggered                          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-#### 前置条件与降级
+#### Preconditions & Degradation
 
-| 条件                             | 不满足时                                                                       |
-| -------------------------------- | ------------------------------------------------------------------------------ |
-| 有打开的平台 tab                 | 定期清理跳过。用户未在该平台活动时不触发后台行为（"don't touch my shit" 边界） |
-| 用户已登录平台                   | content script 拉不到列表 → 跳过                                               |
-| Upstash 已配置                   | 只清本地（云端无东西可清）                                                     |
-| `fetchConversationList` 真机准确 | 清理效果打折扣（根本依赖）                                                     |
+| Condition                             | When not met                                                                                                                                                 |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Platform tab open                     | Periodic cleanup skips. When user is not active on this platform, no background action is triggered (respects user expectation: no cleanup without activity) |
+| User logged into platform             | content script cannot pull list → skip                                                                                                                       |
+| Upstash configured                    | Only clean local (nothing in cloud to clean)                                                                                                                 |
+| `fetchConversationList` accurate live | Cleanup effectiveness discounted (fundamental dependency)                                                                                                    |
 
-#### 平台覆盖
+#### Platform Coverage
 
-| 平台                                               | `fetchConversationList` 方式 | 清理可靠性                              |
-| -------------------------------------------------- | ---------------------------- | --------------------------------------- |
-| DeepSeek / ChatGPT / Kimi / Qwen / 通义千问 / 豆包 | API 拉取                     | 高                                      |
-| Gemini                                             | DOM 侧边栏抓取               | 低（虚拟化截断,只能清掉侧边栏不可见的） |
+| Platform                                                   | `fetchConversationList` method | Cleanup reliability                                                                       |
+| ---------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------- |
+| DeepSeek / ChatGPT / Kimi / Qwen / Tongyi Qianwen / Doubao | API pull                       | High                                                                                      |
+| Gemini                                                     | DOM sidebar scrape             | Low (virtualization truncation; only conversations not visible in sidebar can be cleaned) |
 
-**Gemini 特殊处理**：DOM 抓取的 liveList 不完整 → 可能误判"侧边栏不可见的对话"为僵尸。缓解:Gemini 定期清理仅作为尽力而为,Gemini 用户若发现误清,下次打开该对话会自动从云端恢复(union 合并保留 cloud-only 轮)。
+**Gemini special handling**: DOM-scraped liveList is incomplete → may misjudge "conversations not visible in sidebar" as zombies. Mitigation: Gemini periodic cleanup is best-effort only; if Gemini users find over-cleaning, next open of that conversation auto-recovers from cloud (union merge preserves cloud-only rounds).
 
-#### 存储
+#### Storage
 
 ```typescript
-// storage.local 新增
+// storage.local new key
 headroom:cleanup-state → { <platform>: lastCleanupTimestamp }
 ```
 
-#### 权限
+#### Permissions
 
 ```json
 // manifest.json
 "permissions": ["alarms"]
 ```
 
-### 7 平台拉历史 API（2026-06 真机抓包）
+### 7-Platform History APIs (2026-06 Live Capture)
 
-| 平台     | API                                                       | 文本可取                                                | 数据结构        | 服务端 token（仅校准参考）             |
-| -------- | --------------------------------------------------------- | ------------------------------------------------------- | --------------- | -------------------------------------- |
-| DeepSeek | `GET /api/v0/chat/history_messages?chat_session_id=`      | ✅ `fragments[].content`                                | 扁平 messages[] | ✅ `accumulated_token_usage`           |
-| ChatGPT  | `GET /backend-api/conversation/<id>`                      | ✅ `mapping.{id}.message.content.parts[]`               | 树（mapping）   | ❌                                     |
-| Gemini   | 内容在 SSR HTML / DOM                                     | ✅ DOM 可抓                                             | DOM             | ❌                                     |
-| Kimi     | `POST /apiv2/...ChatService/ListMessages`                 | ✅ `messages[].blocks[].text.content`                   | 树（parentId）  | ❌                                     |
-| Qwen     | `GET /api/v2/chats/<id>`                                  | ✅ `messages[].content` / `content_list[].content`      | map + 数组      | ✅ `content_list[].usage.total_tokens` |
-| 通义千问 | `GET .../api/v1/session/msg/list?session_id=`（**分页**） | ✅ `request/response_messages[].content`                | 分页列表        | ✅ `extra_info...total_usage`          |
-| 豆包     | `POST /im/chain/single`                                   | ✅ `messages[].content_block[].content.text_block.text` | 字节 IM 协议    | ❌                                     |
+| Platform       | API                                                           | Text extractable                                        | Data structure        | Server tokens (calibration reference only) |
+| -------------- | ------------------------------------------------------------- | ------------------------------------------------------- | --------------------- | ------------------------------------------ |
+| DeepSeek       | `GET /api/v0/chat/history_messages?chat_session_id=`          | ✅ `fragments[].content`                                | Flat messages[]       | ✅ `accumulated_token_usage`               |
+| ChatGPT        | `GET /backend-api/conversation/<id>`                          | ✅ `mapping.{id}.message.content.parts[]`               | Tree (mapping)        | ❌                                         |
+| Gemini         | Content in SSR HTML / DOM                                     | ✅ DOM scrapable                                        | DOM                   | ❌                                         |
+| Kimi           | `POST /apiv2/...ChatService/ListMessages`                     | ✅ `messages[].blocks[].text.content`                   | Tree (parentId)       | ❌                                         |
+| Qwen           | `GET /api/v2/chats/<id>`                                      | ✅ `messages[].content` / `content_list[].content`      | map + array           | ✅ `content_list[].usage.total_tokens`     |
+| Tongyi Qianwen | `GET .../api/v1/session/msg/list?session_id=` (**paginated**) | ✅ `request/response_messages[].content`                | Paginated list        | ✅ `extra_info...total_usage`              |
+| Doubao         | `POST /im/chain/single`                                       | ✅ `messages[].content_block[].content.text_block.text` | ByteDance IM protocol | ❌                                         |
 
-> **文本全部可取**——这是对账的前提（估 token 靠文本）。服务端 token 列仅作 [004](./004-optimizations.md) 校准参考，**不计入核心路径**（产品形态按"文本 → 估算"设计）。通义千问的分页需翻页取全。
+> **Text extractable on all** — this is the prerequisite for reconciliation (estimating tokens depends on text). Server tokens column is only for [004](./004-optimizations.md) calibration reference, **not in the core path** (product is designed as "text → estimate"). Tongyi Qianwen pagination requires walking all pages.
 
-> **稳定 messageId 来源（union 合并 key，2026-06 真机实测，7/7 全部确认）**：DeepSeek `message_id` · ChatGPT mapping 节点 id · Kimi msg `id` · Qwen(chat.qwen.ai) 对象 map 键 · 豆包 `index_in_conv` · 通义千问 `req_id`（逐轮请求 id，list 项字段）· Gemini turn wrapper `<div id>`（16 位 hex，跨 reload 稳定，与 Angular `_ngcontent-ng-c…` build 哈希无关）。order（显示序）：DeepSeek/豆包/通义千问用各自的 create_time/created_at，ChatGPT `create_time`，Kimi `createTime`，Qwen `timestamp`，Gemini DOM 序。适配器解析时大多已读到这些 id（配对/建树用）；旧实现发轮时丢弃改发位置 `n`——本变更改为透传 messageId 作合并 key。
+> **Stable messageId source (union merge key, 2026-06 live-verified, 7/7 all confirmed)**: DeepSeek `message_id` · ChatGPT mapping node id · Kimi msg `id` · Qwen (chat.qwen.ai) object map key · Doubao `index_in_conv` · Tongyi Qianwen `req_id` (per-round request id, list item field) · Gemini turn wrapper `<div id>` (16-char hex, stable across reload, unrelated to Angular `_ngcontent-ng-c…` build hash). order (display sequence): DeepSeek / Doubao / Tongyi Qianwen use their respective create_time / created_at; ChatGPT `create_time`; Kimi `createTime`; Qwen `timestamp`; Gemini DOM order. Most adapters already read these ids during parsing (for pairing / tree-building); the old implementation discarded them and emitted positional `n` instead — this change makes messageId transparent as the merge key.
 
 ### Browser APIs
 
-`webRequest`（已有，send + 删除监听）。`fetchHistory` / `fetchConversationList` 用普通 `fetch`（同源，吃平台 cookie 会话）。`chrome.alarms`（僵尸清理定期调度,60min 周期,需 `alarms` 权限）。
+`webRequest` (existing, send + delete monitoring). `fetchHistory` / `fetchConversationList` use plain `fetch` (same-origin, consumes platform cookie session). `chrome.alarms` (zombie cleanup periodic scheduling, 60min period, requires `alarms` permission).
 
 ## Implementation Plan
 
-1. **纯逻辑（TDD）**：`union` 合并 + `projectUsage`；本地多对话缓存存取；LRU 淘汰（conv-index + 阈值判断）。
-2. **fetchHistory 适配器**：先 DeepSeek（最简单，文本直接可取）作参考；再铺其余 6 家。ChatGPT 的 mapping 树遍历、Gemini 的 DOM 抓取、通义千问的分页是各自难点。
-3. **打开即对账引擎**：`PAGE_READY` → `fetchHistory` → union → 先显示后同步。
-4. **增量上云**：`applyHistory` 落地后覆盖写整条 + best-effort；失败 warn。
-5. **删除联动**：`parseDelete` → 删本地缓存 + Upstash `DEL`。
-6. **P1**：僵尸清理统一引擎（alarms 定期 + 首页触发,共享节流）、对账频率控制。
+1. **Pure logic (TDD)**: `union` merge + `projectUsage`; multi-conversation local cache read/write; LRU eviction (conv-index + threshold judgment).
+2. **fetchHistory adapters**: DeepSeek first (simplest, text directly extractable) as reference; then expand to remaining 6. ChatGPT's mapping tree traversal, Gemini's DOM scraping, Tongyi Qianwen's pagination are each platform's hard part.
+3. **Open-and-reconcile engine**: `PAGE_READY` → `fetchHistory` → union → display-first-then-sync.
+4. **Incremental cloud push**: overwrite-write entire record after `applyHistory` lands + best-effort; failure warns.
+5. **Delete linkage**: `parseDelete` → delete local cache + Upstash `DEL`.
+6. **P1**: zombie cleanup unified engine (alarms periodic + home-page trigger, shared throttle), reconciliation frequency control.
 
 ## Acceptance Criteria
 
-> 详细操作步骤见 [`specs/acceptance-checklist.md`](./acceptance-checklist.md)「003 跨设备对账」部分。
+> Detailed steps in [`specs/acceptance-checklist.md`](./acceptance-checklist.md) "003 Cross-Device Reconciliation" section.
 
-- 全新装、填凭证 → 打开一个已有对话 → 仪表盘从 0 爬升到真实累计（对账生效）
-- **跨设备续聊**：设备 A 聊 5 轮 → 设备 B 打开同对话 → B 显示 5 轮累计（不是 0，不覆盖丢 A 的）
-- **移动端轮次**：手机聊 3 轮 → 网页打开同对话 → 仪表盘含那 3 轮（平台历史里有，对账纳入）
-- **断网不丢**：断网聊几轮（增量推失败 warn）→ 恢复后打开对话 → 对账补回（不需 outbox）
-- **union 按稳定 messageId 合并**：平台返回的轮集变化（截断 / 单条删除 / 重生成移位）时，`totalTokens` 仍正确——不重复计、不丢早期轮（回归测试：50 轮截断到 30 轮 → `totalTokens` 不变；旧实现会算成 1875≠1275）
-- 网页端删对话 → 本地缓存 + Upstash 对应 key 都消失
-- 移动端删对话 → 下次首页打开或定期 alarm → Upstash 记录被差集清理
-- **定期僵尸清理**：`chrome.alarms` 每 60min 触发 → 有平台 tab 时自动清理死 record；与首页触发共享 5min 节流
-- 切 tab / 开面板读本地缓存（秒开），不阻塞网络
+- Fresh install, fill credentials → open an existing conversation → gauge climbs from 0 to real cumulative (reconciliation effective)
+- **Cross-device continuation**: Device A chats 5 rounds → Device B opens same conversation → B shows 5-round cumulative (not 0, doesn't overwrite and lose A's)
+- **Mobile rounds**: Phone chats 3 rounds → web opens same conversation → gauge includes those 3 rounds (in platform history, reconciliation includes them)
+- **No loss on disconnect**: Chat a few rounds offline (incremental push fails with warning) → reopen conversation after reconnect → reconciliation recovers (no outbox needed)
+- **Union merge by stable messageId**: When platform's returned round set changes (truncation / single-round deletion / regenerate shift), `totalTokens` still correct — no double-counting, no early-round loss (regression test: 50 rounds truncated to 30 → `totalTokens` unchanged; old implementation would compute 1875 ≠ 1275)
+- Web delete conversation → both local cache and Upstash key disappear
+- Mobile delete conversation → next home-page open or periodic alarm → Upstash record cleaned up by diff
+- **Periodic zombie cleanup**: `chrome.alarms` fires every 60min → auto-cleans dead records when platform tab exists; shares 5min throttle with home-page trigger
+- Tab switch / panel open reads local cache (instant), does not block network
 
 ## Open Questions
 
-- ChatGPT 的 mapping 树遍历：取主线（current_node 回溯）还是取所有 user→assistant 对？重生成分支怎么处理？
-- Gemini 历史内容抓取方式（2026-06 真机确认：内容在 SSR HTML / DOM，`fetchHistory` 走 DOM 抓取作兜底，文本可取；是否升级为更稳的 batchexecute RPC 留 [004](./004-optimizations.md)）。
-- `fetchHistory` 的频率控制阈值：快速切对话时，debounce 多少 / 停留几秒才触发全量对账？
-- 僵尸清理触发频率：定期 alarms(60min) + 首页触发,共享 5min 节流（已设计）。
-- 新会话首条无 dialogueId（Kimi 等）→ 首轮无法 fetchHistory；要等 dialogueId 出现。
-- `MAX_RETAINED_ROUNDS`（200）在全量对账下是否仍合理？平台历史可能更长，对账要不要截断？
+- ChatGPT's mapping tree traversal: take the main line (current_node backtrack) or all user→assistant pairs? How to handle regenerated branches?
+- Gemini history content scraping method (2026-06 live-confirmed: content in SSR HTML / DOM, `fetchHistory` uses DOM scraping as fallback, text extractable; whether to upgrade to more stable batchexecute RPC left to [004](./004-optimizations.md)).
+- `fetchHistory` frequency control threshold: when rapidly switching conversations, how much debounce / how many seconds of stay before triggering full reconciliation?
+- Zombie cleanup trigger frequency: periodic alarms (60min) + home-page trigger, shared 5min throttle (already designed).
+- New conversation's first message has no dialogueId (Kimi etc.) → first round cannot fetchHistory; must wait for dialogueId to appear.
+- Whether `MAX_RETAINED_ROUNDS` (200) is still reasonable under full reconciliation: platform history may be longer; should reconciliation truncate?

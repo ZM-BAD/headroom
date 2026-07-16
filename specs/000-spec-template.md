@@ -1,51 +1,51 @@
-# {序号}: {Feature Name}
+# {Number}: {Feature Name}
 
 ## Summary
 
-一句话描述这个功能要做什么。
+One-sentence description of what this feature does.
 
 ## Motivation
 
-为什么需要这个功能？解决什么问题？
+Why is this feature needed? What problem does it solve?
 
 ## Requirements
 
-### P0 — 核心功能
+### P0 — Core
 
-- [ ] 需求 1
-- [ ] 需求 2
+- [ ] Requirement 1
+- [ ] Requirement 2
 
-### P1 — 增强功能
+### P1 — Enhancement
 
-- [ ] 需求 3
+- [ ] Requirement 3
 
 ## Design
 
 ### Architecture
 
-涉及的组件和它们之间的关系。
+Components involved and their relationships.
 
 ### Entrypoints
 
-| Entrypoint | 文件 | 职责 |
-| ---------- | ---- | ---- |
-|            |      |      |
+| Entrypoint | File | Responsibility |
+| ---------- | ---- | -------------- |
+|            |      |                |
 
 ### Data Flow
 
-数据流向：从哪获取，如何处理，展示在哪。
+How data flows: where it is fetched from, how it is processed, where it is displayed.
 
 ### Data Model
 
-数据结构定义（如有）。
+Data structure definitions (if any).
 
 ### UI
 
-UI 交互描述（如有）。
+UI interaction description (if any).
 
 ### Browser APIs
 
-使用的 `browser.*` API 列表。
+List of `browser.*` APIs used.
 
 ## Implementation Plan
 
@@ -55,9 +55,9 @@ UI 交互描述（如有）。
 
 ## Acceptance Criteria
 
-- [ ] 验收条件 1
-- [ ] 验收条件 2
+- [ ] Criterion 1
+- [ ] Criterion 2
 
 ## Open Questions
 
-- [ ] 待确认问题
+- [ ] Open question to resolve

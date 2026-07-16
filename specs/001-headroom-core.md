@@ -1,160 +1,160 @@
-# 001: Headroom Core — Context Monitor + 估算引擎 + 适配器基座
+# 001: Headroom Core — Context Monitor + Estimation Engine + Adapter Base
 
 ## Status
 
-DeepSeek 单设备端到端已实现并真机验收通过（闸门 1 ✅，2026-06）；其余 6 家 adapter + `fetchHistory` 已实现（parse 形状经 Playwright 实测确认），真机端到端验收 pending（闸门 2）；Edge/Firefox 冒烟待验（闸门 3）。
+DeepSeek single-device end-to-end implemented and passed live acceptance (Gate 1 ✅, 2026-06); remaining 6 adapters + `fetchHistory` implemented (parse shapes confirmed via Playwright), live end-to-end acceptance pending (Gate 2); Edge/Firefox smoke pending (Gate 3).
 
-**范围定位**：单设备即时层。仪表盘纯本地工作，不依赖云端，**可独立发布**。Upstash 传输管道归 [002](./002-upstash-data-layer.md)；跨设备同步、对账、删除联动归 [003](./003-cross-device-sync.md)。
+**Scope**: Single-device real-time layer. The gauge works purely locally, does not depend on the cloud — **can be released independently**. Upstash transport pipeline goes to [002](./002-upstash-data-layer.md); cross-device sync, reconciliation, and delete linkage go to [003](./003-cross-device-sync.md).
 
 ## Summary
 
-在 AI 聊天平台的浏览器原生侧边栏中，实时展示当前对话 token 累计消耗占 context window 的百分比，并提供三级颜色预警（绿/黄/红）。内置可按「平台 × 书写系统」配置的 **token 估算引擎**，以及平台无关的**适配器架构**（首期 DeepSeek 全实现）。
+In the browser's native side panel on AI chat platforms, this spec displays the current conversation's cumulative token consumption as a percentage of the context window in real time, with three-level color warnings (green/yellow/red). It includes a configurable **token estimation engine** by "platform × writing system" and a platform-agnostic **adapter architecture** (DeepSeek fully implemented initially).
 
-核心立场：**token 永远是"拿到文本后估算出来的"**——平台不告诉你 context 用了多少，而平台也大概率不存每轮 token，所以真值是平台历史的**文本内容**，token 由我们用系数矩阵换算。本 spec 只做单设备即时层；组合本 spec 的估算能力与 [002](./002-upstash-data-layer.md) 的传输管道实现跨设备对账，归 [003](./003-cross-device-sync.md)。
+Core stance: **tokens are always "estimated from text"** — platforms don't tell you how much context they've used, and platforms likely don't store per-round tokens either, so the truth is the **text content** of the platform's history, and tokens are estimated by us using the coefficient matrix. This spec only does the single-device real-time layer; combining this spec's estimation capability with [002](./002-upstash-data-layer.md)'s transport pipeline to achieve cross-device reconciliation is [003](./003-cross-device-sync.md)'s job.
 
 ## Motivation
 
-### 痛点
+### Pain Point
 
-专业用户在 AI 聊天网页端进行长对话（知识学习、技术调研）时，context window 被逐渐填满。AI 不会告诉你"我已经忘了你第 3 轮说的关键约束"——它只是悄无声息地丢失细节，输出质量下降但用户不知道原因。
+Professional users conducting long conversations on AI chat web apps (knowledge learning, technical research) gradually fill the context window. The AI never tells you "I've already forgotten the critical constraint you mentioned in round 3" — it just silently loses detail, output quality degrades for unknown reasons.
 
-**没有一个主流 AI 聊天平台在 UI 上展示 context window 剩余空间。** Headroom 填补这个空白。
+**No major AI chat platform displays remaining context window space in the UI.** Headroom fills this gap.
 
-### 不是什么
+### What It's Not
 
-- Headroom 不是 token 计费/成本监控工具。模型越来越便宜，计费不是问题。
-- Headroom **不保障上下文质量**——Headroom只进行统计以及预警工作，无法保障。
+- Headroom is not a token billing / cost monitoring tool. Models are getting cheaper — cost is not the problem.
+- Headroom **does not guarantee context quality** — Headroom only does statistics and warnings; it cannot guarantee quality.
 
-### 为什么估算引擎是一等公民
+### Why the Estimation Engine Is a First-Class Citizen
 
-要知道 context 用了多少，就得算 token。算 token 有两条路：
+To know how much context has been used, you must count tokens. There are two paths:
 
-- **打包各家 tokenizer**：词表巨大、各模型编码不同、会让扩展变重且强绑定模型。
-- **根据统计规律进行估算**：轻量、模型无关，精度靠「平台 × 书写系统」系数矩阵保证。
+- **Bundle each platform's tokenizer**: Huge vocabularies, different encodings per model, makes the extension heavier and tightly coupled to models.
+- **Estimate by statistical regularity**: Lightweight, model-independent, accuracy guaranteed by the "platform × writing system" coefficient matrix.
 
-Headroom 选估算。v1 做中文（CJK）+ 英文（Latin）两种书写系统，004 已升级为 6 种书写系统（CJK/假名/韩文/西里尔/阿拉伯/拉丁）；按平台 tokenizer 精确校准待做，见 [004](./004-optimizations.md)。
+Headroom chooses estimation. v1 handles two writing systems — Chinese (CJK) + English (Latin); 004 has upgraded to 6 writing systems (CJK / Kana / Hangul / Cyrillic / Arabic / Latin). Per-platform tokenizer calibration is pending, see [004](./004-optimizations.md).
 
-### 目标用户
+### Target Users
 
-日常使用 AI 聊天网页版的专业人士（开发者、研究者、写作者、分析师）。
+Professionals who use AI chat web apps daily (developers, researchers, writers, analysts).
 
 ## Requirements
 
-### P0 — 核心
+### P0 — Core
 
-- [x] **实时 context 占比可视化**：进度条 + 百分比
-- [x] **三级颜色预警**（阈值可在设置面板自定义，双滑块）：🟢 绿（< 黄阈值，默认 50%）/ 🟠 黄（黄≤占比<红，默认 50%/70%）/ 🔴 红（≥ 红阈值）
-- [x] **平台识别 + context 匹配**：domain → platform，匹配该平台 context window limit；用户可在设置按平台覆盖（默认值取 adapter `contextLimit`）
-- [x] **token 估算引擎**：text → token，按「书写系统 × 平台」系数；6 书写系统（CJK/假名/韩文/西里尔/阿拉伯/拉丁），用户可覆盖系数
-- [x] **适配器架构**：完整契约（见 Design），DeepSeek 全实现；接口为新增平台预留
-- [x] **增量轮次捕获**：webRequest `onCompleted`（SSE 流关闭 = 回答完毕）→ 拉平台历史 API（message_id 权威）→ 逐轮重估（净增本轮）→ 更新仪表盘
-- [x] **本地工作状态**：仪表盘的读源，纯本地，不依赖云端
-- [x] **URL 作用域**：非匹配页面 `action.disable` 灰化、sidepanel 不响应
-- [x] **用户设置面板**：阈值双滑块 / context 覆盖 / UI 语言切换 / Upstash 配置（URL·Token·测试·清空·保存）
+- [x] **Real-time context usage visualization**: progress bar + percentage
+- [x] **Three-level color warning** (customizable in settings panel, dual slider): 🟢 green (< yellow threshold, default 50%) / 🟠 yellow (yellow ≤ usage < red, default 50%/70%) / 🔴 red (≥ red threshold)
+- [x] **Platform identification + context matching**: domain → platform, match that platform's context window limit; user can override per platform in settings (defaults to adapter `contextLimit`)
+- [x] **Token estimation engine**: text → token, by "writing system × platform" coefficients; 6 writing systems (CJK / Kana / Hangul / Cyrillic / Arabic / Latin), user can override coefficients
+- [x] **Adapter architecture**: complete contract (see Design), DeepSeek fully implemented; interface reserves room for new platforms
+- [x] **Incremental round capture**: `webRequest.onCompleted` (SSE stream close = reply complete) → pull platform history API (message_id authoritative) → re-estimate per round (net new this round) → update gauge
+- [x] **Local working state**: the gauge's read source, purely local, does not depend on the cloud
+- [x] **URL scoping**: non-matching pages have `action.disable` graying, side panel does not respond
+- [x] **User settings panel**: threshold dual slider / context override / UI language switch / Upstash config (URL · Test · Clear · Save)
 
-### P1 — 增强
+### P1 — Enhancement
 
-- [x] **侧边栏开关**：点击扩展图标打开/关闭原生侧边栏
-- [x] **轮次计数显示**
-- [x] **对话身份展示**：侧边栏显示当前对话标题 + dialogueId（仅展示，不写入 record、不上云）
+- [x] **Side panel toggle**: click extension icon to open/close native side panel
+- [x] **Round count display**
+- [x] **Conversation identity display**: side panel shows current conversation title + dialogueId (display only, not written to record, not uploaded to cloud)
 
 ## Browser Support
 
-**仅支持 Manifest V3**（不支持 MV2），需较新浏览器版本：
+**Manifest V3 only** (MV2 not supported), requires relatively recent browser versions:
 
-| 浏览器         | 最低版本 |
-| -------------- | -------- |
-| Google Chrome  | ≥ 149    |
-| Microsoft Edge | ≥ 149    |
-| Firefox        | ≥ 151    |
+| Browser        | Minimum Version |
+| -------------- | --------------- |
+| Google Chrome  | ≥ 149           |
+| Microsoft Edge | ≥ 149           |
+| Firefox        | ≥ 151           |
 
-> **决策：不兼容 Firefox MV2。** Chrome/Edge 已强制 MV3，后台必须按 service worker 语义编写（状态持久化到 `browser.storage.local`、唤醒后重建）；Firefox MV3 用 event page，更宽松。再支持 MV2 只会多一条后台生命周期路径和测试矩阵，不省任何代码——最严的 service worker 模型由 Chrome 锁定，无法靠 MV2 绕开。
+> **Decision: no Firefox MV2 support.** Chrome/Edge already mandate MV3; the background must be written in service worker semantics (state persisted to `browser.storage.local`, rebuilt after wake); Firefox MV3 uses event pages, more lenient. Adding MV2 support would only mean one more background lifecycle path and test matrix — no code saved — the strictest service worker model is locked by Chrome, cannot be bypassed with MV2.
 
 ## Design
 
-### 用户交互场景（本地层）
+### User Interaction Scenarios (Local Layer)
 
-> 6 种用户交互的技术触发与本地行为。这是本 spec Data Flow 图 A/B/C 的需求骨架——三张图分别对应交互3/4a/4b。003 接线后的跨设备升级见 [003](./003-cross-device-sync.md)「用户交互场景」矩阵。
+> Technical triggers and local behaviors for 6 user interactions. This is the requirement skeleton for this spec's Data Flow diagrams A/B/C — each diagram corresponds to interactions 3 / 4a / 4b. Cross-device upgrades after 003 wiring are in [003](./003-cross-device-sync.md) "User Interaction Scenarios" matrix.
 
-| #   | 交互                       | 触发条件（技术）                                                                                                                                                        | 本地行为（001）                                                                                                                                                                                                                                                                                            |
-| --- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | 打开平台主页（未点开对话） | content script 注入 → `PAGE_READY`；URL 无对话 id（`dialogueIdFromUrl` 返回 null）                                                                                      | IDLE 态：读不到 record → 仪表盘空闲，action 仍 enabled（平台匹配）。003 加僵尸清理                                                                                                                                                                                                                         |
-| 2   | 开启新对话首轮             | 发 prompt → `onBeforeRequest` 命中 completion URL；流关闭 → `onCompleted`。**首轮 dialogueId 延迟出现**：发送瞬间 URL 还没 id，要等平台响应后 SPA 写入 `/a/chat/s/<id>` | `onCompleted` → 200ms settle → `REFRESH_HISTORY` → `fetchHistory`（此时 URL 已有 id）→ `applyHistory` REPLACE。**首轮补回靠 onCompleted 触发的 `REFRESH_HISTORY`，不靠 URL 轮询**——`fetchAndShipHistory` 在 `dialogueId===null` 时静默 return；1.5s 轮询只管 SPA 切换对话（交互3），不管首轮（见下时序图） |
-| 3   | 打开已有对话               | content script 注入 → `PAGE_READY` + `fetchAndShipHistory`；SPA 内切换由 URL 轮询（1.5s）捕获 href 变化                                                                 | `fetchHistory` → `HISTORY_PARSED` → `applyHistory` REPLACE 本地 record → 广播仪表盘（纯本地，不碰云）。**003 升级为 union 合并**                                                                                                                                                                           |
-| 4a  | 追加新一轮问答             | `webRequest.onCompleted` 命中 `completionUrl`（SSE 流关闭 = 模型答完）                                                                                                  | `onCompleted` → 200ms settle → `REFRESH_HISTORY` → `fetchHistory`（新轮 0ms 已在历史）→ `applyHistory` REPLACE → 仪表盘 +1 轮（见现有图 B）                                                                                                                                                                |
-| 4b  | 重新生成/停止生成          | `onCompleted`（重新生成）/ `onErrorOccurred`（停止生成 = 流异常关闭）                                                                                                   | 同 4a 管线 → `applyHistory` REPLACE。**轮数不变**：平台历史第 N 轮换新 `message_id` 但挂同一 USER，REPLACE 后第 N 轮 token 更新、轮数仍 N（见现有图 C）                                                                                                                                                    |
-| 5   | 删除对话                   | `onBeforeRequest` 命中 `deleteUrl` + `deleteMethod` 匹配 + `parseDelete` 从 body 解出对话 id                                                                            | `handleDelete` → 删本地 record → 重新投影活动 tab（仪表盘归零）。**只删本地**，003 加 Upstash DEL（见下时序图）                                                                                                                                                                                            |
+| #   | Interaction                                 | Trigger (Technical)                                                                                                                                                                                                         | Local Behavior (001)                                                                                                                                                                                                                                                                                                                                           |
+| --- | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Open platform home (no conversation opened) | content script injected → `PAGE_READY`; URL has no dialogue ID (`dialogueIdFromUrl` returns null)                                                                                                                           | IDLE state: cannot read record → gauge idle, action still enabled (platform matched). 003 adds zombie cleanup                                                                                                                                                                                                                                                  |
+| 2   | Start new conversation, first round         | Send prompt → `onBeforeRequest` hits completion URL; stream closes → `onCompleted`. **First round dialogue ID appears with a delay**: URL still has no ID at send time; SPA writes `/a/chat/s/<id>` after platform responds | `onCompleted` → 200ms settle → `REFRESH_HISTORY` → `fetchHistory` (URL now has ID) → `applyHistory` REPLACE. **First round recovery relies on onCompleted-triggered `REFRESH_HISTORY`, not URL polling** — `fetchAndShipHistory` silently returns when `dialogueId===null`; 1.5s polling only handles SPA conversation switch (interaction 3), not first round |
+| 3   | Open existing conversation                  | content script injected → `PAGE_READY` + `fetchAndShipHistory`; SPA-internal switch captured by URL polling (1.5s) to detect href change                                                                                    | `fetchHistory` → `HISTORY_PARSED` → `applyHistory` REPLACE local record → broadcast gauge (purely local, doesn't touch cloud). **Upgraded to union merge in 003**                                                                                                                                                                                              |
+| 4a  | Append new Q&A round                        | `webRequest.onCompleted` hits `completionUrl` (SSE stream close = model finished)                                                                                                                                           | `onCompleted` → 200ms settle → `REFRESH_HISTORY` → `fetchHistory` (new round already in history, 0ms delay) → `applyHistory` REPLACE → gauge +1 round                                                                                                                                                                                                          |
+| 4b  | Regenerate / Stop generation                | `onCompleted` (regenerate) / `onErrorOccurred` (stop generation = abnormal stream close)                                                                                                                                    | Same pipeline as 4a → `applyHistory` REPLACE. **Round count unchanged**: platform history round N gets new `message_id` but under same USER; REPLACE updates round N tokens, count stays N                                                                                                                                                                     |
+| 5   | Delete conversation                         | `onBeforeRequest` hits `deleteUrl` + `deleteMethod` match + `parseDelete` extracts dialogueId from body                                                                                                                     | `handleDelete` → delete local record → re-project active tab (gauge resets). **Local delete only**; 003 adds Upstash DEL                                                                                                                                                                                                                                       |
 
-**核心洞察**：交互 2/3/4a/4b 共用同一条「拉历史 → 估算 → REPLACE」管线（content script 拉历史 → background 估算 → REPLACE 本地），区别只在触发时机（注入 / URL 变 / onCompleted）。交互 1、5 是这条管线之外的独立分支。
+**Core insight**: Interactions 2 / 3 / 4a / 4b share the same "pull history → estimate → REPLACE" pipeline (content script pulls history → background estimates → REPLACE locally), differing only in trigger timing (inject / URL change / onCompleted). Interactions 1 and 5 are independent branches outside this pipeline.
 
-#### 时序图 · 交互1 主页态
+#### Sequence Diagram · Interaction 1 — Home Page State
 
-主页 URL 无对话 id，`fetchHistory` no-op（`dialogueIdFromUrl` 返回 null 直接 return），仪表盘进 IDLE 态。
+Home URL has no dialogueId; `fetchHistory` no-ops (`dialogueIdFromUrl` returns null → immediate return), gauge enters IDLE state.
 
 ```mermaid
 sequenceDiagram
-    actor U as 用户
-    participant P as 平台主页
+    actor U as User
+    participant P as Platform Home
     participant C as Content Script
     participant B as Background SW
     participant S as Side Panel
-    U->>P: 打开 chat.deepseek.com/
-    P->>C: 注入 content script
-    C->>B: PAGE_READY(url 无对话 id)
+    U->>P: Open chat.deepseek.com/
+    P->>C: Inject content script
+    C->>B: PAGE_READY(url has no dialogue ID)
     B->>B: dialogueId=null → key=null
-    B->>B: 读不到 record
-    B->>S: STATE_UPDATE(IDLE 空闲态)
-    Note over B: 003 接线后此场景额外触发僵尸清理
+    B->>B: Cannot read record
+    B->>S: STATE_UPDATE(IDLE state)
+    Note over B: After 003 wiring, this scenario additionally triggers zombie cleanup
 ```
 
-#### 时序图 · 交互2 开启新对话首轮
+#### Sequence Diagram · Interaction 2 — Start New Conversation, First Round
 
-首轮发送瞬间 URL 还没对话 id，需等平台响应后 SPA 写入；onCompleted 后 settle 再拉历史。
+URL has no dialogueId at first-round send time; must wait for SPA to write it after platform responds; after onCompleted, settle then pull history.
 
 ```mermaid
 sequenceDiagram
-    actor U as 用户
-    participant P as 平台页(SPA)
+    actor U as User
+    participant P as Platform Page (SPA)
     participant B as Background SW
     participant W as webRequest
     participant C as Content Script
-    participant H as 平台历史 API
+    participant H as Platform History API
     participant S as Side Panel
-    U->>P: 输入首个问题并发送
-    P->>W: POST /chat/completion (SSE 开启)
-    Note over P: URL 此时仍无对话 id
-    P-->>W: onCompleted (SSE 关闭 = 答完)
-    B->>B: 200ms settle (防 race)
+    U->>P: Type first question and send
+    P->>W: POST /chat/completion (SSE starts)
+    Note over P: URL still has no dialogue ID
+    P-->>W: onCompleted (SSE close = reply done)
+    B->>B: 200ms settle (prevent race)
     B->>C: REFRESH_HISTORY
-    Note over P: SPA 已写入 /a/chat/s/<id>
-    C->>H: fetchHistory(新 id)
-    H-->>C: 全量历史(含首轮)
+    Note over P: SPA has written /a/chat/s/<id>
+    C->>H: fetchHistory(new id)
+    H-->>C: Full history (includes first round)
     C->>B: HISTORY_PARSED(rounds)
-    B->>B: applyHistory REPLACE (建 record)
-    B->>S: STATE_UPDATE (首轮 token 显示)
+    B->>B: applyHistory REPLACE (create record)
+    B->>S: STATE_UPDATE (first round tokens shown)
 ```
 
-#### 时序图 · 交互5 删除对话
+#### Sequence Diagram · Interaction 5 — Delete Conversation
 
-`deleteUrl` 命中后按 `deleteMethod` 消歧，`parseDelete` 解出 id，删本地 + 重新投影。003 在虚线处加 Upstash DEL。
+After `deleteUrl` hit, disambiguate by `deleteMethod`; `parseDelete` extracts id; delete local + re-project. 003 adds Upstash DEL at the dashed line.
 
 ```mermaid
 sequenceDiagram
-    actor U as 用户
-    participant P as 平台页
+    actor U as User
+    participant P as Platform Page
     participant W as webRequest
     participant B as Background SW
-    participant L as 本地缓存
+    participant L as Local Cache
     participant S as Side Panel
-    U->>P: 删除某对话
-    P->>W: POST /chat_session/delete (body 含 id)
-    W->>B: onBeforeRequest 命中 deleteUrl
-    B->>B: method 匹配 + parseDelete(body) → id
+    U->>P: Delete a conversation
+    P->>W: POST /chat_session/delete (body contains id)
+    W->>B: onBeforeRequest hits deleteUrl
+    B->>B: method match + parseDelete(body) → id
     B->>L: delLocalDialogue(key)
-    B->>B: 重新投影活动 tab
-    B->>S: STATE_UPDATE (归零)
+    B->>B: Re-project active tab
+    B->>S: STATE_UPDATE (reset to zero)
     B--)R: 003: delDialogue(Upstash DEL, best-effort)
-    Note over B,R: 003 接线后新增虚线步;<br/>移动端删除走定期 alarm / 首页差集清理
+    Note over B,R: 003 wiring adds dashed step;<br/>mobile deletion goes through periodic alarm / home-page diff cleanup
 ```
 
 ### Architecture
@@ -165,300 +165,300 @@ sequenceDiagram
 │                                                       │
 │  ┌──────────────┐  ┌──────────────┐  ┌────────────┐ │
 │  │  Side Panel   │  │  Background  │  │  Content   │ │
-│  │  (UI 展示)    │  │  Service     │  │  Script    │ │
-│  │               │  │  Worker      │  │ (单一,     │ │
-│  │  - 进度条     │◄─►│              │◄─►│  全平台)   │ │
-│  │  - 占比 %     │  │  - 估算引擎  │  │            │ │
-│  │  - 预警颜色   │  │  - 轮次配对  │  │  - DOM 抓取│ │
-│  │  - 轮次数     │  │  - 预警判断  │  │  - 回复检测│ │
-│  │  - 设置面板   │  │  - action 灰化│ │            │ │
+│  │  (UI display) │  │  Service     │  │  Script    │ │
+│  │               │  │  Worker      │  │ (one,      │ │
+│  │  - progress   │◄─►│              │◄─►│  all-plat) │ │
+│  │    bar        │  │  - estimation│  │            │ │
+│  │  - percentage │  │  - round     │  │  - DOM     │ │
+│  │  - warning    │  │    pairing   │  │    scraping│ │
+│  │    color      │  │  - warning   │  │  - reply   │ │
+│  │  - round      │  │    judgment  │  │    detect  │ │
+│  │    count      │  │  - action    │  │            │ │
+│  │  - settings   │  │    graying   │  │            │ │
+│  │    panel      │  │              │  │            │ │
 │  └──────────────┘  └──────────────┘  └────────────┘ │
 └─────────────────────────────────────────────────────┘
-              ↑ 001 数据流到此为止，纯本地
-              │ （Upstash 管道 002 / 跨设备对账 003，本 spec 不涉及）
+              ↑ 001 data flow stops here, purely local
+              │ (Upstash pipeline 002 / cross-device reconciliation 003, not in this spec)
 ```
 
-三个 entrypoint：`entrypoints/sidepanel/`（UI）、`entrypoints/background.ts`（引擎：估算 + webRequest 拦截匹配 + 轮次配对 + 状态投影 + action 灰化）、`entrypoints/platform.content.ts`（**单一** content script，按 adapter `matchPattern` 注入，覆盖所有平台）。
+Three entrypoints: `entrypoints/sidepanel/` (UI), `entrypoints/background.ts` (engine: estimation + webRequest interception matching + round pairing + state projection + action graying), `entrypoints/platform.content.ts` (**one** content script (injected per adapter `matchPattern`), covering all platforms).
 
 ### Entrypoints
 
-| Entrypoint | 文件                              | 职责                                                                                      |
-| ---------- | --------------------------------- | ----------------------------------------------------------------------------------------- |
-| sidepanel  | `entrypoints/sidepanel/`          | UI：仪表盘主视图 + 设置视图                                                               |
-| background | `entrypoints/background.ts`       | 引擎：估算、webRequest 拦截匹配、轮次配对、状态投影、预警、action 灰化                    |
-| content    | `entrypoints/platform.content.ts` | **单一** content script，按 adapter `matchPattern` 注入全平台；DOM 抓 AI 回复、发页面信号 |
+| Entrypoint | File                              | Responsibility                                                                                                            |
+| ---------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| sidepanel  | `entrypoints/sidepanel/`          | UI: gauge main view + settings view                                                                                       |
+| background | `entrypoints/background.ts`       | Engine: estimation, webRequest interception matching, round pairing, state projection, warning, action graying            |
+| content    | `entrypoints/platform.content.ts` | **Single** content script, injected on all platforms per adapter `matchPattern`; DOM-scrape AI replies, send page signals |
 
-### Token 估算引擎 ★核心
+### Token Estimation Engine ★Core
 
-**模型**：
+**Model**:
 
 ```
-tokens(text, platform) = Σ over 书写系统 s  [ count(text, s) × coeff(s, platform) ]
+tokens(text, platform) = Σ over writing systems s  [ count(text, s) × coeff(s, platform) ]
 ```
 
-- **书写系统（script / writing system）**＝文字的符号体系，如汉字（CJK）、拉丁字母、西里尔字母、阿拉伯字母、假名。估算**按书写系统分桶、不按语言**——一条消息常混排多种符号，且 token 化成本取决于符号体系而非语种；逐字符判书写系统 → 归桶计数 → 乘该书写系统在该平台的系数。（此处 "script" 指 Unicode 书写系统，**与 Python/JavaScript 那种程序脚本无关**。）
-- v1 两种书写系统：
-  - **CJK（中文等）**：按字计。`tokens = cjkChars × cjkCoeff`
-  - **Latin（英文等）**：按词计。`tokens = latinWords × latinCoeff`（词 = 空白分隔）
-  - 其他书写系统（西/德/法/日/俄/葡/阿…）v1 暂归 Latin 桶估算，004 扩展独立系数。
-- 系数是**书写系统 × 平台**二维：每个 adapter 提供默认系数表，用户可在设置覆盖（P1）。同一书写系统在不同平台 tokenizer 下系数不同（如 DeepSeek 与 Qwen/GPT 的汉字系数不同）。
-- **v1 默认值（待 004 标定，下为起点值）**：DeepSeek `cjk ≈ 0.6 token/字`、`latin ≈ 0.5 token/词`。其余平台未标定前沿用同值，接入时按各自 tokenizer 调。
-- **不依赖平台服务端 token**：即便个别平台 API 偶尔返回 token 用量，也只作 004 校准参考，不计入核心路径。产品形态按"文本 → 估算"设计。
+- **Writing system (script)** = a symbol system for writing, e.g. Chinese characters (CJK), Latin, Cyrillic, Arabic, Kana. Estimation **buckets by writing system, not by language** — a single message often mixes multiple scripts, and tokenization cost depends on the symbol system, not the language; per-character script detection → bucket counting → multiply by that writing system's coefficient on that platform. (Here "script" means Unicode writing system, **unrelated to program scripts like Python/JavaScript**.)
+- v1 has two writing systems:
+  - **CJK (Chinese etc.)**: counted per character. `tokens = cjkChars × cjkCoeff`
+  - **Latin (English etc.)**: counted per word. `tokens = latinWords × latinCoeff` (words = whitespace-separated)
+  - Other writing systems (Spanish/German/French/Japanese/Russian/Portuguese/Arabic…) v1 temporarily falls back to the Latin bucket for estimation; 004 adds independent coefficients.
+- Coefficients are **writing system × platform** two-dimensional: each adapter provides a default coefficient table, user can override in settings (P1). Same writing system has different coefficients under different platform tokenizers (e.g. DeepSeek and Qwen/GPT have different Chinese character coefficients).
+- **v1 defaults (pending 004 calibration, below are starting values)**: DeepSeek `cjk ≈ 0.6 token/ch`, `latin ≈ 0.5 token/wd`. Other platforms inherit same values until calibrated against their own tokenizer.
+- **Does not depend on platform server tokens**: even if some platforms occasionally return token usage in API responses, it is only used as 004 calibration reference, not in the core path. The product is designed as "text → estimate".
 
-**每轮 input/output 分别估**：prompt 文本 → `promptTokens`，answer 文本 → `answerTokens`，本轮 `total = promptTokens + answerTokens`。
+**Per-round input/output estimated separately**: prompt text → `promptTokens`, answer text → `answerTokens`, round `total = promptTokens + answerTokens`.
 
-### Adapter Pattern（平台无关，新增平台 = 注册 + 一个文件）
+### Adapter Pattern (Platform-Agnostic, New Platform = Register + One File)
 
-新增一个 AI 平台 = 注册 + 写一个 `adapters/<platform>.ts`。完整契约（**归属**列说明哪个 spec 定义/使用该字段）：
+Adding a new AI platform = register + write one `adapters/<platform>.ts`. Complete contract (**Owner** column indicates which spec defines/uses the field):
 
-| 字段                                                          | 归属    | 说明                                                                                                                                                                                           |
-| ------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `platformId` / `displayName` / `host` / `matchPattern`        | 001     | 平台 id + 展示名；content 注入 + host 匹配                                                                                                                                                     |
-| `completionUrl`                                               | 001     | webRequest `onCompleted` 过滤 = 回答完毕（SSE 流关闭，根因；非 DOM 启发式）                                                                                                                    |
-| `contextLimit`                                                | 001     | 默认 context window，用户可覆盖                                                                                                                                                                |
-| `tokenCoefficients { cjk, latin }`                            | 001     | 默认估算系数，用户可覆盖                                                                                                                                                                       |
-| `dialogueIdFromUrl?(url)`                                     | 001     | URL 派生对话 id（切对话 → gauge 重置）                                                                                                                                                         |
-| `dialogueTitleFromDoc?(doc) → string \| null`                 | 001     | 对话标题（content-script 从 DOM 抓）；**仅面板展示，不写入 `DialogueRecord`、不上云**（标题可能含敏感信息）                                                                                    |
-| `fetchHistory?(dialogueId) → HistoryRound[]`                  | 001     | **核心真相源**：拉平台完整历史；`HistoryRound` 携带**稳定 messageId**（003 union 合并 key）+ `order`（时序键） + `promptText`/`answerText`。打开 / 切对话 / 回答完成都走它，token 永远由它估算 |
-| `answerSelector` / `userSelector?` / `conversationSelector`   | 001     | DOM 兜底原语；history-authoritative 核心当前不用，留给无历史 API 的平台                                                                                                                        |
-| `deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?` | 001+003 | 删除联动：本地 record 重置（001 background）；云端 DEL（003）                                                                                                                                  |
-| `fetchConversationList?() → string[]`                         | 003     | 僵尸清理：拉对话 id 列表                                                                                                                                                                       |
+| Field                                                         | Owner   | Description                                                                                                                                                                                                                                               |
+| ------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `platformId` / `displayName` / `host` / `matchPattern`        | 001     | Platform id + display name; content injection + host matching                                                                                                                                                                                             |
+| `completionUrl`                                               | 001     | `webRequest.onCompleted` filter = reply complete (SSE stream close, root cause; not DOM heuristics)                                                                                                                                                       |
+| `contextLimit`                                                | 001     | Default context window, user-overridable                                                                                                                                                                                                                  |
+| `tokenCoefficients { cjk, latin }`                            | 001     | Default estimation coefficients, user-overridable                                                                                                                                                                                                         |
+| `dialogueIdFromUrl?(url)`                                     | 001     | Derive dialogue ID from URL (conversation switch → gauge reset)                                                                                                                                                                                           |
+| `dialogueTitleFromDoc?(doc) → string \| null`                 | 001     | Conversation title (content-script scraped from DOM); **display only, not written to `DialogueRecord`, not uploaded to cloud** (title may contain sensitive info)                                                                                         |
+| `fetchHistory?(dialogueId) → HistoryRound[]`                  | 001     | **Core truth source**: pull full platform history; `HistoryRound` carries **stable messageId** (003 union merge key) + `order` (time-order key) + `promptText`/`answerText`. Used on open / switch / reply-complete; tokens are always estimated from it. |
+| `answerSelector` / `userSelector?` / `conversationSelector`   | 001     | DOM fallback primitives; currently unused by history-authoritative core, reserved for platforms without history API                                                                                                                                       |
+| `deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?` | 001+003 | Delete linkage: local record reset (001 background); cloud DEL (003)                                                                                                                                                                                      |
+| `fetchConversationList?() → string[]`                         | 003     | Zombie cleanup: pull conversation id list                                                                                                                                                                                                                 |
 
-001 实现 DeepSeek 的 001 字段（`fetchHistory` 已实现并真机验过）；003 字段在本 spec 只占契约位。background 是平台无关引擎——只认 adapter 接口，历史 API 是轮次身份与 token 的唯一真相源。
+001 implements DeepSeek's 001 fields (`fetchHistory` implemented and live-verified); 003 fields only occupy contract slots in this spec. The background is a platform-agnostic engine — only recognizes the adapter interface; the history API is the sole truth source for round identity and tokens.
 
-**DeepSeek 参考实现（001 范围）**：
+**DeepSeek Reference Implementation (001 scope)**:
 
-| 项                  | 值                                                                                              |
-| ------------------- | ----------------------------------------------------------------------------------------------- |
-| `matchPattern`      | `chat.deepseek.com`                                                                             |
-| `completionUrl`     | `*://chat.deepseek.com/api/v0/chat/completion`（SSE，onCompleted）                              |
-| `contextLimit`      | 1,048,576 (= 1 << 20)                                                                           |
-| `fetchHistory`      | GET `/api/v0/chat/history_messages?chat_session_id=`（Bearer token + x-client-\* 头，真机确认） |
-| `dialogueIdFromUrl` | `/a/chat/s/<id>` → `chat_session_id`                                                            |
-| `tokenCoefficients` | `cjk 0.6 / latin 0.5`（v1 起点值，待 004 标定）                                                 |
+| Item                | Value                                                                                                    |
+| ------------------- | -------------------------------------------------------------------------------------------------------- |
+| `matchPattern`      | `chat.deepseek.com`                                                                                      |
+| `completionUrl`     | `*://chat.deepseek.com/api/v0/chat/completion` (SSE, onCompleted)                                        |
+| `contextLimit`      | 1,048,576 (= 1 << 20)                                                                                    |
+| `fetchHistory`      | `GET /api/v0/chat/history_messages?chat_session_id=` (Bearer token + x-client-* headers, live-confirmed) |
+| `dialogueIdFromUrl` | `/a/chat/s/<id>` → `chat_session_id`                                                                     |
+| `tokenCoefficients` | `cjk 0.6 / latin 0.5` (v1 starting values, pending 004 calibration)                                      |
 
-### 7 平台 context 默认值（首期 DeepSeek 验通，其余 fast-follow）
+### 7-Platform Context Defaults (DeepSeek validated first, others fast-follow)
 
-| 平台     | 页面 host         | Context（默认）   | fetchHistory（历史 API 逆向）   |
-| -------- | ----------------- | ----------------- | ------------------------------- |
-| DeepSeek | chat.deepseek.com | 1,048,576 (1<<20) | ✅ 已实现 + 真机验过            |
-| ChatGPT  | chatgpt.com       | 131,072 (1<<17)   | ✅ 已实现（实测）               |
-| Gemini   | gemini.google.com | 1,048,576 (1<<20) | ✅ DOM 兜底（实测，无可用 API） |
-| Kimi     | www.kimi.com      | 262,144 (1<<18)   | ✅ 已实现（实测）               |
-| Qwen     | chat.qwen.ai      | 1,048,576 (1<<20) | ✅ 已实现（实测）               |
-| 通义千问 | www.qianwen.com   | 1,048,576 (1<<20) | ✅ 已实现（实测）               |
-| 豆包     | www.doubao.com    | 262,144 (1<<18)   | ✅ 已实现（实测）               |
+| Platform       | Page Host         | Context (Default) | fetchHistory (History API Reverse-Engineered)   |
+| -------------- | ----------------- | ----------------- | ----------------------------------------------- |
+| DeepSeek       | chat.deepseek.com | 1,048,576 (1<<20) | ✅ implemented + live-verified                  |
+| ChatGPT        | chatgpt.com       | 131,072 (1<<17)   | ✅ implemented (confirmed live)                 |
+| Gemini         | gemini.google.com | 1,048,576 (1<<20) | ✅ DOM fallback (confirmed live, no usable API) |
+| Kimi           | www.kimi.com      | 262,144 (1<<18)   | ✅ implemented (confirmed live)                 |
+| Qwen           | chat.qwen.ai      | 1,048,576 (1<<20) | ✅ implemented (confirmed live)                 |
+| Tongyi Qianwen | www.qianwen.com   | 1,048,576 (1<<20) | ✅ implemented (confirmed live)                 |
+| Doubao         | www.doubao.com    | 262,144 (1<<18)   | ✅ implemented (confirmed live)                 |
 
-> 7 家 DOM 选择器 + API host/path 均经真机实测确认（2026-06）。001 的**验收里程碑以 DeepSeek 验通为准**；其余 6 家 adapter 字段就绪，深度 runtime 验收见 004。
+> All 7 platforms' DOM selectors + API host/path confirmed via live testing (2026-06). **001's acceptance milestone is gated on DeepSeek passing**; remaining 6 adapters have fields ready; deep runtime acceptance is in 004.
 
-### Data Flow（001 scope，纯本地）
+### Data Flow (001 scope, purely local)
 
-历史 API 是轮次身份与 token 的**唯一真相源**；DOM 不参与轮次身份判定。打开对话、切对话、回答完成走同一条"拉历史 → REPLACE record"的路径。
+History API is the **sole truth source** for round identity and tokens; DOM does not participate in round identity determination. Open conversation, switch conversation, and reply complete all follow the same "pull history → REPLACE record" path.
 
-> **REPLACE 是 001 单设备层语义；003 接线后升级为 union 合并。** 001 阶段历史即本地真值，REPLACE 够用；003 让同一原语加上"读云 record → union 合并 → 先显示后同步"的编排，获得跨设备能力。下述三图是 001 单设备层流程；打开对话（图 A）的 003 升级版见 [003](./003-cross-device-sync.md)「用户交互场景」的时序图。
+> **REPLACE is 001 single-device-layer semantics; upgraded to union merge after 003 wiring.** At 001 stage, history is local truth and REPLACE suffices; 003 adds "read cloud record → union merge → display-first-then-sync" orchestration to the same primitive, gaining cross-device capability. The three diagrams below show 001 single-device-layer flow; the 003 upgrade of "open conversation" (Diagram A) is in [003](./003-cross-device-sync.md) "User Interaction Scenarios" sequence diagram.
 
-**图 A · 打开对话**（首次开启、移动端发起网页端查看——扩展不区分来源，统一拉历史）：
+**Diagram A · Open Conversation** (first open, mobile-initiated web view — extension does not distinguish origin; uniformly pulls history):
 
 ```mermaid
 sequenceDiagram
-    actor U as 用户
-    participant P as 平台页
+    actor U as User
+    participant P as Platform Page
     participant C as Content Script
     participant B as Background SW
-    participant H as 平台历史API
+    participant H as Platform History API
     participant S as Side Panel
-    U->>P: 打开 / 切换对话
-    P->>C: 注入 或 SPA URL 变(轮询)
+    U->>P: Open / switch conversation
+    P->>C: Inject or SPA URL change (polling)
     C->>B: PAGE_READY
-    B->>S: STATE_UPDATE(平台+context, 用现有record)
+    B->>S: STATE_UPDATE(platform + context, using existing record)
     C->>H: fetchHistory(dialogueId, Bearer)
-    H-->>C: 全部消息(message_id + 全文)
+    H-->>C: All messages (message_id + full text)
     C->>B: HISTORY_PARSED(rounds)
-    B->>B: applyHistory(REPLACE, 逐轮估token)
-    B->>S: STATE_UPDATE(全部轮次/正序)
-    S->>U: 渲染进度条/占比/轮次
+    B->>B: applyHistory(REPLACE, estimate tokens per round)
+    B->>S: STATE_UPDATE(all rounds / ascending)
+    S->>U: Render progress bar / percentage / rounds
 ```
 
-**图 B · 新增一轮问答**（含"回答完毕"判定）：
+**Diagram B · New Q&A Round** (including "reply complete" detection):
 
 ```mermaid
 sequenceDiagram
-    actor U as 用户
-    participant P as 平台页
+    actor U as User
+    participant P as Platform Page
     participant B as Background SW
     participant C as Content Script
-    participant H as 平台历史API
+    participant H as Platform History API
     participant S as Side Panel
-    U->>P: 提问
-    P->>P: 发 completion(SSE text/event-stream)
-    Note over P: 模型流式输出(面板不变)
-    P-->>B: onCompleted(SSE流关闭 = 回答完毕)
+    U->>P: Ask question
+    P->>P: Send completion (SSE text/event-stream)
+    Note over P: Model streams output (panel unchanged)
+    P-->>B: onCompleted (SSE stream close = reply complete)
     B->>B: 200ms settle
     B->>C: REFRESH_HISTORY
-    C->>H: fetchHistory(新轮已在历史, 0ms无延迟)
-    H-->>C: 全部消息(含本轮)
+    C->>H: fetchHistory (new round already in history, 0ms delay)
+    H-->>C: All messages (including this round)
     C->>B: HISTORY_PARSED
     B->>B: applyHistory(REPLACE)
-    B->>S: STATE_UPDATE(新增本轮)
+    B->>S: STATE_UPDATE (new round added)
 ```
 
-**图 C · 重新生成**（B 的变体；说明为何不多算一轮）：
+**Diagram C · Regenerate** (variant of B; explains why no extra round is counted):
 
 ```mermaid
 sequenceDiagram
-    actor U as 用户
-    participant P as 平台页
+    actor U as User
+    participant P as Platform Page
     participant B as Background SW
     participant C as Content Script
-    participant H as 平台历史API
-    U->>P: 点"重新生成"第 N 轮
-    P->>P: 重发 completion(SSE)
-    P-->>B: onCompleted(SSE关闭)
+    participant H as Platform History API
+    U->>P: Click "Regenerate" round N
+    P->>P: Resend completion (SSE)
+    P-->>B: onCompleted (SSE close)
     B->>C: REFRESH_HISTORY
     C->>H: fetchHistory
-    H-->>C: 全部消息(第N轮换新message_id, 挂同一USER)
+    H-->>C: All messages (round N gets new message_id, under same USER)
     C->>B: HISTORY_PARSED
-    B->>B: applyHistory(REPLACE) 轮次数不变, 第N轮token更新
+    B->>B: applyHistory(REPLACE) round count unchanged, round N token updated
     B->>S: STATE_UPDATE
 ```
 
-**无 Upstash（指数据流）。** 001 的数据流（拉历史 → 估算 → 投影）全程不碰云端；设置面板虽有 Upstash 配置控件，但云端动作归 [002](./002-upstash-data-layer.md)/[003](./003-cross-device-sync.md)，未配时 inert。本轮的云持久化、跨设备对账归 003。
+**No Upstash (in data flow terms).** 001's data flow (pull history → estimate → project) does not touch the cloud at any point; the settings panel has Upstash config controls, but cloud actions belong to [002](./002-upstash-data-layer.md) / [003](./003-cross-device-sync.md) and are inert when not configured. Cloud persistence and cross-device reconciliation for this round go to 003.
 
-### 平台适配参考（以 DeepSeek 为范本）
+### Platform Adaptation Reference (DeepSeek as Template)
 
-新增 / 调试一个平台时照此排查；每条都是实测 landmine，非泛泛之谈。
+When adding / debugging a platform, troubleshoot against this list; each item is a verified landmine, not generic advice.
 
-**A. "回答完毕"找根因，不看表象** — 表象是发送按钮 stop/send icon 切换；根因是**流式补全响应（SSE，`text/event-stream`）关闭** = 回答完毕。用 `webRequest.onCompleted`（同 `completionUrl`）；禁止 DOM 文本 debounce、禁止监听按钮 icon。`onErrorOccurred`（用户停止 / 断网）同处理。
+**A. Find the root cause for "reply complete", not the surface-level signal** — Surface-level signal: a single send button toggles between stop and send states. Root cause: **streaming completion response (SSE, `text/event-stream`) closes** = reply complete. Use `webRequest.onCompleted` (same as `completionUrl`); forbid DOM text debounce, forbid listening to button state. `onErrorOccurred` (user stop / disconnect) handled the same way.
 
-**B. 轮次身份用 message_id，不数 DOM** — DeepSeek 用虚拟列表（`ds-virtual-list`），DOM 里只有可见的 ~2 条，更早的卸载，DOM 计数从第 2 轮起恒为 2。正解：历史 API 返回每条消息的 `message_id` + `parent_id`（答→问配对），一轮 = USER + 其 ASSISTANT 子消息。任何用虚拟列表的平台，DOM 都不可信，必须走历史 API。
+**B. Round identity uses message_id, not DOM counting** — DeepSeek uses virtual list (`ds-virtual-list`); only ~2 visible items exist in DOM at a time, earlier ones are unloaded; DOM counting from round 2 permanently returns 2. Correct solution: history API returns each message's `message_id` + `parent_id` (answer → question pairing); one round = USER + its ASSISTANT child message. Any platform using a virtual list has unreliable DOM; must go through history API.
 
-**C. 历史 API 鉴权 = Bearer token，且 "Copy as cURL" 会骗你** — DeepSeek 的 history_messages 要 `authorization: Bearer <token>`（token 在 `localStorage.userToken`，`{value}` 包裹）+ 一组 `x-client-*` 头；只带 cookie → `code 40003 INVALID_TOKEN`。**关键陷阱：浏览器 "Copy as cURL" 出于安全省略 Authorization 头** —— 反推鉴权必须看 DevTools Network / Playwright 抓的**真实请求头**，cURL 不可信。
+**C. History API auth = Bearer token, and "Copy as cURL" will deceive you** — DeepSeek's history_messages requires `authorization: Bearer <token>` (token in `localStorage.userToken`, wrapped as `{value}`) + a set of `x-client-*` headers; cookie-only → `code 40003 INVALID_TOKEN`. **Key trap: browser "Copy as cURL" strips the Authorization header for security** — reverse-engineering auth must look at the **real request headers** captured via DevTools Network / Playwright; cURL is untrustworthy.
 
-**D. 历史 API：全量、无分页、无延迟** — 实测一次性返回全部消息（33 轮 / 66 条 / 27KB），`limit` / `page_size` 等参数被忽略，无分页字段；onCompleted 瞬间新轮已在历史（0ms 延迟）。单次 GET 拿全量，不翻页、不重试。
+**D. History API: full, no pagination, no delay** — Verified: returns all messages in one call (33 rounds / 66 messages / 27KB); `limit` / `page_size` parameters are ignored; no pagination fields; new round is in history immediately at onCompleted (0ms delay). Single GET fetches everything; no paging, no retry.
 
-**E. API 逆向不能跨环境复现** — `cf_clearance` / `ds_session_id` 绑 IP，从别的机器打用户的 curl 必然 `INVALID_TOKEN`；逆向要在用户真实浏览器或自控 Playwright 会话里做。
+**E. API reverse-engineering cannot be reproduced cross-environment** — `cf_clearance` / `ds_session_id` are IP-bound; running the user's curl from another machine always returns `INVALID_TOKEN`; reverse-engineering must be done in the user's real browser or a self-controlled Playwright session.
 
-### Data Model（001 scope，本地）
+### Data Model (001 scope, local)
 
 ```
-headroom:settings            → { thresholds, language, contextLimits(覆盖), upstash?(凭证) }
-headroom:conv:{p}:{id}       → DialogueRecord（当前活动对话）
+headroom:settings            → { thresholds, language, contextLimits (override), upstash? (credentials) }
+headroom:conv:{p}:{id}        → DialogueRecord (current active conversation)
 ```
 
-**`DialogueRecord` / `RoundRecord` 只存 token 计数，绝不存对话文本**（隐私设计）：
+**`DialogueRecord` / `RoundRecord` store only token counts, never conversation text** (privacy-by-design):
 
 ```
 RoundRecord    = {
-  messageId: string,           // 003 union-merge key — 平台稳定的本轮标识
-  order: number,               // 时序键（升序=旧→新），由 adapter 从 API 派生
-  n: number,                   // 展示序号（1-based，合并后按 order 重排）
+  messageId: string,           // 003 union-merge key — platform-stable round identity
+  order: number,               // time-order key (ascending = old→new), derived by adapter from API
+  n: number,                   // display sequence (1-based, reassigned after merge by order)
   promptTokens, answerTokens,
   total,                       // promptTokens + answerTokens
-  ts: number,                  // wall-clock epoch ms（当前未填充，恒为 0；预留展示/调试）
+  ts: number,                  // wall-clock epoch ms (currently unfilled, always 0; reserved for display/debug)
 }
 DialogueRecord = {
   platformId, dialogueId, contextLimit,
-  rounds: RoundRecord[],       // 滚动裁剪，上限 MAX_RETAINED_ROUNDS
-  totalTokens: number,         // 真实累计（裁剪数组 ≠ 丢失累计）
-  roundCount: number,          // 真实轮次
+  rounds: RoundRecord[],       // rolling trim, capped at MAX_RETAINED_ROUNDS
+  totalTokens: number,         // real cumulative (trimmed array ≠ lost cumulative)
+  roundCount: number,          // real round count
   updatedAt: number,
 }
 ```
 
-- **`messageId`** 是平台赋予本轮的唯一稳定标识（DeepSeek 的 `message_id`、ChatGPT 的 mapping node id、豆包的 `index_in_conv` 等），跨次抓取不变——它是 003 union merge 的去重 key，positional `n` 不可替代。
-- **`order`** 是时序键，不同平台语义不同但保证单调（DeepSeek=raw message_id，ChatGPT/Kimi/Qwen=epoch ms，Gemini=位置索引）。`unionRounds` 按 `order` 升序排列后重赋 display `n`。
-- **`ts`** 是标准化的 wall-clock 时间（epoch ms），当前各 adapter 未填充（恒为 0），字段保留给未来展示/调试。填充它不会增加 Upstash 存储开销——字段已在 schema 中。
-- **`n`** 纯展示，`unionRounds` 合并后按 `order` 升序赋 1..k，不参与 merge 逻辑。
+- **`messageId`** is the unique stable identity the platform assigns to this round (DeepSeek `message_id`, ChatGPT mapping node id, Doubao `index_in_conv`, etc.) — invariant across fetches — it is 003 union merge's dedup key, positional `n` is not a substitute.
+- **`order`** is the time-order key; semantics differ per platform but guaranteed monotonic (DeepSeek = raw message_id, ChatGPT/Kimi/Qwen = epoch ms, Gemini = positional index). `unionRounds` sorts ascending by `order` then reassigns the display `n`.
+- **`ts`** is standardized wall-clock time (epoch ms); currently no adapter populates it (always 0). Populating it would not increase Upstash storage cost — the field already exists in the schema.
+- **`n`** is display-only; after `unionRounds` merge, assigned 1..k by `order`; not involved in merge logic.
 
-> 001 只维护**当前活动对话**的本地 record（切对话时加载/新建）。多对话本地缓存 + LRU 淘汰归 [003](./003-cross-device-sync.md)。`DialogueRecord` 结构由 001 定义，003 在其上加云端生命（持久化 / 对账 / 缓存），结构不变。
+> 001 only maintains the **current active conversation**'s local record (load / create new when switching conversations). Multi-conversation local cache + LRU eviction goes to [003](./003-cross-device-sync.md). `DialogueRecord` structure is defined by 001; 003 adds cloud lifecycle (persistence / reconciliation / cache) on top; the structure is unchanged.
 
-### UI（Side Panel）
+### UI (Side Panel)
 
-主视图 + 设置视图切换（⚙️ 进入设置）：
+Main view and settings view toggle (⚙️ to enter settings):
 
 ```
-┌─── 主视图 ──────────────┐    ┌─── 设置视图 ───────────────┐
-│  Headroom            ⚙️  │    │  ← 返回                     │
-│  DeepSeek               │    │  预警阈值 🟠50% 🔴70%        │
-│  Context: 1M            │    │  Context 覆盖 [按平台]       │
-│  ██░░░░░░  5.0%         │    │  语言 [自动 ▾]               │
-│  🟢 空间充足             │    │  Upstash URL/Token/测试/清空 │
-│  轮次: 12  本轮: 1,520    │    │  [保存设置]                  │
-│  对话轮次                  │    └─────────────────────────────┘
+┌─── Main View ──────────────┐    ┌─── Settings View ───────────────┐
+│  Headroom            ⚙️     │    │  ← Back                         │
+│  DeepSeek                  │    │  Warning Thresholds 🟠50% 🔴70%   │
+│  Context: 1M               │    │  Context Override [per platform] │
+│  ██░░░░░░  5.0%            │    │  Language [Auto ▾]              │
+│  🟢 Plenty of headroom      │    │  Upstash URL / Token / Test      │
+│  Rounds: 12  This: 1,520   │    │  [Save Settings]                 │
+│  Conversation Rounds       │    └─────────────────────────────────┘
 │  #1 ↑1,520 ↓3,048 Σ4,568  │
-│  #2  …      …      …      │
-│  ⋮                        │
-└─────────────────────────┘
+│  #2  …      …      …       │
+│  ⋮                         │
+└────────────────────────────┘
 ```
 
-> 对话轮次区以表格展示每轮详情：表头含「对话轮次」「输入 token」「输出 token」「该轮累计」。该轮累计由前端计算（promptTokens + answerTokens），不新增 Upstash 存储字段。
+> Conversation rounds area displays each round's details as a table: header includes "Round", "Input Tokens", "Output Tokens", "This Round Total". This round total is computed by the frontend (promptTokens + answerTokens); no new Upstash storage field added.
 
-- 第一行显示**平台名**（v1 不检测具体模型；context limit 取 adapter 默认或用户覆盖）。
-- **Upstash 字段是输入控件**；「测试连接」「保存」的云端动作由 002（传输）/ 003（同步）接线。未配 Upstash 时这些控件 inert，仪表盘照常工作。
-- **对话身份（标题 + dialogueId）**：平台名下方一行显示当前对话的**标题**（缺失时显示「未命名对话」）与 **dialogueId**；仅在打开对话时显示，主页态隐藏。标题由 `dialogueTitleFromDoc` 从 DOM 抓取——**纯展示，不写入 `DialogueRecord`、不上 Upstash**（标题可能含敏感信息，只活在 background 内存按 tabId 缓存）；dialogueId 完整显示、hover 看全便于核对/复制。
+- First row shows **platform name** (v1 does not detect specific model; context limit takes adapter default or user override).
+- **Upstash fields are input controls**; the cloud actions for "Test Connection" / "Save" are wired by 002 (transport) / 003 (sync). When Upstash is not configured, these controls are inert; the gauge works normally.
+- **Conversation identity (title + dialogueId)**: below the platform name, one row shows the current conversation's **title** (displays "Untitled" if missing) and **dialogueId**; shown only when a conversation is opened, hidden on home page. Title extracted by `dialogueTitleFromDoc` from the DOM — **display-only, not written to `DialogueRecord`, not uploaded to Upstash** (title may contain sensitive info; lives only in background memory cached by tabId); dialogueId displayed fully, hoverable to see entire id for verification/copying.
 
 ### Browser APIs
 
-| API                                                       | 用途                                                                                                                                                                               |
-| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `browser.sidePanel` / `browser.sidebarAction`             | 原生侧边栏（WXT 自动适配）                                                                                                                                                         |
-| `browser.runtime.sendMessage` / `onMessage`               | Sidepanel ↔ Background ↔ Content 消息                                                                                                                                              |
-| `browser.storage.local`                                   | 设置 + 活动对话 record                                                                                                                                                             |
-| `browser.action.enable` / `disable(tabId)`                | 非匹配页灰化 action                                                                                                                                                                |
-| `browser.tabs.onActivated` / `onUpdated`                  | 同步 action enable/disable                                                                                                                                                         |
-| `browser.webRequest.onCompleted` / `onErrorOccurred`      | 轮次触发：SSE 流关闭 = 回答完毕（`onErrorOccurred` = 用户停止/断网）→ 触发 `REFRESH_HISTORY` 拉历史                                                                                |
-| `browser.webRequest.onBeforeRequest`（`["requestBody"]`） | 删除拦截：读请求体 → `parseDelete` 解出对话 id。本地删除归 001；云端 `DEL` 归 [003](./003-cross-device-sync.md)。prompt 与 dialogueId 分别由 `fetchHistory` / URL 派生，不读发送体 |
+| API                                                      | Purpose                                                                                                                                                                                                                                               |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `browser.sidePanel` / `browser.sidebarAction`            | Native side panel (WXT auto-adapts)                                                                                                                                                                                                                   |
+| `browser.runtime.sendMessage` / `onMessage`              | Sidepanel ↔ Background ↔ Content messages                                                                                                                                                                                                             |
+| `browser.storage.local`                                  | Settings + active conversation record                                                                                                                                                                                                                 |
+| `browser.action.enable` / `disable(tabId)`               | Gray out action on non-matching pages                                                                                                                                                                                                                 |
+| `browser.tabs.onActivated` / `onUpdated`                 | Sync action enable/disable                                                                                                                                                                                                                            |
+| `browser.webRequest.onCompleted` / `onErrorOccurred`     | Round trigger: SSE stream close = reply complete (`onErrorOccurred` = user stop / disconnect) → triggers `REFRESH_HISTORY` to pull history                                                                                                            |
+| `browser.webRequest.onBeforeRequest` (`["requestBody"]`) | Delete interception: read request body → `parseDelete` extracts dialogueId. Local delete goes to 001; cloud `DEL` goes to [003](./003-cross-device-sync.md). Prompt and dialogueId are derived separately by `fetchHistory` / URL; send body not read |
 
 ## Implementation Plan
 
-1. **估算引擎（TDD）**：书写系统分桶（CJK/Latin）+ 系数表 + 混排累计；DeepSeek 默认系数。
-2. **adapter 契约 + DeepSeek 全实现**（001 字段）。
-3. **增量捕获闭环**：`onCompleted`（SSE 关闭）→ `fetchHistory` 拉全量历史 → 逐条估算 → `applyHistory` REPLACE → 投影仪表盘。
-4. **侧边栏 UI**（主视图 + 设置）+ action 灰化。
-5. **本地 DialogueRecord 存取 + 不变式测试**。
+1. **Estimation engine (TDD)**: writing-system bucketing (CJK/Latin) + coefficient table + mixed-script accumulation; DeepSeek default coefficients.
+2. **Adapter contract + DeepSeek full implementation** (001 fields).
+3. **Incremental capture loop**: `onCompleted` (SSE close) → `fetchHistory` pulls full history → estimate per round → `applyHistory` REPLACE → project gauge.
+4. **Side panel UI** (main view + settings) + action graying.
+5. **Local DialogueRecord read/write + invariant tests**.
 
 ## Acceptance Criteria
 
-> 按**闸门次序**验收。**001 是纯本地层——闸门里不含任何 Upstash 断言**（那是 002/003）。
+> Accepted in **gate order**. **001 is purely local layer — gates contain no Upstash assertions** (those are 002 / 003).
 >
-> 详细操作步骤见 [`specs/acceptance-checklist.md`](./acceptance-checklist.md)「001 核心监控」部分。
+> Detailed steps in [`specs/acceptance-checklist.md`](./acceptance-checklist.md) "001 Core Monitor" section.
 
-### 闸门 1 — DeepSeek 端到端（必过，卡后续一切）
+### Gate 1 — DeepSeek End-to-End (Required, blocks everything after)
 
-✅ **DeepSeek 真机验收通过（2026-06）**。
+✅ **DeepSeek live acceptance passed (2026-06)**.
 
-- 平台页点扩展图标 → 原生侧边栏打开，显示 Headroom UI
-- 一轮问答后，面板实时更新 token 数与占比
-- 占比过阈值时进度条变色（黄/红）
-- 阈值可在设置面板自定义
-- 显示当前平台 context window limit
-- 非匹配页图标灰化、点击不开侧栏
+- Click extension icon on platform page → native side panel opens, shows Headroom UI
+- After one Q&A round, panel updates token count and percentage in real time
+- Progress bar changes color (yellow / red) when percentage crosses thresholds
+- Thresholds customizable in settings panel
+- Shows current platform's context window limit
+- Non-matching pages: icon grayed out, click does not open side panel
 
-### 闸门 2 — 另 6 家冒烟（fast-follow，不卡主路径）
+### Gate 2 — Other 6 Platforms Smoke (fast-follow, doesn't block main path)
 
-> history-authoritative 设计要求每家有 `fetchHistory`（历史 API 逆向，见"平台适配参考"）。
+> history-authoritative design requires each platform to have `fetchHistory` (history API reverse-engineering, see "Platform Adaptation Reference").
 
-- DeepSeek — 已验收（见闸门 1）
+- DeepSeek — accepted (see Gate 1)
 - ChatGPT
-- Gemini（可能无历史 API，需 DOM 兜底）
+- Gemini (may have no history API; needs DOM fallback)
 - Kimi
 - Qwen
-- 通义千问
-- 豆包
+- Tongyi Qianwen
+- Doubao
 
-各家验收点：能加载、打开对话显示历史、一轮问答后面板更新、regenerate 不多算。
+Each platform acceptance: can load, opening conversation shows history, panel updates after one Q&A, regenerate doesn't add extra round.
 
-### 闸门 3 — 跨浏览器冒烟（早抓 Chrome 专属假设；深度 QA 归 004）
+### Gate 3 — Cross-Browser Smoke (catch Chrome-specific assumptions early; deep QA goes to 004)
 
-- Edge、Firefox 能装、能开面板、DeepSeek 一轮问答跑通
+- Edge and Firefox: installable, panel opens, DeepSeek one Q&A round works
 
 ## Open Questions
 
-- v1 估算系数的精确标定值（→ 004）
-- 书写系统判定与中英混排的估算精度（→ 004）
-- DOM 选择器 / API host 的时效性（平台改版风险）
-- `MAX_RETAINED_ROUNDS` 是否需要调整：003 全量对账下平台历史可能更长，统一见 [003 Open Questions](./003-cross-device-sync.md)。
-
-```
-
-```
+- Precise calibration values for v1 estimation coefficients (→ 004)
+- Writing-system detection and mixed Chinese-English estimation accuracy (→ 004)
+- Timeliness of DOM selectors / API host (platform redesign risk)
+- Whether `MAX_RETAINED_ROUNDS` needs adjustment: platform history may be longer under 003 full reconciliation; see [003 Open Questions](./003-cross-device-sync.md).

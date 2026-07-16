@@ -1,166 +1,166 @@
 # Contributing to Headroom
 
-感谢你对 Headroom 的关注！我们欢迎各种形式的贡献。
+Thank you for your interest in Headroom! Contributions of all kinds are welcome.
 
-## 报告 Bug
+## Reporting Bugs
 
-有两种方式反馈问题：
+There are two ways to report issues:
 
-- **GitHub Issues**：[点击创建 issue](https://github.com/ZM-BAD/headroom/issues/new/choose)
-- **Discord/邮件**：如果涉及敏感信息，请私下联系我
+- **GitHub Issues**: [Create a new issue](https://github.com/ZM-BAD/headroom/issues/new/choose)
+- **Discord / Email**: if sensitive information is involved, please contact me privately
 
-### 提 Issue 前请确认
+### Before Submitting an Issue
 
-- [ ] 已重新加载扩展卡片（`chrome://extensions` → 🔄）
-- [ ] 已刷新目标平台页面（F5）
-- [ ] 已检查是否有重复 issue
+- [ ] Reloaded the extension card (`chrome://extensions` → 🔄)
+- [ ] Refreshed the target platform page (F5)
+- [ ] Checked for duplicate issues
 
-### 有用的信息
+### Helpful Information
 
-请尽可能提供以下信息，有助于快速定位：
+Please provide as much of the following as possible to help us diagnose quickly:
 
-- 平台名称（DeepSeek / ChatGPT / Gemini / Kimi / Qwen / 通义千问 / 豆包）
-- 浏览器及版本（Chrome / Edge / Firefox + 版本号）
-- 扩展版本（在 `chrome://extensions` 中查看）
-- 复现步骤
-- 期望 vs 实际行为
-- Console 日志（F12 → Console，筛选 `[Headroom]`）
-- 截图（如果有帮助）
+- Platform name (DeepSeek / ChatGPT / Gemini / Kimi / Qwen / Tongyi Qianwen / Doubao)
+- Browser and version (Chrome / Edge / Firefox + version number)
+- Extension version (visible in `chrome://extensions`)
+- Steps to reproduce
+- Expected vs. actual behavior
+- Console logs (F12 → Console, filter by `[Headroom]`)
+- Screenshots (if helpful)
 
-## 测试矩阵
+## Testing Matrix
 
-Headroom 覆盖多个平台×浏览器的组合。核心功能测试在每次发布前由维护者完成，**社区测试帮助我们覆盖更多边缘场景**。
+Headroom covers multiple platform × browser combinations. Core functionality is tested by the maintainer before each release; **community testing helps us cover more edge cases**.
 
-以下是我们特别需要社区反馈的测试类别：
+The following are the test categories where we especially need community feedback:
 
-### 跨平台冒烟测试
+### Cross-Platform Smoke Testing
 
-如果你有空，可以帮忙验证以下平台的基础功能：
+If you have time, you can help verify basic functionality on the following platforms:
 
-- 工具栏图标在该平台不灰化
-- 打开对话面板能加载
-- dialogueId 显示正确
-- 删除拦截生效（如已配置）
-- 打开已有对话框后面板显示累计 token + 轮数
-- 对话标题正确显示
+- Toolbar icon is not grayed out on that platform
+- Opening the conversation loads the panel
+- dialogueId displays correctly
+- Deletion interception works (if configured)
+- Opening an existing conversation shows cumulative token count + round count
+- Conversation title displays correctly
 
-### Token 估算验证
+### Token Estimation Verification
 
-- CJK 字符：token ≈ 字 × 0.6 tok/ch
-- 假名 / 谚文：按字符数 × 各自系数
-- 英文 / 拉丁字母：token ≈ 词数 × 0.5 tok/wd
-- 中英混排：CJK 按字计、英文按词计，互不重复计数
+- CJK characters: tokens ≈ characters × 0.6 tok/ch
+- Kana / Hangul: characters × their respective coefficient
+- English / Latin: tokens ≈ words × 0.5 tok/wd
+- Mixed Chinese + English: CJK counted per character, English per word, no double-counting
 
-### 轮次生命周期
+### Round Lifecycle
 
-- 新增一轮：轮次 +1，累计增加
-- 重新生成：轮次不变，该轮 token 更新
-- 停止生成：不视为完成
-- SPA 切对话：面板换新对话数据
+- New round added: round count +1, cumulative increases
+- Regenerate: round count unchanged, that round's token count updated
+- Stop generation: not counted as a completed round
+- SPA conversation switch: panel shows new conversation data
 
-### 历史对话加载
+### History Loading
 
-打开一个较长对话（5+ 轮）后检查：
+After opening a longer conversation (5+ rounds), verify:
 
-- 面板显示的轮数 = 实际问答对数
-- 累计 token 量级合理
+- Panel round count = actual number of Q&A pairs
+- Cumulative token count is in a reasonable range
 
-## 代码贡献
+## Code Contributions
 
-### 设置开发环境
+### Setting Up the Development Environment
 
 ```bash
-# 克隆项目
+# Clone the repository
 git clone https://github.com/ZM-BAD/headroom.git
 cd headroom
 
-# 安装依赖
+# Install dependencies
 npm install
 
-# 准备 WXT 类型
+# Prepare WXT types
 npx wxt prepare
 
-# 开发构建（输出到 .output/chrome-mv3-dev/）
+# Development build (outputs to .output/chrome-mv3-dev/)
 npm run dev
 
-# 生产构建（输出到 .output/chrome-mv3/）
+# Production build (outputs to .output/chrome-mv3/)
 npm run build
 ```
 
-### 代码质量检查
+### Code Quality Checks
 
-**每次改动后必跑（顺序执行）：**
-
-```bash
-npm run typecheck   # TypeScript 类型检查（tsc --noEmit）
-npm run lint        # ESLint 检查
-npm run test:run    # Vitest 单元测试（utils + adapters）
-npm run build       # 生产构建（wxt build 不包含 typecheck！）
-```
-
-> **`npm run build` 用 esbuild 转译，不做类型检查**——绿构建 ≠ 类型正确。先跑 `typecheck`。
-
-### 测试
-
-**单元测试**覆盖 `utils/`（纯逻辑）和 `adapters/`（parse 函数）：
+**Required after every change (in order):**
 
 ```bash
-npm run test:run        # 一次运行全部
-npm run test            # watch 模式（开发时用）
-npx vitest --coverage   # 覆盖率报告（需要 @vitest/coverage-v8）
+npm run typecheck   # TypeScript type check (tsc --noEmit)
+npm run lint        # ESLint check
+npm run test:run    # Vitest unit tests (utils + adapters)
+npm run build       # Production build (wxt build does NOT typecheck!)
 ```
 
-单元测试跑在 node 环境（无 browser API），`browser.*` 调用需 mock。
+> **`npm run build` uses esbuild for transpilation and does NOT type-check** — a green build ≠ type-correct. Run `typecheck` first.
 
-**entrypoint（background / content script / side panel）目前不跑单元测试**——它们重度依赖 `browser.*` API（tabs、webRequest、storage、runtime…），mock 成本高、收益低。这些由**真机验收 checklist**（见 `specs/acceptance-checklist.md`）和未来的 Playwright E2E 套件覆盖。
+### Testing
 
-### 代码风格
+**Unit tests** cover `utils/` (pure logic) and `adapters/` (parse functions):
 
-- 使用 TypeScript 严格模式
-- 遵循 [Conventional Commits](https://www.conventionalcommits.org/) 格式（`commitlint` 在 commit-msg 钩子强制校验）
-- 文件长度尽量控制在 200 行以内
-- 相关测试请一并更新
-- 架构决策记录在 `specs/` 中——改设计前先读相关 spec
+```bash
+npm run test:run        # Run all once
+npm run test            # Watch mode (for development)
+npx vitest --coverage   # Coverage report (requires @vitest/coverage-v8)
+```
 
-### 项目结构
+Unit tests run in a node environment (no browser API); `browser.*` calls must be mocked.
+
+**Entrypoints (background / content script / side panel) are currently not unit-tested** — they depend heavily on `browser.*` APIs (tabs, webRequest, storage, runtime…), where mocking cost is high and return is low. These are covered by the **live acceptance checklist** (see `specs/acceptance-checklist.md`) and a future Playwright E2E suite.
+
+### Code Style
+
+- Use TypeScript strict mode
+- Follow [Conventional Commits](https://www.conventionalcommits.org/) format (`commitlint` enforces this in the commit-msg hook)
+- Keep files under ~200 lines where possible
+- Update related tests alongside code changes
+- Architecture decisions are recorded in `specs/` — read the relevant spec before changing design
+
+### Project Structure
 
 ```
 headroom/
-├── entrypoints/             # WXT 入口点
-│   ├── background.ts        # 后台 service worker（引擎核心）
-│   ├── platform.content.ts  # 内容脚本（通用，全平台注入）
-│   └── sidepanel/           # 侧边栏 UI（主视图 + 设置）
-├── adapters/                # 各平台适配器（新增平台 = 加一个文件）
-│   ├── index.ts             # 适配器注册表
-│   ├── deepseek.ts          # DeepSeek 参考实现
-│   └── __tests__/           # 适配器 parse 测试
-├── utils/                   # 工具函数（纯逻辑，有单测覆盖）
-│   ├── estimate.ts          # 六路文字系统 token 估算引擎 (spec 004)
-│   ├── dialogue-record.ts   # 对话记录数据结构 + union merge
-│   ├── upstash.ts           # Upstash REST 客户端
-│   ├── local-cache.ts       # 本地缓存 LRU 淘汰
-│   ├── platform-adapter.ts  # 适配器接口定义
-│   ├── messages.ts          # 消息协议类型
-│   ├── settings.ts          # 设置存取
-│   ├── cloud-settings.ts    # 云端设置（凭证剥离）
-│   ├── thresholds.ts        # 预警阈值逻辑
-│   └── match-host.ts        # URL → platform 匹配
-├── brand/                   # Headroom 品牌 logo 源文件（SVG）
-│   ├── blue.svg             # 主 logo（彩色仪表盘图标）
-│   ├── gray.svg             # 灰色变体（已禁用状态的 toolbar icon）
-│   └── white.svg            # 浅色背景备用
-├── icon/                    # AI 平台品牌 logo（SVG，供 sidePanel UI 使用）
+├── entrypoints/             # WXT entrypoints
+│   ├── background.ts        # Background service worker (engine core)
+│   ├── platform.content.ts  # Content script (shared, injected on all platforms)
+│   └── sidepanel/           # Side panel UI (main view + settings)
+├── adapters/                # Per-platform adapters (new platform = add one file)
+│   ├── index.ts             # Adapter registry
+│   ├── deepseek.ts          # DeepSeek reference implementation
+│   └── __tests__/           # Adapter parse tests
+├── utils/                   # Utility functions (pure logic, unit-tested)
+│   ├── estimate.ts          # Six-way script token estimation engine (spec 004)
+│   ├── dialogue-record.ts   # Dialogue record data structure + union merge
+│   ├── upstash.ts           # Upstash REST client
+│   ├── local-cache.ts       # Local cache with LRU eviction
+│   ├── platform-adapter.ts  # Adapter interface definition
+│   ├── messages.ts          # Message protocol types
+│   ├── settings.ts          # Settings read/write
+│   ├── cloud-settings.ts    # Cloud settings (credential-stripped)
+│   ├── thresholds.ts        # Warning threshold logic
+│   └── match-host.ts        # URL → platform matching
+├── brand/                   # Headroom brand logo source files (SVG)
+│   ├── blue.svg             # Main logo (colored gauge icon)
+│   ├── gray.svg             # Gray variant (disabled toolbar icon)
+│   └── white.svg            # Light-background fallback
+├── icon/                    # AI platform brand logos (SVG, used by sidePanel UI)
 │   ├── deepseek.svg
 │   ├── doubao.svg
 │   ├── gemini.svg
 │   ├── kimi.svg
 │   ├── openai.svg           # ChatGPT
-│   ├── qianwen.svg          # 通义千问
+│   ├── qianwen.svg          # Tongyi Qianwen
 │   └── qwen.svg
-├── public/                  # 静态资源
-│   ├── _locales/            # i18n 翻译（en + zh_CN 完整，其余回退英文）
-│   └── icon/                # 扩展 toolbar 图标 PNG（从 brand/ 渲染）
-├── specs/                   # 设计规格 + 验收 checklist
+├── public/                  # Static assets
+│   ├── _locales/            # i18n translations (en + zh_CN complete, others fall back to en)
+│   └── icon/                # Extension toolbar icon PNGs (rendered from brand/)
+├── specs/                   # Design specs + acceptance checklist
 │   ├── 001-headroom-core.md
 │   ├── 002-upstash-data-layer.md
 │   ├── 003-cross-device-sync.md
@@ -168,34 +168,34 @@ headroom/
 │   ├── ROADMAP.md
 │   └── acceptance-checklist.md
 ├── scripts/
-│   └── probe-upstash.mjs    # Upstash 连通性探针（不在 npm test 中）
-├── public/                  # 静态资源（图标、_locales 翻译）
-└── wxt.config.ts            # WXT 配置
+│   └── probe-upstash.mjs    # Upstash connectivity probe (not part of npm test)
+├── public/                  # Static assets (icons, _locales translations)
+└── wxt.config.ts            # WXT configuration
 ```
 
-### Pull Request 流程
+### Pull Request Workflow
 
-1. Fork 仓库
-2. 创建特性分支（`feature/xxx` 或 `fix/xxx`）
-3. 开发 + 跑 `typecheck && lint && test:run && build`
-4. 更新相关 spec（设计有变时）
-5. 提交 PR（关联相关 Issue）
+1. Fork the repository
+2. Create a feature branch (`feature/xxx` or `fix/xxx`)
+3. Develop + run `typecheck && lint && test:run && build`
+4. Update relevant specs (when design changes)
+5. Submit a PR (link related Issues)
 
-## 设计决策
+## Design Decisions
 
-如果你对架构有建议，请先开 Issue 讨论再动手。
+If you have architecture suggestions, please open an Issue to discuss before writing code.
 
-关键原则：
+Key principles:
 
-- **Token 永远自己估算**，不信任平台返回的 token 数
-- **永远不存对话文本**到云端，只存计数
-- **尽可能分享代码**，各平台 fetchHistory 之外的部分共用
+- **Tokens are always estimated by us** — never trust platform-reported token counts
+- **Conversation text is never stored** in the cloud — only counts
+- **Share code wherever possible** — everything except per-platform `fetchHistory` is shared
 
-## 其他贡献方式
+## Other Ways to Contribute
 
-- 📖 完善文档
-- 🌐 翻译 UI 文案
-- 🎨 设计图标、Logo
-- 📣 宣传 Headroom
+- 📖 Improve documentation
+- 🌐 Translate UI strings
+- 🎨 Design icons, logos
+- 📣 Spread the word about Headroom
 
-谢谢你的贡献！
+Thank you for contributing!

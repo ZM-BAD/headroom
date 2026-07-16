@@ -1,34 +1,34 @@
 # Roadmap
 
-Spec 领先代码若干里程碑是 OK 的——但**越远的越轻**：近的（下一个要建的）写成完整 PRD，远的只列目标 / 闸门 / 范围，轮到时再展开。过早给远期写满 PRD 多属臆测，维护成本高且易误导。
+It is fine for specs to be a few milestones ahead of the code — but **the further out, the lighter**: near-term (next to build) gets a full PRD; far-term gets only goals / gates / scope, and is fleshed out when its turn comes. Writing detailed PRDs too early for distant milestones is mostly speculation — high maintenance cost and prone to mislead.
 
-## 里程碑总览
+## Milestone Overview
 
-| Spec                               | 里程碑                                                   | 状态                                                   | 闸门（真机）                               |
-| ---------------------------------- | -------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------ |
-| [001](./001-headroom-core.md)      | 核心监控 + 估算引擎 + 适配器基座                         | 🟢 done · 7 家端到端已通，2 项边缘待验（001-01/CB-09） | DeepSeek 单设备端到端跑通                  |
-| [002](./002-upstash-data-layer.md) | Upstash 数据层（结构 + 传输）                            | 🟢 done · 5/5 真机验收通过                             | 真机看到 Upstash 有记录                    |
-| [003](./003-cross-device-sync.md)  | 跨设备对账引擎                                           | 🟢 done · 10/11 真机验收通过，1 项待验（003-07）       | 打开即同步全量、跨设备不丢、移动端轮次纳入 |
-| [004](./004-optimizations.md)      | Token 估算体系升级（书写系统扩展 + 平台系数 + 用户覆盖） | 🟢 阶段 A 代码 done · 🟡 阶段 B 系数标定待做           | 多书写系统估算误差可控 + 用户可覆盖系数    |
+| Spec                               | Milestone                                                                                | Status                                                                | Gate (live device)                                                       |
+| ---------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| [001](./001-headroom-core.md)      | Core monitor + estimation engine + adapter base                                          | 🟢 done · 7 platforms end-to-end, 2 edge cases pending (001-01/CB-09) | DeepSeek single-device end-to-end passing                                |
+| [002](./002-upstash-data-layer.md) | Upstash data layer (structure + transport)                                               | 🟢 done · 5/5 live acceptance passed                                  | Live: Upstash shows records                                              |
+| [003](./003-cross-device-sync.md)  | Cross-device reconciliation engine                                                       | 🟢 done · 10/11 live acceptance passed, 1 pending (003-07)            | Open-and-sync full history, no cross-device loss, mobile rounds included |
+| [004](./004-optimizations.md)      | Token estimation upgrade (script expansion + per-platform coefficients + user overrides) | 🟢 Phase A code done · 🟡 Phase B coefficient calibration pending     | Multi-script estimation error bounded + user-overridable coefficients    |
 
-依赖序：**001 → 002 → 003**。004 是 001 估算引擎的升级，不阻塞主干。
+Dependency order: **001 → 002 → 003**. 004 is an upgrade to 001's estimation engine and does not block the main trunk.
 
-## 横切原则（适用于所有里程碑）
+## Cross-Cutting Principles (apply to all milestones)
 
-- **跨浏览器别放最后。** 001 验收闸门 3 已含 Firefox/Edge **冒烟**（能装能开、基础拦截能跑）；深度 QA 归 [`acceptance-checklist.md`](./acceptance-checklist.md) 跨浏览器部分。尽早暴露 Chrome 专属假设，避免后续累积放大。
-- **每个里程碑一个主题。** 不捆不相干的事。
-- **先 1 家验通再铺开。** 架构按 adapter 解耦，但验证从 DeepSeek 起步最便宜。
-- **spec = 当前真值。** 决策变更时直接覆盖原文；不留删除线、不保留旧版本叙述。Git 是历史，spec 只反映当下。
+- **Don't leave cross-browser to the end.** 001 acceptance Gate 3 already includes Firefox/Edge **smoke** (installable, launchable, basic interception works); deep QA goes in the [`acceptance-checklist.md`](./acceptance-checklist.md) cross-browser section. Surface Chrome-specific assumptions early to avoid compounding later.
+- **One theme per milestone.** Don't bundle unrelated work.
+- **Validate one platform end-to-end before expanding.** Architecture is decoupled by adapter, but validation starts from DeepSeek as the cheapest.
+- **Spec = current truth.** When a decision changes, overwrite the original text directly; no strikethrough, no "we changed it" notes. Git is the history; the spec reflects only the present.
 
-## 关于"国际化"——立项时拆清的两件事
+## On "Internationalization" — Two Separate Concerns Defined at Inception
 
-- **Token 估算按书写系统校准（→ 001 引擎 / 004 升级）**：估算系数是「平台 × 书写系统」矩阵。v1 在 001 做中/英，004 扩到 6 种书写系统 + 按平台 tokenizer 校准。
-- **扩展 UI 本地化（不单列 spec）**：`_locales/` 字典 + 语言下拉。技术难度低，不单独做 spec。
+- **Token estimation calibrated by writing system (→ 001 engine / 004 upgrade)**: Estimation coefficients are a "platform × writing system" matrix. v1 handles Chinese (CJK) + English (Latin) in 001; 004 expands to 6 writing systems + per-platform tokenizer calibration.
+- **Extension UI localization (no separate spec)**: `_locales/` dictionaries + language dropdown. Low technical complexity, no standalone spec.
 
-两者互不依赖。
+The two are independent of each other.
 
-## 不单列 spec 的能力（落到哪）
+## Capabilities That Don't Get a Separate Spec (where they land)
 
-- **新增平台（Claude/Grok/MiniMax…）**：不单列 spec。001 的 adapter 契约就是为这个设计的——新增平台 = 注册 + 一个 `adapters/<platform>.ts`。
-- **UI 翻译成更多语言**：不单列 spec。
-- **跨浏览器深度 QA**：不单列 spec，归 [`acceptance-checklist.md`](./acceptance-checklist.md) 跨浏览器部分。
+- **New platform (Claude / Grok / MiniMax…)**: No separate spec. 001's adapter contract was designed for this — new platform = register + one `adapters/<platform>.ts`.
+- **UI translated into more languages**: No separate spec.
+- **Cross-browser deep QA**: No separate spec; goes in the [`acceptance-checklist.md`](./acceptance-checklist.md) cross-browser section.
