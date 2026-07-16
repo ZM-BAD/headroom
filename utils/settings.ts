@@ -21,10 +21,12 @@ export type Language =
   | "id";
 
 /**
- * Per-platform context-window limits in tokens, keyed by platformId. Defaults
- * are auto-detected from each adapter's built-in `contextLimit` (the "built-in
- * dictionary"); the user can override any entry in the settings panel to match
- * their actual model/plan.
+ * Per-platform context-window limits in tokens, keyed by platformId.
+ * **Delta storage** (same model as `tokenCoefficients`): only user overrides
+ * live here — locally and in the cloud. Adapter defaults stay in code
+ * (`adapter.contextLimit`), so updating a default reaches every user who
+ * never overrode it. Consumers fall back per entry:
+ * `settings.contextLimits[id] ?? adapter.contextLimit`.
  */
 export type ContextLimits = Record<string, number>;
 
@@ -35,6 +37,14 @@ export interface Settings {
   contextLimits: ContextLimits;
   /** Per-platform user coefficient overrides (spec 004). Keys = platformId; only overridden fields stored. */
   tokenCoefficients: Record<string, Partial<TokenCoefficients>>;
+  /**
+   * epoch ms of the last local modification — drives LWW against the cloud
+   * snapshot (spec 003 settings pull). 0 = never modified (fresh defaults),
+   * so any cloud record wins on first pull. Save stamps it with the same
+   * timestamp pushed to the cloud; adopting a cloud snapshot copies the
+   * cloud's timestamp (see `mergeCloudSettings`).
+   */
+  updatedAt: number;
 }
 
 /** The auto-detected defaults — one entry per adapter, straight from its contextLimit. */
@@ -48,21 +58,31 @@ export const DEFAULT_SETTINGS: Settings = {
   thresholds: { ...DEFAULT_THRESHOLDS },
   language: "auto",
   upstash: { url: "", token: "" },
-  contextLimits: defaultContextLimits(),
+  contextLimits: {},
   tokenCoefficients: {},
+  updatedAt: 0,
 };
 
 /** Read settings from local storage, falling back to defaults per field. */
 export async function getSettings(): Promise<Settings> {
   const raw = await browser.storage.local.get(STORAGE_KEY);
   const stored = raw[STORAGE_KEY] as Partial<Settings> | undefined;
-  // Start from auto-detected defaults, then overlay any valid stored overrides
-  // (ignore corrupt / non-positive values so a bad write can't zero the gauge).
-  const contextLimits = defaultContextLimits();
+  // Delta model: keep only valid stored overrides that DIFFER from the
+  // current adapter default. An entry equal to the default is a baked-in
+  // legacy value (pre-delta versions persisted the full default map) — drop
+  // it so future adapter-default updates reach the user. Unknown platform
+  // ids have no current default and pass through verbatim.
+  const defaults = defaultContextLimits();
+  const contextLimits: ContextLimits = {};
   const storedLimits = stored?.contextLimits;
   if (storedLimits && typeof storedLimits === "object") {
     for (const [id, val] of Object.entries(storedLimits)) {
-      if (typeof val === "number" && Number.isFinite(val) && val > 0) {
+      if (
+        typeof val === "number" &&
+        Number.isFinite(val) &&
+        val > 0 &&
+        val !== defaults[id]
+      ) {
         contextLimits[id] = val;
       }
     }
@@ -85,6 +105,10 @@ export async function getSettings(): Promise<Settings> {
             Partial<TokenCoefficients>
           >)
         : {},
+    updatedAt:
+      typeof stored?.updatedAt === "number" && Number.isFinite(stored.updatedAt)
+        ? stored.updatedAt
+        : 0,
   };
 }
 

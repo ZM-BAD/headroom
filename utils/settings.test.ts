@@ -66,7 +66,7 @@ describe("getSettings", () => {
     expect(s.thresholds).toEqual(DEFAULT_SETTINGS.thresholds);
     expect(s.language).toBe("auto");
     expect(s.upstash).toEqual({ url: "", token: "" });
-    expect(s.contextLimits).toEqual(defaultContextLimits());
+    expect(s.contextLimits).toEqual({});
   });
 
   it("returns defaults when the stored value is undefined", async () => {
@@ -135,21 +135,42 @@ describe("getSettings", () => {
     expect(s.upstash).toEqual({ url: "", token: "" });
   });
 
-  describe("contextLimits merging", () => {
-    it("starts from adapter defaults when nothing is stored", async () => {
+  describe("contextLimits (delta storage — overrides only)", () => {
+    it("is empty when nothing is stored (defaults live in the adapters)", async () => {
       mockGet.mockResolvedValue({});
       const s = await getSettings();
-      expect(s.contextLimits).toEqual(defaultContextLimits());
+      expect(s.contextLimits).toEqual({});
     });
 
-    it("overlays a valid stored override on top of defaults", async () => {
+    it("DEFAULT_SETTINGS carries an empty contextLimits map", () => {
+      expect(DEFAULT_SETTINGS.contextLimits).toEqual({});
+    });
+
+    it("keeps a stored override that differs from the adapter default", async () => {
       mockGet.mockResolvedValue({
         [STORAGE_KEY]: { contextLimits: { deepseek: 999_999 } },
       });
       const s = await getSettings();
       expect(s.contextLimits.deepseek).toBe(999_999);
-      // Other adapters still carry their defaults.
-      expect(s.contextLimits.chatgpt).toBe(defaultContextLimits().chatgpt);
+      // Untouched adapters are simply absent — not filled with defaults.
+      expect(s.contextLimits.chatgpt).toBeUndefined();
+    });
+
+    it("drops a stored value equal to the current adapter default (legacy baked full map)", async () => {
+      // Pre-delta versions persisted the full default map; those baked
+      // entries must be treated as non-overrides so future adapter-default
+      // updates reach the user.
+      mockGet.mockResolvedValue({
+        [STORAGE_KEY]: {
+          contextLimits: {
+            deepseek: defaultContextLimits().deepseek,
+            kimi: 500_000,
+          },
+        },
+      });
+      const s = await getSettings();
+      expect(s.contextLimits.deepseek).toBeUndefined();
+      expect(s.contextLimits.kimi).toBe(500_000);
     });
 
     it("filters out non-number values (corrupt entry)", async () => {
@@ -159,8 +180,7 @@ describe("getSettings", () => {
         },
       });
       const s = await getSettings();
-      // Corrupt string dropped — falls back to adapter default.
-      expect(s.contextLimits.deepseek).toBe(defaultContextLimits().deepseek);
+      expect(s.contextLimits.deepseek).toBeUndefined();
     });
 
     it("filters out NaN", async () => {
@@ -168,7 +188,7 @@ describe("getSettings", () => {
         [STORAGE_KEY]: { contextLimits: { deepseek: NaN } },
       });
       const s = await getSettings();
-      expect(s.contextLimits.deepseek).toBe(defaultContextLimits().deepseek);
+      expect(s.contextLimits.deepseek).toBeUndefined();
     });
 
     it("filters out Infinity", async () => {
@@ -176,7 +196,7 @@ describe("getSettings", () => {
         [STORAGE_KEY]: { contextLimits: { deepseek: Infinity } },
       });
       const s = await getSettings();
-      expect(s.contextLimits.deepseek).toBe(defaultContextLimits().deepseek);
+      expect(s.contextLimits.deepseek).toBeUndefined();
     });
 
     it("filters out zero and negative values", async () => {
@@ -184,8 +204,8 @@ describe("getSettings", () => {
         [STORAGE_KEY]: { contextLimits: { deepseek: 0, chatgpt: -1 } },
       });
       const s = await getSettings();
-      expect(s.contextLimits.deepseek).toBe(defaultContextLimits().deepseek);
-      expect(s.contextLimits.chatgpt).toBe(defaultContextLimits().chatgpt);
+      expect(s.contextLimits.deepseek).toBeUndefined();
+      expect(s.contextLimits.chatgpt).toBeUndefined();
     });
 
     it("filters out non-object contextLimits", async () => {
@@ -193,14 +213,13 @@ describe("getSettings", () => {
         [STORAGE_KEY]: { contextLimits: "nope" },
       });
       const s = await getSettings();
-      expect(s.contextLimits).toEqual(defaultContextLimits());
+      expect(s.contextLimits).toEqual({});
     });
 
     it("passes through unknown platform ids from stored overrides", async () => {
       // Harmless — the override sits in the map but no adapter uses it.
-      // The merge starts from defaults (known ids) then overlays whatever
-      // valid numbers the user stored, including ids for platforms that
-      // may have been removed or renamed.
+      // Ids for removed/renamed platforms have no current default to equal,
+      // so they survive the delta filter verbatim.
       mockGet.mockResolvedValue({
         [STORAGE_KEY]: { contextLimits: { unknown_platform: 5000 } },
       });
@@ -223,6 +242,7 @@ describe("saveSettings", () => {
       upstash: { url: "https://u.upstash.io", token: "tok" },
       contextLimits: { deepseek: 500_000 },
       tokenCoefficients: {},
+      updatedAt: 42,
     };
     await saveSettings(settings);
     expect(mockSet).toHaveBeenCalledTimes(1);
@@ -237,12 +257,45 @@ describe("saveSettings", () => {
       upstash: { url: "", token: "" },
       contextLimits: {},
       tokenCoefficients: {},
+      updatedAt: 0,
     };
     await saveSettings(partial);
     const arg = mockSet.mock.calls[0][0] as Record<string, unknown>;
     const stored = arg[STORAGE_KEY] as Settings;
     expect(stored.thresholds).toEqual({ yellow: 10, red: 20 });
     expect(stored.language).toBe("auto");
+  });
+});
+
+// ============================================================================
+// updatedAt (spec 003 settings pull — LWW timestamp)
+// ============================================================================
+
+describe("getSettings — updatedAt", () => {
+  it("defaults to 0 when nothing is stored", async () => {
+    mockGet.mockResolvedValue({});
+    const s = await getSettings();
+    expect(s.updatedAt).toBe(0);
+  });
+
+  it("reads a stored updatedAt", async () => {
+    mockGet.mockResolvedValue({
+      [STORAGE_KEY]: { updatedAt: 1234567 },
+    });
+    const s = await getSettings();
+    expect(s.updatedAt).toBe(1234567);
+  });
+
+  it("falls back to 0 for a corrupt (non-number) updatedAt", async () => {
+    mockGet.mockResolvedValue({
+      [STORAGE_KEY]: { updatedAt: "yesterday" },
+    });
+    const s = await getSettings();
+    expect(s.updatedAt).toBe(0);
+  });
+
+  it("DEFAULT_SETTINGS carries updatedAt 0 (never modified)", () => {
+    expect(DEFAULT_SETTINGS.updatedAt).toBe(0);
   });
 });
 

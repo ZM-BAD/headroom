@@ -122,6 +122,24 @@
   "testConnection": {
     "message": "测试连接"
   },
+  "pullFromCloud": {
+    "message": "从云端拉取"
+  },
+  "pullFromCloudTitle": {
+    "message": "把其他设备保存到 Upstash 的设置拉取并应用到本地（云端 → 本地）"
+  },
+  "pullingSettings": {
+    "message": "正在从云端拉取…"
+  },
+  "pullAdopted": {
+    "message": "已拉取，云端设置已应用到本地"
+  },
+  "pullUpToDate": {
+    "message": "本地已是最新，云端无更新"
+  },
+  "pullFailed": {
+    "message": "拉取失败，请检查网络或凭据"
+  },
   "clearUpstash": {
     "message": "清空"
   },

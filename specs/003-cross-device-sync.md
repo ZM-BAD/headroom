@@ -115,6 +115,7 @@ sequenceDiagram
 ### P1 — Enhancement
 
 - [x] **Zombie cleanup (unified engine)**: `chrome.alarms` (60min period) + home-page open → shared throttle (5min) → `fetchConversationList` → diff against Upstash → DEL difference.
+- [x] **Settings pull (LWW)**: cloud settings flow back at three moments — **side-panel open** (creds already saved; adopt → persist locally + refresh UI), **successful credential "Test connection"** (pre-save; adopt into the working copy only, persisted by the user's Save), and an explicit **"Pull from cloud" button** in the Upstash section (git-pull semantics — the user just saved on device A and wants it on B now, without reopening the panel; adopt → persist + refresh, with per-outcome status feedback: adopted / already up to date / failed). Adopt iff `cloud.updatedAt > local.updatedAt` (`mergeCloudSettings`, the 002 primitive — first wiring); credentials never come from the cloud. Adoption keeps `updatedAt = cloud.updatedAt`; Save stamps local `updatedAt = now` and pushes the same `now` to the cloud, so LWW stays consistent across devices. Cost: 1 GET per pull — negligible vs the 500K/month budget. Silent paths (open/test) fail quietly and keep local; only the button reports errors.
 - [x] **Reconciliation frequency control**: debounce when rapidly switching conversations / only trigger full reconciliation for conversations stayed >N seconds.
 - [x] All 7 platforms' history-fetch APIs verified (2026-06 live capture, text extractable on all platforms).
 - [x] All 7 platforms' deletion endpoints confirmed (interception layer ready).
@@ -359,6 +360,7 @@ headroom:cleanup-state → { <platform>: lastCleanupTimestamp }
 - Web delete conversation → both local cache and Upstash key disappear
 - Mobile delete conversation → next home-page open or periodic alarm → Upstash record cleaned up by diff
 - **Periodic zombie cleanup**: `chrome.alarms` fires every 60min → auto-cleans dead records when platform tab exists; shares 5min throttle with home-page trigger
+- **Settings follow the user**: Device A saves thresholds → Device B reopens the panel → B shows A's values (cloud newer → adopted + persisted). Fresh device: fill creds → "Test connection" OK → cloud settings appear in the working copy; Save persists and pushes back. Local settings newer than cloud → pull is a no-op (LWW).
 - Tab switch / panel open reads local cache (instant), does not block network
 
 ## Open Questions

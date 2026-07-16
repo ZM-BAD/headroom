@@ -36,11 +36,20 @@ This is **not** a token cost calculator. AI models are getting cheaper by the mo
 
 ## How It Works
 
-1. **Install the extension** in Chrome, Edge, or Firefox
-2. **Bring your own Upstash KV** — create a free [Upstash](https://upstash.com/) account, provision a Redis KV instance, and paste your API key into the extension settings. Your data stays in your own private storage.
-3. **Open the side panel** on any supported AI chat platform — Headroom pulls the conversation's full history from the platform and estimates your token usage
-4. **Watch the indicator** — as your conversation grows, Headroom shows you how much context room remains
-5. **Picks up across devices** — because records sync to your own Upstash KV, rounds you chatted on another device (or on mobile) are counted the next time you open that conversation on any device with Headroom installed.
+1. **Install the extension** in Chrome, Edge, or Firefox — no account, no configuration required
+2. **Open the side panel** on any supported AI chat platform — Headroom pulls the conversation's full history from the platform and estimates your token usage
+3. **Watch the indicator** — as your conversation grows, Headroom shows you how much context room remains
+
+That's it. And because the conversation history lives on the AI platform's own servers, your counts follow you across devices out of the box — opening the same conversation on another machine re-reads the full history and rebuilds the count from scratch.
+
+### Do I need Upstash? (No — it's optional)
+
+Headroom is fully functional with zero cloud setup: the gauge, the per-round breakdown, and the threshold alerts all work off the platform's own history. For most users, most of the time, that's everything.
+
+Optionally, you can connect your own [Upstash](https://upstash.com/) Redis KV — create a free account, provision a KV instance, and paste the REST credentials into the extension settings (BYOK: the data lives in your own private storage, and the credentials never leave your browser). What connecting adds:
+
+- **Settings sync across devices** — thresholds, language, per-platform context limits, and token-coefficient overrides saved on one device are picked up the next time you open the panel on another.
+- **Count insurance for edge cases** — normally all seven platforms return complete history in one pull, but when a platform's history API can't (pagination caps on ultra-long conversations, an interrupted paginated fetch, deleted or regenerated rounds), the cloud record preserves the rounds it already counted, so your cumulative total never silently shrinks.
 
 ### Is Upstash free?
 
@@ -97,7 +106,7 @@ architecture — adding a new AI chat platform is a matter of writing one adapte
 - **[WXT](https://wxt.dev/)** — Next-gen web extension framework (Manifest V3)
 - **Native Side Panel API** — Browser-native sidebar (Chrome `sidePanel`, Firefox `sidebarAction`)
 - **Heuristic token estimation** — 6-way per-script coefficient engine (CJK, Kana, Hangul, Cyrillic, Arabic, Latin); char-based for CJK/kana/Hangul, word-based for the rest. No heavy tokenizer bundled (keeps the extension light and model-agnostic)
-- **Upstash Redis KV** — User-owned cloud storage (BYOK model)
+- **Upstash Redis KV** — Optional user-owned cloud storage (BYOK model)
 
 ## Development
 

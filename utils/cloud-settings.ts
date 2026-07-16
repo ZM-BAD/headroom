@@ -44,22 +44,23 @@ export function toCloudSettings(local: Settings, now: number): CloudSettings {
 /**
  * Fold a cloud snapshot back into local settings, last-write-wins on
  * `updatedAt`. Only the non-credential fields are adoptable from the cloud;
- * local credentials always survive. Pass the local settings' own `updatedAt`
- * (0 before the settings phase adds the field). Returns a NEW object; never
- * mutates `local`. When cloud is absent or not newer, local wins unchanged.
+ * local credentials always survive. Adopting also copies the cloud's
+ * `updatedAt` so a re-pull of the same snapshot is a no-op (idempotent).
+ * Returns a NEW object; never mutates `local`. When cloud is absent or not
+ * newer, local wins unchanged.
  */
 export function mergeCloudSettings(
   local: Settings,
   cloud: CloudSettings | null,
-  localUpdatedAt: number,
 ): Settings {
-  if (!cloud || cloud.updatedAt <= localUpdatedAt) return { ...local };
+  if (!cloud || cloud.updatedAt <= local.updatedAt) return { ...local };
   return {
     ...local, // preserve upstash credentials + any future local-only fields
     thresholds: cloud.thresholds,
     language: cloud.language,
     contextLimits: cloud.contextLimits,
     tokenCoefficients: cloud.tokenCoefficients,
+    updatedAt: cloud.updatedAt,
   };
 }
 
@@ -85,4 +86,34 @@ export async function setCloudSettings(
 
 export async function delCloudSettings(creds: UpstashCreds): Promise<void> {
   await kvDel(creds, SETTINGS_KEY);
+}
+
+/** Result of a settings pull — lets UI callers report distinct outcomes. */
+export type PullResult =
+  | { outcome: "adopted"; settings: Settings }
+  | { outcome: "no-creds" }
+  | { outcome: "not-newer" } // no cloud record, or cloud not newer than local
+  | { outcome: "error" };
+
+/**
+ * Settings-pull orchestration (spec 003): read the cloud snapshot and
+ * LWW-merge it into `local`. Never throws — a failed/timed-out read reports
+ * `error` and the caller keeps local. Silent call sites (panel open, test
+ * connection) only act on `adopted`; the explicit "Pull from cloud" button
+ * surfaces every outcome to the user. Cost: 1 GET.
+ */
+export async function pullCloudSettings(local: Settings): Promise<PullResult> {
+  if (!local.upstash.url || !local.upstash.token)
+    return { outcome: "no-creds" };
+  let cloud: CloudSettings | null;
+  try {
+    cloud = await getCloudSettings(local.upstash);
+  } catch (e) {
+    console.warn("[Headroom] cloud settings pull failed:", e);
+    return { outcome: "error" };
+  }
+  if (!cloud || cloud.updatedAt <= local.updatedAt) {
+    return { outcome: "not-newer" };
+  }
+  return { outcome: "adopted", settings: mergeCloudSettings(local, cloud) };
 }

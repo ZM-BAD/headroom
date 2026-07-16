@@ -30,7 +30,7 @@ The README positions BYO Upstash as a product pillar ("your data stays in your o
 - **Client layering**: generic primitives `kvGet` / `kvSet` / `kvDel` (shape-agnostic transport layer) + one typed wrapper per domain value (`getDialogue` / `setDialogue` / `delDialogue`, `getCloudSettings` / `setCloudSettings` / `delCloudSettings`). New Redis value type = new thin wrapper, **not a fourth fetch path**.
 - **Credentials stay local** (`Settings.upstash`, which is the REST API pair: `UPSTASH_REDIS_REST_URL` + `_TOKEN`, not Redis password); debug probe reads `.env` (gitignored).
 - **Merge semantics not in this layer**:
-  - Settings: LWW (last-write-wins, by `updatedAt`) — settings are stateless, LWW is safe. `mergeCloudSettings` provides merge primitive.
+  - Settings: LWW (last-write-wins, by `updatedAt`) — settings are stateless, LWW is safe. `mergeCloudSettings` provides merge primitive; pull orchestration (when to `getCloudSettings` + merge) is 003's "Settings pull".
   - Dialogue: **union by messageId** (003). 002's `setDialogue` is purely overwrite-writing the entire record; "read old record → union merge → write new record" orchestration is 003's responsibility.
 
 ## Requirements

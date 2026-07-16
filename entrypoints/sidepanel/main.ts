@@ -17,7 +17,11 @@ import {
   type Settings,
 } from "../../utils/settings";
 import { ADAPTERS, platformDisplayName } from "../../adapters";
-import { setCloudSettings, toCloudSettings } from "../../utils/cloud-settings";
+import {
+  setCloudSettings,
+  toCloudSettings,
+  pullCloudSettings,
+} from "../../utils/cloud-settings";
 import type { UpstashCreds } from "../../utils/upstash";
 import {
   DEFAULT_COEFFICIENTS,
@@ -112,6 +116,7 @@ const els = {
   upstashToken: document.querySelector<HTMLInputElement>("#upstash-token")!,
   upstashToggle: document.querySelector<HTMLButtonElement>("#upstash-toggle")!,
   upstashTest: document.querySelector<HTMLButtonElement>("#upstash-test")!,
+  upstashPull: document.querySelector<HTMLButtonElement>("#upstash-pull")!,
   upstashClear: document.querySelector<HTMLButtonElement>("#upstash-clear")!,
   upstashStatus: document.querySelector<HTMLElement>("#upstash-status")!,
   settingsSave: document.querySelector<HTMLButtonElement>("#settings-save")!,
@@ -274,9 +279,8 @@ function showView(view: "main" | "settings"): void {
 
 els.settingsBtn.addEventListener("click", () => showView("settings"));
 
-/** Reload settings from storage and reset every input to the last-saved values. */
-async function discardSettingsChanges(): Promise<void> {
-  const settings = await getSettings();
+/** Apply a full Settings object to the working copies + rebuild the settings UI. */
+function adoptSettingsToUi(settings: Settings): void {
   currentThresholds = settings.thresholds;
   currentLanguage = settings.language;
   currentUpstash = settings.upstash;
@@ -285,15 +289,20 @@ async function discardSettingsChanges(): Promise<void> {
   els.langSelect.value = currentLanguage;
   els.upstashUrl.value = currentUpstash.url;
   els.upstashToken.value = currentUpstash.token;
-  els.upstashToken.type = "password";
-  setUpstashStatus(null, "");
   renderTokenToggle();
   buildContextLimitRows();
   coeffInputs = buildCoefficientRows();
-  els.coeffHint.hidden = true;
   applyThresholdsToSliders(currentThresholds);
   applyI18n();
   render(currentState, currentThresholds);
+}
+
+/** Reload settings from storage and reset every input to the last-saved values. */
+async function discardSettingsChanges(): Promise<void> {
+  els.upstashToken.type = "password";
+  setUpstashStatus(null, "");
+  els.coeffHint.hidden = true;
+  adoptSettingsToUi(await getSettings());
 }
 
 // Back discards unsaved working-copy edits (no confirm) — fine while there's
@@ -461,6 +470,21 @@ els.ctxReset.addEventListener("click", () => {
       );
   }
 });
+
+/** Delta model (spec 001 data model): only entries that differ from the
+ *  adapter's built-in default are persisted — same as coefficient overrides.
+ *  Editing a value back to the default un-overrides it. Unknown platform ids
+ *  (removed/renamed adapters) pass through verbatim. */
+function readContextLimitOverrides(): ContextLimits {
+  const result: ContextLimits = {};
+  for (const [id, val] of Object.entries(currentContextLimits)) {
+    const def = ADAPTERS.find((a) => a.platformId === id)?.contextLimit;
+    if (Number.isFinite(val) && val > 0 && val !== def) {
+      result[id] = val;
+    }
+  }
+  return result;
+}
 
 // ---------- token coefficients (spec 004 — Advanced Settings) ----------
 
@@ -884,6 +908,48 @@ els.upstashTest.addEventListener("click", () => {
     const { ok, message } = await testUpstashConnection(cfg.url, cfg.token);
     setUpstashStatus(ok ? "ok" : "err", message);
     els.upstashTest.disabled = false;
+    if (!ok) return;
+    // Settings pull on verified creds (spec 003): the creds are proven but
+    // not yet saved, so a newer cloud snapshot is adopted into the WORKING
+    // COPY only — the user's Save persists it (and pushes it back up with a
+    // fresh timestamp). First connect on a new device: local updatedAt is 0,
+    // so any cloud record wins.
+    const pulled = await pullCloudSettings({
+      ...(await getSettings()),
+      upstash: cfg,
+    });
+    if (pulled.outcome === "adopted") adoptSettingsToUi(pulled.settings);
+  })();
+});
+
+// Explicit pull — git-pull semantics: fetch the cloud snapshot and apply it
+// locally NOW ("I just saved on device A and want it on B" without reopening
+// the panel). Uses SAVED credentials — a pull that persists must not depend
+// on unsaved input (that's what "Test connection" covers). Unlike the silent
+// pull paths (panel open / test success), every outcome is reported.
+els.upstashPull.addEventListener("click", () => {
+  void (async () => {
+    els.upstashPull.disabled = true;
+    setUpstashStatus("busy", t("pullingSettings"));
+    const pulled = await pullCloudSettings(await getSettings());
+    els.upstashPull.disabled = false;
+    switch (pulled.outcome) {
+      case "no-creds":
+        setUpstashStatus("err", t("upstashErrMissing"));
+        return;
+      case "error":
+        setUpstashStatus("err", t("pullFailed"));
+        return;
+      case "not-newer":
+        setUpstashStatus("ok", t("pullUpToDate"));
+        return;
+      case "adopted":
+        await saveSettings(pulled.settings);
+        adoptSettingsToUi(pulled.settings);
+        await refreshStateFromBackground();
+        // After adoption t() may speak a new language — status text included.
+        setUpstashStatus("ok", t("pullAdopted"));
+    }
   })();
 });
 
@@ -902,6 +968,21 @@ els.upstashClear.addEventListener("click", () => {
 renderTokenToggle();
 
 // ---------- save (whole settings page) ----------
+
+/** Ask the background for the active tab's state and re-render the gauge. */
+async function refreshStateFromBackground(): Promise<void> {
+  try {
+    const state = (await browser.runtime.sendMessage({
+      type: "GET_STATE",
+    } satisfies HeadroomMessage)) as UsageState | undefined;
+    if (state) {
+      currentState = state;
+      render(currentState, currentThresholds);
+    }
+  } catch {
+    // Background asleep — the next PAGE_READY/round will refresh.
+  }
+}
 
 /** Brief "Saved ✓" flash on the save button to confirm the write landed. */
 function flashSaved(): void {
@@ -946,13 +1027,20 @@ els.settingsSave.addEventListener("click", () => {
       JSON.stringify(coeffOverrides) !==
       JSON.stringify(currentTokenCoefficients);
     currentTokenCoefficients = coeffOverrides;
+    // Same delta model for context limits: entries equal to the adapter
+    // default (including legacy baked-in full maps) drop out on save.
+    currentContextLimits = readContextLimitOverrides();
 
+    const now = Date.now();
     const settings: Settings = {
       thresholds: currentThresholds,
       language: currentLanguage,
       upstash: currentUpstash,
       contextLimits: currentContextLimits,
       tokenCoefficients: currentTokenCoefficients,
+      // Same timestamp locally and in the cloud push below, so LWW compares
+      // consistently across devices (spec 003 settings pull).
+      updatedAt: now,
     };
     await saveSettings(settings);
     flashSaved();
@@ -968,28 +1056,33 @@ els.settingsSave.addEventListener("click", () => {
       try {
         await setCloudSettings(
           settings.upstash,
-          toCloudSettings(settings, Date.now()),
+          toCloudSettings(settings, now),
         );
       } catch (err) {
         console.warn("[Headroom] settings cloud sync skipped:", err);
       }
     }
     // Refresh the main view so the gauge re-scales to the (possibly new) limit.
-    try {
-      const state = (await browser.runtime.sendMessage({
-        type: "GET_STATE",
-      } satisfies HeadroomMessage)) as UsageState | undefined;
-      if (state) {
-        currentState = state;
-        render(currentState, currentThresholds);
-      }
-    } catch {
-      // Background asleep — the next PAGE_READY/round will refresh.
-    }
+    await refreshStateFromBackground();
   })();
 });
 
 // ---------- init ----------
+
+/**
+ * Settings pull on panel open (spec 003): best-effort read of the cloud
+ * snapshot; adopt + persist only when it is newer than local (LWW). This is
+ * how a change saved on device A reaches device B — B just reopens the panel.
+ * Fire-and-forget: a slow / absent / unconfigured cloud never blocks the UI.
+ */
+async function pullCloudSettingsOnOpen(): Promise<void> {
+  const pulled = await pullCloudSettings(await getSettings());
+  if (pulled.outcome !== "adopted") return;
+  await saveSettings(pulled.settings);
+  adoptSettingsToUi(pulled.settings);
+  // Re-project so the gauge picks up a possibly-changed context limit.
+  await refreshStateFromBackground();
+}
 
 // Instant first paint with defaults (browser locale), refined once settings load.
 applyI18n();
@@ -1030,6 +1123,9 @@ void (async () => {
   applyI18n();
   applyThresholdsToSliders(currentThresholds);
   render(currentState, currentThresholds);
+  // Cloud settings pull AFTER the local-first paint (spec 003, same
+  // display-first-then-sync order as the gauge itself).
+  void pullCloudSettingsOnOpen();
 })();
 
 // Phase 2+: live usage updates from the background.

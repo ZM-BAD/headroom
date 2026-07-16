@@ -349,6 +349,8 @@ headroom:settings            → { thresholds, language, contextLimits (override
 headroom:conv:{p}:{id}        → DialogueRecord (current active conversation)
 ```
 
+> **`contextLimits` is delta storage** (same model as 004's `tokenCoefficients`): only entries that differ from the adapter's built-in `contextLimit` are stored — locally and in the cloud. Never persist the full default map: a baked-in default is indistinguishable from a user override, so users who ever saved would be pinned to stale defaults when an adapter's limit is updated. On read, stored entries equal to the **current** adapter default are treated as non-overrides and dropped (self-heals legacy full-map data).
+
 **`DialogueRecord` / `RoundRecord` store only token counts, never conversation text** (privacy-by-design):
 
 ```

@@ -122,6 +122,24 @@
   "testConnection": {
     "message": "Test connection"
   },
+  "pullFromCloud": {
+    "message": "Pull from cloud"
+  },
+  "pullFromCloudTitle": {
+    "message": "Fetch the settings saved on your other devices from Upstash and apply them here (cloud → local)"
+  },
+  "pullingSettings": {
+    "message": "Pulling from cloud…"
+  },
+  "pullAdopted": {
+    "message": "Pulled — cloud settings applied locally"
+  },
+  "pullUpToDate": {
+    "message": "Already up to date — cloud has nothing newer"
+  },
+  "pullFailed": {
+    "message": "Pull failed — check network or credentials"
+  },
   "clearUpstash": {
     "message": "Clear"
   },
