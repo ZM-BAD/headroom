@@ -1,0 +1,47 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "timezone": "Asia/Shanghai",
+  "schedule": ["before 6am on Monday"],
+
+  "dependencyDashboard": true,
+  "dependencyDashboardApproval": false,
+  "assignees": ["ZM-BAD"],
+  "labels": ["dependencies"],
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "assignees": ["ZM-BAD"]
+  },
+
+  "automerge": false,
+
+  "packageRules": [
+    {
+      "description": "All npm devDependencies in one PR per batch",
+      "matchManagers": ["npm"],
+      "groupName": "npm devDependencies"
+    },
+    {
+      "description": "DevDeps minor/patch: short release-age window",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "DevDeps major: longer release age for community feedback",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["major"],
+      "minimumReleaseAge": "14 days"
+    },
+    {
+      "description": "GitHub Actions: pin digests for supply-chain safety, one PR",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "pinDigests": true
+    }
+  ],
+
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "recreateClosed": false
+}

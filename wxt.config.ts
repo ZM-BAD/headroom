@@ -51,10 +51,10 @@ export default defineConfig({
     // reads AI chat conversation text (websiteContent) and syncs metadata
     // to the user's own Upstash KV, so websiteContent is required — there
     // is no opt-out path because reading the conversation is core function.
-    // TODO(before AMO submit): add a permanent add-on `id` to gecko.
     ...(browser === "firefox" && {
       browser_specific_settings: {
         gecko: {
+          id: "headroom@zmbad.me",
           strict_min_version: "151.0",
           data_collection_permissions: {
             required: ["websiteContent"],

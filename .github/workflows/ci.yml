@@ -31,6 +31,12 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Check i18n keys (en ↔ zh_CN)
+        run: npm run check:i18n
+
+      - name: Check host permissions
+        run: npm run check:permissions
+
       - name: Type check
         run: npm run typecheck
 
@@ -42,3 +48,6 @@ jobs:
 
       - name: Build (Firefox)
         run: npm run build:firefox
+
+      - name: Build (Edge)
+        run: npm run build:edge
