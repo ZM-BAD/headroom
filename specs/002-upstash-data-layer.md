@@ -62,6 +62,7 @@ Body:   JSON command array  ["GET", key] / ["SET", key, val] / ["DEL", key] / ["
 - **8s `AbortController` timeout** — a wedged Upstash must not hang the service worker.
 - **Empty credentials ⇒ every op silently no-ops** (Upstash is optional; the gauge works off local state, see 001).
 - Failure handling: this layer throws; **the caller (003) decides whether to warn-and-drop or retry**. 002 does not build in retry / buffering.
+- **Connectivity test bypass**: the side panel's "Test connection" button POSTs to `${url}/PING` directly (not via `command()`) because the REST API is CORS-permissive and the test must run from the side panel's own origin. It enforces `https://` and a timeout independently, and writes no data.
 
 ### Client Layering
 

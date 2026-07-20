@@ -68,7 +68,7 @@ Settings.tokenCoefficients[platformId].cjk   ← user override (highest priority
 
 No third-level global fallback — each adapter's `tokenCoefficients` is a required field; the adapter itself is that platform's default. "Reset" action clears the user override, returning to the adapter's built-in value.
 
-`DEFAULT_COEFFICIENTS` constant is only used as a reference value in `estimateTokens` unit tests; it does not participate in the runtime resolution chain.
+`DEFAULT_COEFFICIENTS` constant does not participate in the runtime estimation chain (`resolveCoefficients` uses only user override → adapter default). It appears in the settings panel as a defensive `??` fallback for missing adapter fields (unreachable in practice — every adapter provides all six) and as the parameter set in `estimateTokens` unit tests.
 
 ### 4. Per-Platform Default Models, Tokenizers, and Coefficient Estimation
 

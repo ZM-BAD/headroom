@@ -4,12 +4,12 @@ It is fine for specs to be a few milestones ahead of the code — but **the furt
 
 ## Milestone Overview
 
-| Spec                               | Milestone                                                                                | Status                                                                | Gate (live device)                                                       |
-| ---------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| [001](./001-headroom-core.md)      | Core monitor + estimation engine + adapter base                                          | 🟢 done · 7 platforms end-to-end, 2 edge cases pending (001-01/CB-09) | DeepSeek single-device end-to-end passing                                |
-| [002](./002-upstash-data-layer.md) | Upstash data layer (structure + transport)                                               | 🟢 done · 5/5 live acceptance passed                                  | Live: Upstash shows records                                              |
-| [003](./003-cross-device-sync.md)  | Cross-device reconciliation engine                                                       | 🟢 done · 10/11 live acceptance passed, 1 pending (003-07)            | Open-and-sync full history, no cross-device loss, mobile rounds included |
-| [004](./004-optimizations.md)      | Token estimation upgrade (script expansion + per-platform coefficients + user overrides) | 🟢 Phase A code done · 🟡 Phase B coefficient calibration pending     | Multi-script estimation error bounded + user-overridable coefficients    |
+| Spec                               | Milestone                                                                                | Status                                                                                      | Gate (live device)                                                       |
+| ---------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| [001](./001-headroom-core.md)      | Core monitor + estimation engine + adapter base                                          | 🟢 done · 7 platforms, all gates checked                                                    | DeepSeek single-device end-to-end passing                                |
+| [002](./002-upstash-data-layer.md) | Upstash data layer (structure + transport)                                               | 🟢 done · 5/5 live acceptance passed                                                        | Live: Upstash shows records                                              |
+| [003](./003-cross-device-sync.md)  | Cross-device reconciliation engine                                                       | 🟢 done · 11/11 live acceptance passed                                                      | Open-and-sync full history, no cross-device loss, mobile rounds included |
+| [004](./004-optimizations.md)      | Token estimation upgrade (script expansion + per-platform coefficients + user overrides) | 🟢 Phase A done · 🟢 Phase B calibration measured + applied · 🟡 B8 live spot-check pending | Multi-script estimation error bounded + user-overridable coefficients    |
 
 Dependency order: **001 → 002 → 003**. 004 is an upgrade to 001's estimation engine and does not block the main trunk.
 

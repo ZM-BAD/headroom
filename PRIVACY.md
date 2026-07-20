@@ -46,11 +46,13 @@ Headroom uses a **two-tier** model. **You control the cloud tier.**
   offline. The cache is bounded by LRU eviction (least-recently-viewed
   conversations are dropped when space runs low); evicted records are
   recoverable from your Upstash KV.
-- **Pending round** — the prompt text of a single in-flight message, held in
-  local storage only until the AI reply settles and tokens are counted, then
-  deleted. It persists across a service-worker restart (MV3 SWs are ephemeral)
-  but is removed as soon as the round completes; it is never synced to Upstash
-  and never stored beyond the current round.
+- **Stop-generation feedback** — when you stop the AI mid-reply, the content
+  script reads the partial answer straight from the page DOM and Headroom
+  creates a temporary local-only round so the gauge updates immediately. This
+  temporary round is never synced to Upstash and is replaced by the next real
+  history fetch (when you continue or send the next prompt). No prompt or answer
+  text is persisted — only the estimated token counts of that in-progress round,
+  held in memory until the real round lands.
 
 ### 2. Upstash Redis KV — **your own**, optional (BYOK)
 
@@ -66,8 +68,8 @@ record** per conversation to **your** Upstash instance. The record contains:
 > the AI's reply to count tokens, but it stores **only the token counts** — not
 > the text itself. Neither your local device nor your Upstash KV retains what
 > either side actually said. This is by design (`utils/dialogue-record.ts`:
-> `RoundRecord` is `{ n, promptTokens, answerTokens, total, ts }` — numbers
-> only).
+> `RoundRecord` is `{ messageId, order, n, promptTokens, answerTokens, total, createdAt }`
+> — numbers and platform-stable identifiers only, no text).
 
 **Your Upstash credentials never leave your device.** They are stored only in
 local storage and used to call Upstash's REST API directly from the extension.

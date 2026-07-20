@@ -46,16 +46,14 @@ If you have time, you can help verify basic functionality on the following platf
 
 ### Token Estimation Verification
 
-- CJK characters: tokens ≈ characters × 0.6 tok/ch
-- Kana / Hangul: characters × their respective coefficient
-- English / Latin: tokens ≈ words × 0.5 tok/wd
+- Per-platform calibrated coefficients (spec 004 §4.3): CJK ≈ 0.58–0.83 tok/ch, Latin ≈ 1.30–1.38 tok/wd, etc. Each platform has its own six-coefficient set (CJK, Kana, Hangul, Cyrillic, Arabic, Latin) measured against its actual tokenizer. See the Platform Reference section in Advanced Settings for the full matrix, and `specs/004-optimizations.md` §4.3 for the values and method.
 - Mixed Chinese + English: CJK counted per character, English per word, no double-counting
 
 ### Round Lifecycle
 
 - New round added: round count +1, cumulative increases
 - Regenerate: round count unchanged, that round's token count updated
-- Stop generation: not counted as a completed round
+- Stop generation: a temporary local-only round is created from the DOM-scraped partial answer (displayed immediately), then replaced by the next real history fetch — never synced to Upstash
 - SPA conversation switch: panel shows new conversation data
 
 ### History Loading
@@ -144,7 +142,8 @@ headroom/
 │   ├── settings.ts          # Settings read/write
 │   ├── cloud-settings.ts    # Cloud settings (credential-stripped)
 │   ├── thresholds.ts        # Warning threshold logic
-│   └── match-host.ts        # URL → platform matching
+│   ├── match-host.ts        # URL → platform matching
+│   └── __tests__/           # Pure-logic unit tests
 ├── brand/                   # Headroom brand logo source files (SVG)
 │   ├── blue.svg             # Main logo (colored gauge icon)
 │   ├── gray.svg             # Gray variant (disabled toolbar icon)
@@ -169,7 +168,6 @@ headroom/
 │   └── acceptance-checklist.md
 ├── scripts/
 │   └── probe-upstash.mjs    # Upstash connectivity probe (not part of npm test)
-├── public/                  # Static assets (icons, _locales translations)
 └── wxt.config.ts            # WXT configuration
 ```
 

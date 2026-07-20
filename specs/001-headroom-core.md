@@ -2,7 +2,7 @@
 
 ## Status
 
-DeepSeek single-device end-to-end implemented and passed live acceptance (Gate 1 ✅, 2026-06); remaining 6 adapters + `fetchHistory` implemented (parse shapes confirmed via Playwright), live end-to-end acceptance pending (Gate 2); Edge/Firefox smoke pending (Gate 3).
+DeepSeek single-device end-to-end implemented and passed live acceptance (Gate 1 ✅, 2026-06); remaining 6 adapters + `fetchHistory` implemented (parse shapes confirmed via Playwright); Gate 2 (other 6 platforms) and Gate 3 (Edge/Firefox smoke) code-complete and checked in the acceptance checklist.
 
 **Scope**: Single-device real-time layer. The gauge works purely locally, does not depend on the cloud — **can be released independently**. Upstash transport pipeline goes to [002](./002-upstash-data-layer.md); cross-device sync, reconciliation, and delete linkage go to [003](./003-cross-device-sync.md).
 
@@ -49,7 +49,7 @@ Professionals who use AI chat web apps daily (developers, researchers, writers, 
 - [x] **Adapter architecture**: complete contract (see Design), DeepSeek fully implemented; interface reserves room for new platforms
 - [x] **Incremental round capture**: `webRequest.onCompleted` (SSE stream close = reply complete) → pull platform history API (message_id authoritative) → re-estimate per round (net new this round) → update gauge
 - [x] **Local working state**: the gauge's read source, purely local, does not depend on the cloud
-- [x] **URL scoping**: non-matching pages have `action.disable` graying, side panel does not respond
+- [x] **URL scoping**: non-matching pages show a grayed toolbar icon and the side panel does not respond to clicks (3-D per-tab ACL: `setIcon` gray + `onClicked` intercept + `sidePanel.setOptions({enabled:false})`; see AGENTS.md MV3 gotchas — `action.disable()` does not reliably gray icons once a sidePanel is configured, so it is intentionally unused)
 - [x] **User settings panel**: threshold dual slider / context override / UI language switch / Upstash config (URL · Test · Clear · Save)
 
 ### P1 — Enhancement
@@ -215,18 +215,23 @@ tokens(text, platform) = Σ over writing systems s  [ count(text, s) × coeff(s,
 
 Adding a new AI platform = register + write one `adapters/<platform>.ts`. Complete contract (**Owner** column indicates which spec defines/uses the field):
 
-| Field                                                         | Owner   | Description                                                                                                                                                                                                                                               |
-| ------------------------------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `platformId` / `displayName` / `host` / `matchPattern`        | 001     | Platform id + display name; content injection + host matching                                                                                                                                                                                             |
-| `completionUrl`                                               | 001     | `webRequest.onCompleted` filter = reply complete (SSE stream close, root cause; not DOM heuristics)                                                                                                                                                       |
-| `contextLimit`                                                | 001     | Default context window, user-overridable                                                                                                                                                                                                                  |
-| `tokenCoefficients { cjk, latin }`                            | 001     | Default estimation coefficients, user-overridable                                                                                                                                                                                                         |
-| `dialogueIdFromUrl?(url)`                                     | 001     | Derive dialogue ID from URL (conversation switch → gauge reset)                                                                                                                                                                                           |
-| `dialogueTitleFromDoc?(doc) → string \| null`                 | 001     | Conversation title (content-script scraped from DOM); **display only, not written to `DialogueRecord`, not uploaded to cloud** (title may contain sensitive info)                                                                                         |
-| `fetchHistory?(dialogueId) → HistoryRound[]`                  | 001     | **Core truth source**: pull full platform history; `HistoryRound` carries **stable messageId** (003 union merge key) + `order` (time-order key) + `promptText`/`answerText`. Used on open / switch / reply-complete; tokens are always estimated from it. |
-| `answerSelector` / `userSelector?` / `conversationSelector`   | 001     | DOM fallback primitives; currently unused by history-authoritative core, reserved for platforms without history API                                                                                                                                       |
-| `deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?` | 001+003 | Delete linkage: local record reset (001 background); cloud DEL (003)                                                                                                                                                                                      |
-| `fetchConversationList?() → string[]`                         | 003     | Zombie cleanup: pull conversation id list                                                                                                                                                                                                                 |
+| Field                                                              | Owner   | Description                                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `platformId` / `displayName` / `host` / `matchPattern`             | 001     | Platform id + display name; content injection + host matching                                                                                                                                                                                             |
+| `completionUrl`                                                    | 001     | `webRequest.onCompleted` filter = reply complete (SSE stream close, root cause; not DOM heuristics)                                                                                                                                                       |
+| `completionMethod?`                                                | 001     | HTTP method that counts as a completion (default "POST"). Drops non-matching methods on the same URL (e.g. ChatGPT's fetchHistory GET hits `/conversation` too — this filter prevents a feedback loop)                                                    |
+| `stopUrl?`                                                         | 001     | Dedicated "stop generating" endpoint (e.g. DeepSeek `/api/v0/chat/stop_stream`). On `onCompleted` here, the content script reads the partial answer from the DOM for immediate UX (spec 001-17)                                                           |
+| `continueUrl?`                                                     | 001     | Dedicated "continue generating" endpoint (e.g. DeepSeek `/api/v0/chat/continue`). Triggers the same history refresh as `completionUrl` — the messageId is unchanged, so the round's token count is updated in place                                       |
+| `contextLimit`                                                     | 001     | Default context window, user-overridable                                                                                                                                                                                                                  |
+| `tokenCoefficients { cjk, kana, hangul, cyrillic, arabic, latin }` | 001     | Six per-script estimation coefficients (spec 004); required on every adapter. User-overridable per field in Advanced Settings                                                                                                                             |
+| `needsDomPollDetection?`                                           | 001     | Content-script DOM poll detects new answer elements as a fallback completion signal. Needed only by Gemini (whose webRequest onCompleted does not reliably fire for StreamGenerate). Default false                                                        |
+| `historyNeedsSettleRetry?`                                         | 001     | History store is eventually consistent — the newest round's bot message lands 0–1s+ after the stream closes (Doubao). The content script re-fetches with bounded backoff while the newest round's answer is empty. Default false                          |
+| `dialogueIdFromUrl?(url)`                                          | 001     | Derive dialogue ID from URL (conversation switch → gauge reset)                                                                                                                                                                                           |
+| `dialogueTitleFromDoc?(doc) → string \| null`                      | 001     | Conversation title (content-script scraped from DOM); **display only, not written to `DialogueRecord`, not uploaded to cloud** (title may contain sensitive info)                                                                                         |
+| `fetchHistory?(dialogueId) → HistoryRound[]`                       | 001     | **Core truth source**: pull full platform history; `HistoryRound` carries **stable messageId** (003 union merge key) + `order` (time-order key) + `promptText`/`answerText`. Used on open / switch / reply-complete; tokens are always estimated from it. |
+| `answerSelector` / `userSelector?` / `conversationSelector`        | 001     | DOM fallback primitives; currently unused by history-authoritative core, reserved for platforms without history API                                                                                                                                       |
+| `deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?`      | 001+003 | Delete linkage: local record reset (001 background); cloud DEL (003)                                                                                                                                                                                      |
+| `fetchConversationList?() → string[]`                              | 003     | Zombie cleanup: pull conversation id list                                                                                                                                                                                                                 |
 
 001 implements DeepSeek's 001 fields (`fetchHistory` implemented and live-verified); 003 fields only occupy contract slots in this spec. The background is a platform-agnostic engine — only recognizes the adapter interface; the history API is the sole truth source for round identity and tokens.
 
@@ -243,15 +248,15 @@ Adding a new AI platform = register + write one `adapters/<platform>.ts`. Comple
 
 ### 7-Platform Context Defaults (DeepSeek validated first, others fast-follow)
 
-| Platform       | Page Host         | Context (Default) | fetchHistory (History API Reverse-Engineered)   |
-| -------------- | ----------------- | ----------------- | ----------------------------------------------- |
-| DeepSeek       | chat.deepseek.com | 1,048,576 (1<<20) | ✅ implemented + live-verified                  |
-| ChatGPT        | chatgpt.com       | 131,072 (1<<17)   | ✅ implemented (confirmed live)                 |
-| Gemini         | gemini.google.com | 1,048,576 (1<<20) | ✅ DOM fallback (confirmed live, no usable API) |
-| Kimi           | www.kimi.com      | 262,144 (1<<18)   | ✅ implemented (confirmed live)                 |
-| Qwen           | chat.qwen.ai      | 1,048,576 (1<<20) | ✅ implemented (confirmed live)                 |
-| Tongyi Qianwen | www.qianwen.com   | 1,048,576 (1<<20) | ✅ implemented (confirmed live)                 |
-| Doubao         | www.doubao.com    | 262,144 (1<<18)   | ✅ implemented (confirmed live)                 |
+| Platform       | Page Host         | Context (Default) | fetchHistory (History API Reverse-Engineered)                                                                                                                                  |
+| -------------- | ----------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| DeepSeek       | chat.deepseek.com | 1,048,576 (1<<20) | ✅ implemented + live-verified                                                                                                                                                 |
+| ChatGPT        | chatgpt.com       | 131,072 (1<<17)   | ✅ implemented (confirmed live); send path migrated to `POST /backend-api/f/conversation` in 2026-07 (legacy `/conversation` kept as a `continueUrl` for non-migrated cohorts) |
+| Gemini         | gemini.google.com | 1,048,576 (1<<20) | ✅ DOM fallback (confirmed live, no usable API)                                                                                                                                |
+| Kimi           | www.kimi.com      | 262,144 (1<<18)   | ✅ implemented (confirmed live)                                                                                                                                                |
+| Qwen           | chat.qwen.ai      | 1,048,576 (1<<20) | ✅ implemented (confirmed live)                                                                                                                                                |
+| Tongyi Qianwen | www.qianwen.com   | 1,048,576 (1<<20) | ✅ implemented (confirmed live)                                                                                                                                                |
+| Doubao         | www.doubao.com    | 262,144 (1<<18)   | ✅ implemented (confirmed live)                                                                                                                                                |
 
 > All 7 platforms' DOM selectors + API host/path confirmed via live testing (2026-06). **001's acceptance milestone is gated on DeepSeek passing**; remaining 6 adapters have fields ready; deep runtime acceptance is in 004.
 
@@ -360,7 +365,7 @@ RoundRecord    = {
   n: number,                   // display sequence (1-based, reassigned after merge by order)
   promptTokens, answerTokens,
   total,                       // promptTokens + answerTokens
-  ts: number,                  // wall-clock epoch ms (currently unfilled, always 0; reserved for display/debug)
+  createdAt: number,           // wall-clock epoch ms when the round was created on the platform (optional; 6/7 adapters populate it, Gemini's DOM-only path omits it)
 }
 DialogueRecord = {
   platformId, dialogueId, contextLimit,
@@ -371,9 +376,9 @@ DialogueRecord = {
 }
 ```
 
-- **`messageId`** is the unique stable identity the platform assigns to this round (DeepSeek `message_id`, ChatGPT mapping node id, Doubao `index_in_conv`, etc.) — invariant across fetches — it is 003 union merge's dedup key, positional `n` is not a substitute.
+- **`messageId`** is the unique stable identity the platform assigns to this round (DeepSeek `message_id`, ChatGPT mapping node id, Doubao `db:u<index_in_conv>` keyed on the user message, etc.) — invariant across fetches — it is 003 union merge's dedup key, positional `n` is not a substitute.
 - **`order`** is the time-order key; semantics differ per platform but guaranteed monotonic (DeepSeek = raw message_id, ChatGPT/Kimi/Qwen = epoch ms, Gemini = positional index). `unionRounds` sorts ascending by `order` then reassigns the display `n`.
-- **`ts`** is standardized wall-clock time (epoch ms); currently no adapter populates it (always 0). Populating it would not increase Upstash storage cost — the field already exists in the schema.
+- **`createdAt`** is the wall-clock epoch ms when the round was created on the platform; 6 of 7 adapters populate it during parsing (Gemini's DOM-only path omits it). It adds no meaningful storage cost (one number per round) and is carried verbatim from `HistoryRound.createdAt`.
 - **`n`** is display-only; after `unionRounds` merge, assigned 1..k by `order`; not involved in merge logic.
 
 > 001 only maintains the **current active conversation**'s local record (load / create new when switching conversations). Multi-conversation local cache + LRU eviction goes to [003](./003-cross-device-sync.md). `DialogueRecord` structure is defined by 001; 003 adds cloud lifecycle (persistence / reconciliation / cache) on top; the structure is unchanged.
@@ -410,7 +415,7 @@ Main view and settings view toggle (⚙️ to enter settings):
 | `browser.sidePanel` / `browser.sidebarAction`            | Native side panel (WXT auto-adapts)                                                                                                                                                                                                                   |
 | `browser.runtime.sendMessage` / `onMessage`              | Sidepanel ↔ Background ↔ Content messages                                                                                                                                                                                                             |
 | `browser.storage.local`                                  | Settings + active conversation record                                                                                                                                                                                                                 |
-| `browser.action.enable` / `disable(tabId)`               | Gray out action on non-matching pages                                                                                                                                                                                                                 |
+| `browser.action.setIcon({ tabId, path })`                | Per-tab color/gray icon swapping — the visual dimension of the 3-D ACL (see AGENTS.md MV3 gotchas; `action.disable()` is intentionally unused because it does not reliably gray icons once a sidePanel is configured)                                 |
 | `browser.tabs.onActivated` / `onUpdated`                 | Sync action enable/disable                                                                                                                                                                                                                            |
 | `browser.webRequest.onCompleted` / `onErrorOccurred`     | Round trigger: SSE stream close = reply complete (`onErrorOccurred` = user stop / disconnect) → triggers `REFRESH_HISTORY` to pull history                                                                                                            |
 | `browser.webRequest.onBeforeRequest` (`["requestBody"]`) | Delete interception: read request body → `parseDelete` extracts dialogueId. Local delete goes to 001; cloud `DEL` goes to [003](./003-cross-device-sync.md). Prompt and dialogueId are derived separately by `fetchHistory` / URL; send body not read |

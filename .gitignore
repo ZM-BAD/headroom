@@ -38,6 +38,9 @@ Thumbs.db
 # Requirements — human discussion/drafts, not part of codebase
 requirements/
 
+# Docs — working design docs + plans, not part of codebase
+docs/
+
 # QA — local manual acceptance checklist, not version-controlled
 qa.md
 coverage/

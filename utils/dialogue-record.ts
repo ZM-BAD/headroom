@@ -46,13 +46,6 @@ export function emptyDialogue(
   };
 }
 
-/**
- * Upsert a round (keyed by its 1-based `n`) into a (possibly null) record,
- * recomputing totals. If a round with the same `n` already exists (the same
- * assistant message re-emitting as it streams in >1.5s-gap bursts), its token
- * counts are REPLACED — not appended — so one real round is always counted
- * exactly once. Pure — the caller persists via the Upstash client.
- */
 /** Cap on retained per-round history in the Upstash record — keeps the JSON
  * payload bounded over long conversations. totalTokens/roundCount stay accurate
  * (running sum + true count) even when older rounds are trimmed from the array.

@@ -30,7 +30,9 @@ prompts or AI responses. Neither `browser.storage.local` nor Upstash Redis
 ever contains your conversation content.
 
 This is a structural guarantee, not a policy: the `DialogueRecord` / `RoundRecord`
-data types have no fields for text, only `promptTokens` / `answerTokens` counters.
+data types have no fields for text — only numeric counters and platform-stable
+identifiers (`messageId`, `order`, `n`, `promptTokens`, `answerTokens`, `total`,
+`createdAt`).
 
 ### Credentials stay local
 
@@ -52,17 +54,17 @@ third-party analytics or tracking.
 
 The extension requests only the permissions it needs:
 
-| Permission         | Purpose                                               |
-| ------------------ | ----------------------------------------------------- |
-| `storage`          | Local settings + conversation cache                   |
-| `webRequest`       | Detect round completion + conversation deletion       |
-| `alarms`           | Periodic zombie conversation cleanup                  |
-| `sidePanel`        | Browser-native side panel UI                          |
-| `host_permissions` | Access conversation history on supported AI platforms |
+| Permission         | Purpose                                                                              |
+| ------------------ | ------------------------------------------------------------------------------------ |
+| `storage`          | Local settings + conversation cache                                                  |
+| `webRequest`       | Detect round completion + conversation deletion                                      |
+| `alarms`           | Periodic zombie conversation cleanup (60min schedule)                                |
+| `tabs`             | Tab-switch gauge projection + dialogue title query (no reading of non-platform URLs) |
+| `sidePanel`        | Browser-native side panel UI                                                         |
+| `host_permissions` | Access conversation history on supported AI platforms                                |
 
-Headroom does NOT request `cookies`, `tabs`, `unlimitedStorage`, or any
-permission that would allow it to read data beyond the supported AI chat
-platforms.
+Headroom does NOT request `cookies`, `unlimitedStorage`, or any permission that
+would allow it to read data beyond the supported AI chat platforms.
 
 ### Manifest V3
 

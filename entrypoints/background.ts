@@ -392,7 +392,7 @@ async function projectForTab(
 
 export default defineBackground(() => {
   const dbg = (...args: unknown[]) => {
-    if (import.meta.env.DEV) dbg(...args);
+    if (import.meta.env.DEV) console.log(...args);
   };
   void initSidePanel();
 
