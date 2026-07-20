@@ -81,7 +81,7 @@
     "message": "Введите целое число ≥ 1"
   },
   "roundsTitle": {
-    "message": "Раунды"
+    "message": "Расход токенов по раундам"
   },
   "roundHeaderN": {
     "message": "Раунд"

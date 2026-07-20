@@ -81,7 +81,7 @@
     "message": "Entrez un nombre entier ≥ 1"
   },
   "roundsTitle": {
-    "message": "Tours"
+    "message": "Tokens par tour"
   },
   "roundHeaderN": {
     "message": "Tour"

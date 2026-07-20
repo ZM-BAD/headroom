@@ -174,17 +174,21 @@
 
         <section class="hd-card hd-rounds">
           <div class="hd-rounds-head" data-i18n="roundsTitle">Rounds</div>
-          <div class="hd-rounds-header">
-            <span class="hd-round-n" data-i18n="roundHeaderN">Round</span>
-            <span class="hd-round-in" data-i18n="roundHeaderInput">Input</span>
-            <span class="hd-round-out" data-i18n="roundHeaderOutput"
-              >Output</span
-            >
-            <span class="hd-round-cum" data-i18n="roundHeaderCumulative"
-              >Total</span
-            >
-          </div>
-          <div class="hd-rounds-list" id="rounds-list"></div>
+          <table class="hd-rounds-table">
+            <thead>
+              <tr>
+                <th class="hd-round-n" data-i18n="roundHeaderN">Round</th>
+                <th class="hd-round-in" data-i18n="roundHeaderInput">Input</th>
+                <th class="hd-round-out" data-i18n="roundHeaderOutput">
+                  Output
+                </th>
+                <th class="hd-round-cum" data-i18n="roundHeaderCumulative">
+                  Total
+                </th>
+              </tr>
+            </thead>
+            <tbody id="rounds-list"></tbody>
+          </table>
         </section>
       </div>
 

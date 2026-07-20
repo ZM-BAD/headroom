@@ -81,7 +81,7 @@
     "message": "Ganzzahl ≥ 1 eingeben"
   },
   "roundsTitle": {
-    "message": "Runden"
+    "message": "Token-Nutzung pro Runde"
   },
   "roundHeaderN": {
     "message": "Runde"

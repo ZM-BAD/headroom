@@ -81,7 +81,7 @@
     "message": "1 以上の整数を入力してください"
   },
   "roundsTitle": {
-    "message": "ラウンド一覧"
+    "message": "ラウンド別トークン数"
   },
   "roundHeaderN": {
     "message": "ラウンド"

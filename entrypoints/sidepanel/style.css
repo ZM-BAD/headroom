@@ -559,42 +559,44 @@ body {
 .hd-rounds-head {
   font-size: 11px;
   color: var(--fg-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
 }
-/* Table header row — same column layout as data rows. */
-.hd-rounds-header {
-  display: grid;
-  grid-template-columns: 2.5rem 1fr 1fr 1fr;
-  gap: 6px;
+/* Rounds table — browser table-layout:auto handles column sizing organically:
+   the widest of header + data sets each column width, no wasted space. */
+.hd-rounds-table {
+  width: 100%;
+  table-layout: auto;
+  border-collapse: collapse;
+}
+.hd-rounds-table th {
   font-size: 10px;
   color: var(--fg-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  padding-bottom: 4px;
+  letter-spacing: 0.02em;
+  font-weight: 400;
+  text-align: left;
+  padding: 0 0 4px;
   border-bottom: 1px solid var(--border);
 }
-.hd-rounds-list {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+/* Override the generic th left-align for the right-aligned Total column. */
+th.hd-round-cum {
+  text-align: right;
 }
-.hd-round-row {
-  display: grid;
-  grid-template-columns: 2.5rem 1fr 1fr 1fr;
-  gap: 6px;
+.hd-rounds-table td {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
-  align-items: baseline;
+  padding: 1.5px 0;
+  vertical-align: baseline;
 }
 .hd-round-n {
   color: var(--fg-muted);
 }
 .hd-round-in {
   color: var(--accent);
+  text-align: left;
 }
 .hd-round-out {
   color: var(--fg);
+  text-align: left;
 }
 .hd-round-cum {
   color: var(--fg);
@@ -805,29 +807,26 @@ body {
 }
 
 .hd-coeff-fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
   padding: 8px 0 8px 14px;
 }
 
 .hd-coeff-field {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .hd-coeff-field label {
-  width: 54px;
-  flex-shrink: 0;
+  min-width: 48px;
   font-size: 11px;
   color: var(--fg);
-  text-align: right;
 }
 
 .hd-coeff-field input[type="number"] {
-  width: 52px;
-  flex-shrink: 0;
+  width: 56px;
   padding: 2px 4px;
   font-size: 12px;
   text-align: center;
@@ -843,9 +842,8 @@ body {
 }
 
 .hd-coeff-unit {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--fg-muted);
-  flex-shrink: 0;
   white-space: nowrap;
 }
 
@@ -861,9 +859,8 @@ body {
 }
 
 .hd-coeff-row-end {
-  grid-column: 1 / -1;
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   padding-top: 4px;
 }
 

@@ -81,7 +81,7 @@
     "message": "Digite um número inteiro ≥ 1"
   },
   "roundsTitle": {
-    "message": "Rodadas"
+    "message": "Tokens por rodada"
   },
   "roundHeaderN": {
     "message": "Rodada"

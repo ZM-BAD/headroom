@@ -81,7 +81,7 @@
     "message": "1 이상의 정수를 입력하세요"
   },
   "roundsTitle": {
-    "message": "라운드 목록"
+    "message": "라운드별 토큰 사용량"
   },
   "roundHeaderN": {
     "message": "라운드"

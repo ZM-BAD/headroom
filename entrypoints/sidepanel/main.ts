@@ -247,26 +247,25 @@ function render(state: UsageState, th: Thresholds): void {
 
 /** Render the per-round input/output breakdown (↑prompt / ↓answer tokens + cumulative). */
 function renderRounds(rounds: UsageState["rounds"]): void {
-  const list = els.roundsList;
-  list.replaceChildren();
+  const tbody = els.roundsList;
+  tbody.replaceChildren();
   for (const r of rounds) {
-    const row = document.createElement("div");
-    row.className = "hd-round-row";
-    const n = document.createElement("span");
+    const tr = document.createElement("tr");
+    const n = document.createElement("td");
     n.className = "hd-round-n";
     n.textContent = `#${r.n}`;
-    const pin = document.createElement("span");
+    const pin = document.createElement("td");
     pin.className = "hd-round-in";
     pin.textContent = `↑${r.promptTokens.toLocaleString()}`;
-    const pout = document.createElement("span");
+    const pout = document.createElement("td");
     pout.className = "hd-round-out";
     pout.textContent = `↓${r.answerTokens.toLocaleString()}`;
-    const cum = document.createElement("span");
+    const cum = document.createElement("td");
     cum.className = "hd-round-cum";
     // Cumulative = prompt + answer, computed locally — no extra Upstash field.
     cum.textContent = (r.promptTokens + r.answerTokens).toLocaleString();
-    row.append(n, pin, pout, cum);
-    list.append(row);
+    tr.append(n, pin, pout, cum);
+    tbody.append(tr);
   }
 }
 
@@ -292,6 +291,9 @@ function adoptSettingsToUi(settings: Settings): void {
   renderTokenToggle();
   buildContextLimitRows();
   coeffInputs = buildCoefficientRows();
+  buildPlatformReference();
+  buildEstimationGuide();
+  buildAbout();
   applyThresholdsToSliders(currentThresholds);
   applyI18n();
   render(currentState, currentThresholds);
@@ -672,25 +674,25 @@ const PLATFORM_REF: PlatformInfo[] = [
   },
   {
     platformId: "kimi",
-    model: "Kimi K2.6",
+    model: "Kimi K2.6/K3",
     tokenizer: "tiktoken-format BPE (open-source)",
     tokenizerNote: "platformRefNoteKimi",
   },
   {
     platformId: "qwen",
-    model: "Qwen 3.7 (preview)",
+    model: "Qwen 3.7",
     tokenizer: "BBPE (Qwen2Tokenizer lineage)",
     tokenizerNote: "platformRefNoteQwen",
   },
   {
     platformId: "qianwen",
-    model: "Qwen 3.7 (通义千问)",
+    model: "Qwen 3.7",
     tokenizer: "BBPE (Qwen2Tokenizer lineage)",
     tokenizerNote: "platformRefNoteQianwen",
   },
   {
     platformId: "doubao",
-    model: "Doubao (豆包 / ByteDance)",
+    model: "Doubao 2.1",
     tokenizer: "BPE (closed; Seed-OSS proxy)",
     tokenizerNote: "platformRefNoteDoubao",
   },
@@ -1098,12 +1100,10 @@ void (async () => {
   els.langSelect.value = currentLanguage;
   els.upstashUrl.value = currentUpstash.url;
   els.upstashToken.value = currentUpstash.token;
-  buildContextLimitRows();
-  coeffInputs = buildCoefficientRows();
-  buildPlatformReference();
-  buildEstimationGuide();
-  buildAbout();
   // Preload tables for all supported locales so manual override is instant.
+  // MUST run before build*() calls — they use t() which needs localeTables
+  // populated, otherwise t() falls through to browser.i18n.getMessage which
+  // returns the browser UI locale's text (≠ the user's selected language).
   await Promise.all(
     (
       [
@@ -1120,6 +1120,11 @@ void (async () => {
       ] as const
     ).map((l) => loadLocaleTable(l)),
   );
+  buildContextLimitRows();
+  coeffInputs = buildCoefficientRows();
+  buildPlatformReference();
+  buildEstimationGuide();
+  buildAbout();
   applyI18n();
   applyThresholdsToSliders(currentThresholds);
   render(currentState, currentThresholds);

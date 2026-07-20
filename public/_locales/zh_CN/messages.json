@@ -81,19 +81,19 @@
     "message": "请输入 ≥1 的整数"
   },
   "roundsTitle": {
-    "message": "对话轮次"
+    "message": "每轮 token 用量"
   },
   "roundHeaderN": {
     "message": "轮次"
   },
   "roundHeaderInput": {
-    "message": "输入 token"
+    "message": "输入"
   },
   "roundHeaderOutput": {
-    "message": "输出 token"
+    "message": "输出"
   },
   "roundHeaderCumulative": {
-    "message": "该轮累计"
+    "message": "累计"
   },
   "languageLabel": {
     "message": "语言"

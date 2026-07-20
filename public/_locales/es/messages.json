@@ -81,7 +81,7 @@
     "message": "Introduce un número entero ≥ 1"
   },
   "roundsTitle": {
-    "message": "Rondas"
+    "message": "Tokens por ronda"
   },
   "roundHeaderN": {
     "message": "Ronda"

@@ -81,7 +81,7 @@
     "message": "Enter a whole number ≥ 1"
   },
   "roundsTitle": {
-    "message": "Rounds"
+    "message": "Token usage by round"
   },
   "roundHeaderN": {
     "message": "Round"
