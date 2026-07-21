@@ -90,15 +90,17 @@ not transmitted anywhere else.
 
 ## Permissions, and why each is needed
 
-| Permission                             | Why                                                                                                     |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `storage`                              | Persist settings + per-conversation token records + pending round locally                               |
-| `webRequest`                           | Observe outgoing chat-send requests to extract prompt + conversation id (the core token-counting input) |
-| `host_permissions` (7 AI-chat domains) | The send/delete APIs live on these hosts; the content script runs on these pages                        |
-| `sidePanel` / `sidebarAction`          | Open the gauge in the browser's native side panel                                                       |
-| `action`                               | Toggle the side panel on toolbar click; grey-out on unsupported pages                                   |
+| Permission                               | Why                                                                                                                                                                                                                                               |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `storage`                                | Persist settings + per-conversation token records locally so the gauge re-opens instantly and works offline                                                                                                                                       |
+| `webRequest`                             | Observe outgoing chat-send requests (to extract prompt text + conversation id for token counting) and conversation-delete requests (to remove the corresponding token records). No request body content is stored or transmitted to third parties |
+| `host_permissions` (7 AI-chat platforms) | The send/delete APIs live on these hosts; the content script runs on these pages to read reply text from the DOM                                                                                                                                  |
+| `sidePanel` / `sidebarAction`            | Display the context-window gauge in the browser's native side panel so the user can see their usage at a glance. Token counting runs in the background independently — the side panel is the visual readout, not the counting mechanism           |
+| `action`                                 | Open the side panel on toolbar click; switch the toolbar icon between active and grayed-out states per tab                                                                                                                                        |
+| `tabs`                                   | Detect which platform the user is on (by tab URL) so the extension can switch the icon state, enable/disable the side panel per tab, and route monitoring to the correct platform adapter                                                         |
+| `alarms`                                 | Schedule a periodic background cleanup that removes stale conversation records no longer present on the AI platform (runs every 60 minutes, well within platform rate limits)                                                                     |
 
-No `tabs`, no `cookies`, no `<all_urls>`, no `history`, no `nativeMessaging`.
+No `cookies`, no `<all_urls>`, no `history`, no `nativeMessaging`.
 
 ## Conversation deletion sync
 
