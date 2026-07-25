@@ -4,65 +4,47 @@
 
 **English** | [简体中文](./README_zh.md)
 
-**Headroom** is a browser extension that shows you how much context window you have left in AI chat conversations — before your AI silently starts losing important details.
+<p align="center">
+  <a href="https://chromewebstore.google.com/detail/headroom/ededcdndmfhljdjppngbhgmaoogcihjc"><img src="https://raw.githubusercontent.com/alrra/browser-logos/main/src/chrome/chrome.svg" width="48" alt="Chrome"></a>
+  <a href="https://chromewebstore.google.com/detail/headroom/ededcdndmfhljdjppngbhgmaoogcihjc"><img src="https://img.shields.io/chrome-web-store/v/ededcdndmfhljdjppngbhgmaoogcihjc?label=%20&style=flat-square" alt="Chrome Web Store"></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="https://microsoftedge.microsoft.com/addons/detail/headroom/hlnpmnlemmiohohhobkbdljomdmhhcnl"><img src="https://raw.githubusercontent.com/alrra/browser-logos/main/src/edge/edge.svg" width="48" alt="Edge"></a>
+  <a href="https://microsoftedge.microsoft.com/addons/detail/headroom/hlnpmnlemmiohohhobkbdljomdmhhcnl"><img src="https://img.shields.io/badge/Edge%20Add--ons-Install-0078D7?style=flat-square" alt="Edge Add-ons"></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="https://addons.mozilla.org/firefox/addon/headroom/"><img src="https://raw.githubusercontent.com/alrra/browser-logos/main/src/firefox/firefox.svg" width="48" alt="Firefox"></a>
+  <a href="https://addons.mozilla.org/firefox/addon/headroom/"><img src="https://img.shields.io/amo/v/headroom?label=%20&style=flat-square" alt="Firefox Add-ons"></a>
+</p>
 
-## The Problem
-
-When you're deep in a long conversation with an AI (DeepSeek, Gemini, ChatGPT...), you've probably experienced this:
-
-- The AI forgets a constraint you mentioned 10 rounds ago
-- It starts contradicting earlier parts of the conversation
-- Output quality degrades silently, and you don't know why
-
-This happens because **context windows have limits**, and when they fill up, the AI quietly drops earlier information. None of the major AI chat platforms show you how much context room you have left.
-
-## The Solution
-
-Headroom sits in your browser's native side panel and gives you a real-time, visual indicator of your context window usage:
-
-- 🟢 **Green** — Plenty of room, keep chatting
-- 🟠 **Yellow** — Starting to fill up, be mindful
-- 🔴 **Red** — Almost full, consider starting a new conversation
-
-Thresholds are customizable, and the extension auto-detects which AI platform you're on to match the correct context window limit (you can override it per platform).
+**Headroom** is a browser extension that gives you a real-time, visual gauge of your context window usage in AI chat conversations — so you know before the AI starts forgetting.
 
 ![Headroom](show.webp)
 
-### Highlights
+## Features
 
 - **Zero setup** — No account, no API key, no configuration. Install and it just works.
-- **7 platforms** — DeepSeek, ChatGPT, Gemini, Kimi, Qwen, 通义千问, and 豆包 (Doubao).
-- **Real-time gauge** — Watch your context window fill up as you chat. Color-coded green / yellow / red thresholds show you exactly when to start a new conversation.
-- **Per-round breakdown** — See estimated token counts for every Q&A pair, including input and output separately.
+- **Real-time gauge** — Watch your context window fill up as you chat. 🟢 Green (plenty of room) · 🟠 Yellow (filling up) · 🔴 Red (time for a new conversation).
+- **Per-round breakdown** — See estimated token counts for every Q&A pair, input and output separately.
 - **Privacy by design** — Conversation text is read transiently to count tokens, then discarded. Only the token counts are stored, locally and optionally in your own cloud storage. No Headroom server exists.
 
-## Who Is This For
+**Supported Platforms & Default Context:** **DeepSeek (1M), ChatGPT (128K), Gemini (1M), Kimi (256K), Qwen (1M), 通义千问 (1M), 豆包/Doubao (256K).**
 
-**Professionals who use AI chat as part of their daily workflow** — developers, researchers, writers, analysts.
+Context limits are auto-detected per platform and user-overridable. All seven platforms' request parsing and DOM selectors were captured live (2026-06). Built with a platform-agnostic adapter architecture — adding a new AI chat platform is a matter of writing one adapter.
 
-If you spend significant time in AI chat interfaces for architecture discussions, code reviews, research deep-dives, or technical writing, Headroom helps you maintain conversation quality by knowing exactly when context is running out.
+## Why Headroom
 
-This is **not** a token cost calculator. AI models are getting cheaper by the month — cost is not the concern. The concern is **context quality**: making sure your AI hasn't silently forgotten something critical.
+When you're deep in a long conversation with an AI, you've probably experienced this: constraints you set 10 rounds ago get forgotten, earlier decisions get contradicted, and output quality degrades silently. **Context windows have limits** — when they fill up, the AI quietly drops earlier information. None of the major AI chat platforms show you how much room you have left.
 
-## How It Works
+**Who is this for?** Professionals who use AI chat as part of their daily workflow — developers, researchers, writers, analysts. If your conversations regularly exceed 20+ rounds for architecture discussions, code reviews, research deep-dives, or technical writing, Headroom helps you maintain conversation quality.
 
-1. **Install the extension** in Chrome, Edge, or Firefox
-2. **Open the side panel** on any supported AI chat platform — Headroom reads the conversation history and estimates your token usage
-3. **Watch the gauge** — as you chat, the indicator shows you how much context room remains
+> **Not a token cost calculator.** AI models are getting cheaper by the month — the concern is **context quality**: making sure your AI hasn't silently forgotten something critical.
 
-The extension works entirely offline. It reads conversation text from the page to count tokens, then keeps only the counts.
+## Requirements
 
-## Browser Support
+> Install from the [store badges at the top ↑](#headroom) — each badge links directly to that browser's extension store.
 
-Headroom is **Manifest V3 only** (MV2 is not supported) and requires a recent browser version:
+Headroom is **Manifest V3 only** (MV2 is not supported) and requires a recent browser version: **Google Chrome ≥ 149, Microsoft Edge ≥ 149, Firefox ≥ 151.**
 
-| Browser        | Minimum Version |
-| -------------- | --------------- |
-| Google Chrome  | ≥ 149           |
-| Microsoft Edge | ≥ 149           |
-| Firefox        | ≥ 151           |
-
-### Known Platform Differences
+**Known Platform Differences**
 
 | Behavior                                      | Chrome | Edge                     | Firefox                            |
 | --------------------------------------------- | ------ | ------------------------ | ---------------------------------- |
@@ -73,20 +55,6 @@ Headroom is **Manifest V3 only** (MV2 is not supported) and requires a recent br
 **Edge limitation:** `sidePanel.setOptions({ enabled: true })` does not auto-restore the panel after switching back to an AI platform tab. Microsoft confirmed this is "by design" ([issue #222](https://github.com/microsoft/MicrosoftEdge-Extensions/issues/222), open since Nov 2024, no fix). Workaround: click the toolbar icon to reopen.
 
 **Firefox limitation:** `sidebarAction.close()` requires a user gesture and cannot be called on tab switch (Firefox platform limit). The sidebar must be manually closed by the user. When switching to a non-AI page, the sidebar content switches to a hint page via `sidebarAction.setPanel()`.
-
-## Supported Platforms
-
-| Platform      | Context (default) |
-| ------------- | ----------------- |
-| DeepSeek      | 1M                |
-| ChatGPT       | 128K              |
-| Gemini        | 1M                |
-| Kimi          | 256K              |
-| Qwen          | 1M                |
-| 通义千问      | 1M                |
-| 豆包 (Doubao) | 256K              |
-
-Send-request parsing, delete-request parsing, and DOM selectors for all seven platforms were captured live (2026-06). Built with a platform-agnostic adapter architecture — adding a new AI chat platform is a matter of writing one adapter.
 
 ## Optional: Upstash Sync
 
@@ -106,7 +74,7 @@ Upstash's free tier ([pricing](https://upstash.com/pricing/redis/)) includes 256
 - **Heuristic token estimation** — 6-way per-script coefficient engine (CJK, Kana, Hangul, Cyrillic, Arabic, Latin); character-based for CJK/kana/Hangul, word-based for the rest. No heavy tokenizer bundled (keeps the extension light and model-agnostic)
 - **Upstash Redis KV** — Optional user-owned cloud storage (BYOK model)
 
-## Contributing
+## Contributing & Development
 
 We welcome bug reports, feature requests, and code contributions!
 
@@ -114,7 +82,7 @@ We welcome bug reports, feature requests, and code contributions!
 - **Want to contribute?** → Read our [Contributing Guide](./CONTRIBUTING.md)
 - **Testing help needed?** → See [open issues](https://github.com/ZM-BAD/headroom/issues) labeled `needs-test`
 
-## Development
+**Development**
 
 ```bash
 npm install

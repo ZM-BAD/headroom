@@ -187,12 +187,13 @@ Design rules for promo tiles (Chrome):
 
 ## Chrome Web Store
 
+Public listing: https://chromewebstore.google.com/detail/headroom/ededcdndmfhljdjppngbhgmaoogcihjc
 Dashboard: https://chrome.google.com/webstore/devconsole/
 
 - [x] One-time **$5 developer fee** (credit card, lifetime).
 - [x] **Privacy Policy URL** field — Account → Privacy Policy. Point at
       `PRIVACY.md` GitHub URL.
-- [ ] **Permissions justification** — paste these into the Chrome dashboard
+- [x] **Permissions justification** — pasted into the Chrome dashboard
       "Permission justification" field for each entry:
 
   **`webRequest`**:
@@ -209,7 +210,7 @@ Dashboard: https://chrome.google.com/webstore/devconsole/
   > conversation text on this domain solely to estimate token counts; it retains
   > only the counts, never the text.
 
-- [ ] **Data usage declaration** — Chrome dashboard "Privacy" tab. Answer "Yes,
+- [x] **Data usage declaration** — Chrome dashboard "Privacy" tab ("Yes,
       I collect user data" and fill each question with the text below:
 
   **Single purpose**:
@@ -239,50 +240,35 @@ Dashboard: https://chrome.google.com/webstore/devconsole/
 
   **Remote code**: No — all code is packaged in the extension.
 
-- [ ] **Packaged zip** — `npm run zip` → `.output/chrome-mv3/chrome-mv3.zip`.
-      Upload that.
-- [ ] **Distribution visibility** — start "Unlisted" for self-testing, then flip
-      to "Public".
+- [x] **Packaged zip** — `npm run zip` → `.output/chrome-mv3/chrome-mv3.zip`.
+      Uploaded.
+- [x] **Distribution visibility** — "Public".
 
 ## Microsoft Edge Add-ons
 
+Public listing: https://microsoftedge.microsoft.com/addons/detail/headroom/hlnpmnlemmiohohhobkbdljomdmhhcnl
 Partner Center: https://partner.microsoft.com/dashboard/microsoftedge
 
 - [x] **Microsoft Partner Center account** (free, but requires a personal MSA /
       org Azure AD).
-- [ ] **Privacy Policy URL** — same `PRIVACY.md` URL.
-- [ ] **Permissions justification** — Edge inherits Chrome's strictness; paste
-      the same justifications.
-- [ ] **Packaged zip** — the Chrome MV3 build (`npm run zip`) works on Edge
-      (same Chromium MV3). No separate build needed.
-- [ ] Edge review is typically faster than Chrome but can still take days.
+- [x] **Privacy Policy URL** — `PRIVACY.md` GitHub URL provided.
+- [x] **Permissions justification** — same justifications as Chrome.
+- [x] **Packaged zip** — same Chrome MV3 build. Uploaded.
+- [x] Review passed.
 
 ## Firefox AMO (addons.mozilla.org)
 
+Public listing: https://addons.mozilla.org/firefox/addon/headroom/
 Submit: https://addons.mozilla.org/developers/
 
 - [x] **Mozilla account** (free).
-- [ ] **512×512 marketing icon** — uploaded separately in the AMO dashboard
-      (not via manifest `icons`). PNG format; SVG not accepted.
+- [x] **512×512 marketing icon** — uploaded in AMO dashboard.
 - [x] **Permanent add-on id** — `headroom@zmbad.me` in `wxt.config.ts`
-- [ ] **Privacy Policy** — since the June 2025 policy update, AMO no longer
-      _requires_ hosting the policy on AMO, but **a link is still strongly
-      recommended** and reviewers expect one for `webRequest` + host-permission
-      extensions. Provide the `PRIVACY.md` URL.
-- [ ] **Firefox-specific consent** — Firefox MV3 requires a data-collection
-      consent declaration (`browser_specific_settings.gecko.data_collection`
-      or the equivalent AMO-submission checkbox). Headroom reads website
-      content (conversation text) to count tokens and retains only the counts
-      → declare it and point at the privacy policy. See `wxt.config.ts` (the
-      `websiteContent` consent is already drafted).
-- [ ] **Source code submission** — AMO review for extensions requesting broad
-      permissions often asks for the source. Provide the GitHub repo URL; the
-      zip you upload must match a public tag.
-- [ ] **Packaged zip** — `npm run zip:firefox` → `.output/firefox-mv3/...zip`.
-      Firefox MV3 has small differences (uses `sidebarAction`, no `sidePanel`);
-      the build already handles them.
-- [ ] **Self-hosted vs AMO-listed** — AMO-listed gets auto-update signing for
-      free; self-hosted needs a signed XPI. Start AMO-listed.
+- [x] **Privacy Policy** — `PRIVACY.md` URL provided.
+- [x] **Firefox-specific consent** — website content declaration submitted.
+- [x] **Source code submission** — GitHub repo URL provided.
+- [x] **Packaged zip** — `npm run zip:firefox` uploaded.
+- [x] **AMO-listed** — auto-update signing.
 
 ## Submission order (recommended)
 
