@@ -48,16 +48,13 @@ function joinFragments(
 /**
  * Parse a `GET /api/v0/chat/history_messages?chat_session_id=<id>` response into
  * ASCENDING rounds (CONFIRMED shape, 2026-06 Playwright). Each ASSISTANT message
- * with status "FINISHED" is paired with its parent USER (parent_id) → one round.
+ * is paired with its parent USER (parent_id) → one round. Status is NOT filtered —
+ * stopped/incomplete generations still count (the user's prompt consumed tokens,
+ * and the dedup below ensures a retry replaces the earlier attempt).
  * Rounds stay in message_id order (oldest first).
  *
  * Dedup: when multiple ASSISTANT messages share the same parent USER (regenerate),
  * only the one with the highest message_id is kept — that's the latest revision.
- *
- * Incomplete/stopped messages (status != "FINISHED") are skipped entirely — a
- * partial answer after stop isn't a real round; it will be counted when the user
- * continues and the status flips to FINISHED (same message_id → onCompleted →
- * REFRESH_HISTORY → token updated).
  *
  * Returns TEXT only — the platform's own `accumulated_token_usage` is dropped
  * (spec: tokens are always estimated, the platform's count is 004 calibration

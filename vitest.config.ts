@@ -19,5 +19,13 @@ export default defineConfig({
     // Run in node by default — none of the tested modules touch jsdom. Keeping
     // the default avoids pulling in the heavier jsdom environment for nothing.
     environment: "node",
+
+    // Coverage: v8 provider, text summary for the terminal, lcov for Codecov.
+    coverage: {
+      provider: "v8",
+      include: ["utils/**/*.ts", "adapters/**/*.ts"],
+      reporter: ["text", "lcov", "json-summary"],
+      reportsDirectory: "./coverage",
+    },
   },
 });

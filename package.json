@@ -23,6 +23,7 @@
     "lint:fix": "eslint . --max-warnings 0 --fix",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "check:i18n": "node scripts/check-i18n-keys.mjs",
     "check:permissions": "node scripts/check-host-permissions.mjs",

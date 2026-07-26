@@ -40,8 +40,31 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
-      - name: Test
-        run: npm run test:run
+      - name: Test with coverage
+        run: npm run test:coverage
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          echo '## 📊 Test Coverage' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          node --input-type=module -e "
+            import { readFileSync } from 'node:fs';
+            const r = JSON.parse(readFileSync('./coverage/coverage-summary.json', 'utf8'));
+            const t = r.total;
+            console.log('Statements : ' + t.statements.pct.toFixed(1) + '% (' + t.statements.covered + '/' + t.statements.total + ')');
+            console.log('Branches   : ' + t.branches.pct.toFixed(1) + '% (' + t.branches.covered + '/' + t.branches.total + ')');
+            console.log('Functions  : ' + t.functions.pct.toFixed(1) + '% (' + t.functions.covered + '/' + t.functions.total + ')');
+            console.log('Lines      : ' + t.lines.pct.toFixed(1) + '% (' + t.lines.covered + '/' + t.lines.total + ')');
+          " >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage/lcov.info
+          flags: unittests
+          fail_ci_if_error: false
 
       - name: Build (Chrome)
         run: npm run build
