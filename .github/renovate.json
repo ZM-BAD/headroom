@@ -2,7 +2,7 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
   "timezone": "Asia/Shanghai",
-  "schedule": ["before 6am on Monday"],
+  "schedule": ["before 6am on Tuesday"],
 
   "dependencyDashboard": true,
   "dependencyDashboardApproval": false,
@@ -17,9 +17,29 @@
 
   "packageRules": [
     {
-      "description": "All npm devDependencies in one PR per batch",
-      "matchManagers": ["npm"],
-      "groupName": "npm devDependencies"
+      "description": "Linting & formatting — ESLint + Prettier",
+      "matchPackageNames": [
+        "eslint",
+        "@eslint/js",
+        "typescript-eslint",
+        "prettier"
+      ],
+      "groupName": "Linting & Formatting"
+    },
+    {
+      "description": "Build, test & tooling — everything else",
+      "matchPackageNames": [
+        "wxt",
+        "typescript",
+        "vitest",
+        "@vitest/coverage-v8",
+        "@commitlint/cli",
+        "@commitlint/config-conventional",
+        "husky",
+        "lint-staged",
+        "sharp"
+      ],
+      "groupName": "Build & Tooling"
     },
     {
       "description": "DevDeps minor/patch: short release-age window",
@@ -38,6 +58,12 @@
       "matchManagers": ["github-actions"],
       "groupName": "GitHub Actions",
       "pinDigests": true
+    },
+    {
+      "description": "Node.js LTS only in .nvmrc (180-day age ≈ LTS window)",
+      "matchManagers": ["nvm"],
+      "groupName": "Node.js",
+      "minimumReleaseAge": "180 days"
     }
   ],
 
