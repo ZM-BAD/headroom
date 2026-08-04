@@ -124,7 +124,7 @@ describe("dialogue wrappers", () => {
     });
     const [cmd, , payload] = bodyAt(mock);
     expect(cmd).toBe("SET");
-    expect(JSON.parse(payload).platformId).toBe("p");
+    expect(JSON.parse(payload!).platformId).toBe("p");
   });
 
   it("delDialogue issues DEL", async () => {

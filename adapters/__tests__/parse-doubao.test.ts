@@ -220,7 +220,7 @@ describe("parseDoubaoHistory", () => {
         create_time: "100",
       },
     ];
-    const [round] = parseDoubaoHistory(messages);
+    const round = parseDoubaoHistory(messages)[0]!;
     expect(round.answerText).toBe("part 1\npart 2");
   });
 
@@ -298,12 +298,12 @@ describe("parseDoubaoHistory — user-anchored round identity", () => {
     const settled = parseDoubaoHistory([BOT, USER]); // the +948ms state (NEW→OLD)
     expect(raceState).toHaveLength(1);
     expect(settled).toHaveLength(1);
-    expect(raceState[0].answerText).toBe("");
-    expect(settled[0].answerText).not.toBe("");
+    expect(raceState[0]!.answerText).toBe("");
+    expect(settled[0]!.answerText).not.toBe("");
     // Same real-world round ⇒ same id — the user's index_in_conv, never
     // the bot's id and never an array position.
-    expect(raceState[0].messageId).toBe("db:u1");
-    expect(settled[0].messageId).toBe("db:u1");
+    expect(raceState[0]!.messageId).toBe("db:u1");
+    expect(settled[0]!.messageId).toBe("db:u1");
   });
 
   it("union-merge collapses race-state and settled-state into ONE round (no zombie)", () => {
@@ -324,7 +324,7 @@ describe("parseDoubaoHistory — user-anchored round identity", () => {
     const merged = unionRounds(cloud, history);
     expect(merged).toHaveLength(1);
     // "history WINS": the real output overwrites the raced 0.
-    expect(merged[0].answerTokens).toBe(100);
+    expect(merged[0]!.answerTokens).toBe(100);
     expect(merged.reduce((s, r) => s + r.promptTokens, 0)).toBe(10);
   });
 });

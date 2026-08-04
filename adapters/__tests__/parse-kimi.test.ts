@@ -62,7 +62,7 @@ describe("parseKimiHistory", () => {
         },
       ],
     };
-    const [round] = parseKimiHistory(resp);
+    const round = parseKimiHistory(resp)[0]!;
     expect(round.promptText).toBe("the prompt");
     expect(round.answerText).toBe("the answer");
   });
@@ -87,7 +87,7 @@ describe("parseKimiHistory", () => {
         },
       ],
     };
-    const [round] = parseKimiHistory(resp);
+    const round = parseKimiHistory(resp)[0]!;
     expect(round.answerText).toBe("part 1\npart 2");
   });
 

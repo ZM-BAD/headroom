@@ -82,7 +82,7 @@ describe("upsertRound — first round", () => {
     expect(rec.roundCount).toBe(2);
     expect(rec.totalTokens).toBe(450); // 150 + 300
     expect(rec.rounds).toHaveLength(2);
-    expect(rec.rounds[1].n).toBe(2);
+    expect(rec.rounds[1]!.n).toBe(2);
   });
 });
 
@@ -370,7 +370,7 @@ describe("projectUsage — gauge projection from a record", () => {
       const history = [rr(1, 50, 50)]; // total 100 — re-estimated, more accurate
       const out = unionRounds(cloud, history);
       expect(out).toHaveLength(1);
-      expect(out[0].total).toBe(100); // history won, not 20
+      expect(out[0]!.total).toBe(100); // history won, not 20
     });
   });
 
@@ -380,7 +380,7 @@ describe("projectUsage — gauge projection from a record", () => {
       const history = [rr(1, 20, 20), rr(2, 30, 30), rr(3, 40, 40)];
       const out = unionRounds(cloud, history);
       expect(out.map((r) => r.n)).toEqual([1, 2, 3]);
-      expect(out[0].total).toBe(40); // history won on n=1 (20+20, not cloud's 10+10)
+      expect(out[0]!.total).toBe(40); // history won on n=1 (20+20, not cloud's 10+10)
     });
     it("cloud ⊃ history (platform paginated, truncated old rounds) → no loss", () => {
       // Cloud has rounds 1-5 (old, persisted from a prior open). Platform's
@@ -390,8 +390,8 @@ describe("projectUsage — gauge projection from a record", () => {
       const history = [rr(3, 35, 35), rr(4, 40, 40), rr(5, 50, 50)];
       const out = unionRounds(cloud, history);
       expect(out.map((r) => r.n)).toEqual([1, 2, 3, 4, 5]);
-      expect(out[2].total).toBe(70); // history won on n=3 (35+35, not 30+30)
-      expect(out[0].total).toBe(20); // cloud-only round 1 survived
+      expect(out[2]!.total).toBe(70); // history won on n=3 (35+35, not 30+30)
+      expect(out[0]!.total).toBe(20); // cloud-only round 1 survived
     });
   });
 
@@ -422,13 +422,15 @@ describe("projectUsage — gauge projection from a record", () => {
       }
       const out = unionRounds(cloud, []);
       expect(out).toHaveLength(MAX_RETAINED_ROUNDS);
-      expect(out[0].messageId).toBe("m6"); // first 5 dropped
+      expect(out[0]!.messageId).toBe("m6"); // first 5 dropped
       // n is assigned to the FULL set before slicing, so the retained tail keeps
       // its true position (6..MAX+5) — this is what lets roundCount (= max n)
       // survive trimming.
-      expect(out[0].n).toBe(6);
-      expect(out[out.length - 1].messageId).toBe(`m${MAX_RETAINED_ROUNDS + 5}`);
-      expect(out[out.length - 1].n).toBe(MAX_RETAINED_ROUNDS + 5);
+      expect(out[0]!.n).toBe(6);
+      expect(out[out.length - 1]!.messageId).toBe(
+        `m${MAX_RETAINED_ROUNDS + 5}`,
+      );
+      expect(out[out.length - 1]!.n).toBe(MAX_RETAINED_ROUNDS + 5);
     });
   });
 

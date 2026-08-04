@@ -63,7 +63,7 @@ export const chatgptAdapter: PlatformAdapter = {
       const m = new URL(url).pathname.match(
         /\/backend-api\/conversation\/([^/?#]+)/,
       );
-      return m ? m[1] : null;
+      return m ? (m[1] ?? null) : null;
     } catch {
       return null;
     }

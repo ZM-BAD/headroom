@@ -216,7 +216,7 @@ export default defineContentScript({
             if (!promptText) {
               // Fallback: walk backwards from the answer element to find
               // the preceding user message.
-              let walker: Element | null = lastAnswer;
+              let walker: Element | null | undefined = lastAnswer;
               for (let i = 0; i < 20 && walker; i++) {
                 const sib: Element | null = walker.previousElementSibling;
                 if (sib) {

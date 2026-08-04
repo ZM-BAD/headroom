@@ -24,5 +24,5 @@ export const SETTLE_RETRY_DELAYS_MS = [500, 1000, 2000] as const;
  */
 export function historySettled(rounds: readonly HistoryRound[]): boolean {
   if (rounds.length === 0) return true;
-  return rounds[rounds.length - 1].answerText !== "";
+  return rounds[rounds.length - 1]!.answerText !== "";
 }

@@ -66,7 +66,7 @@ describe("parseQwenHistory", () => {
         },
       },
     };
-    const [round] = parseQwenHistory(resp);
+    const round = parseQwenHistory(resp)[0]!;
     expect(round.answerText).toBe("real part 1\nreal part 2");
   });
 

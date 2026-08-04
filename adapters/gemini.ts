@@ -54,11 +54,11 @@ export const geminiAdapter: PlatformAdapter = {
   parseDelete(rawBody) {
     // body is form-encoded: f.req=<urlencoded JSON>&at=... — find f.req, peel
     // off the leading "f.req=" and URL-decode the value.
-    const match = rawBody.match(/(?:^|&)f\.req=([^&]+)/);
-    if (!match) return null;
+    const req = rawBody.match(/(?:^|&)f\.req=([^&]+)/)?.[1];
+    if (!req) return null;
     let decoded: string;
     try {
-      decoded = decodeURIComponent(match[1]);
+      decoded = decodeURIComponent(req);
     } catch {
       return null;
     }
@@ -149,8 +149,8 @@ export const geminiAdapter: PlatformAdapter = {
         document.querySelectorAll<HTMLAnchorElement>('a[href^="/app/"]');
       const ids: string[] = [];
       for (const a of links) {
-        const m = a.getAttribute("href")?.match(/^\/app\/([a-f0-9]+)$/);
-        if (m) ids.push(m[1]);
+        const id = a.getAttribute("href")?.match(/^\/app\/([a-f0-9]+)$/)?.[1];
+        if (id) ids.push(id);
       }
       return ids;
     } catch {
@@ -267,11 +267,13 @@ export function pairGeminiTurns(turns: GeminiTurn[]): HistoryRound[] {
   const rounds: HistoryRound[] = [];
   let order = 0;
   for (let i = 0; i < turns.length; i++) {
-    if (turns[i].kind !== "user") continue;
-    const promptText = turns[i].text;
+    const turn = turns[i];
+    if (!turn || turn.kind !== "user") continue;
+    const promptText = turn.text;
     let answerText = "";
-    if (i + 1 < turns.length && turns[i + 1].kind === "model") {
-      answerText = turns[i + 1].text;
+    const next = turns[i + 1];
+    if (next && next.kind === "model") {
+      answerText = next.text;
     }
     if (promptText || answerText) {
       order++;
@@ -279,7 +281,7 @@ export function pairGeminiTurns(turns: GeminiTurn[]): HistoryRound[] {
       // id only if the wrapper couldn't be read); order = DOM sequence
       // (chronological). Display n is assigned post-merge (003).
       rounds.push({
-        messageId: turns[i].wrapperId || `gemini:${order}`,
+        messageId: turn.wrapperId || `gemini:${order}`,
         order,
         promptText,
         answerText,

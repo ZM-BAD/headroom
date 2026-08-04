@@ -341,8 +341,8 @@ export function parseDoubaoHistory(messages: DoubaoMessage[]): HistoryRound[] {
   // Pair each user (1) with the next bot (2) that follows it.
   const rounds: HistoryRound[] = [];
   for (let i = 0; i < enriched.length; i++) {
-    if (enriched[i].userType !== 1) continue;
     const user = enriched[i];
+    if (!user || user.userType !== 1) continue;
     // messageId = the USER message's index_in_conv (fall back to its
     // create_time when absent/invalid). The user message is the round's
     // stable anchor: it exists from send time, while the bot message lands
@@ -355,12 +355,14 @@ export function parseDoubaoHistory(messages: DoubaoMessage[]): HistoryRound[] {
     const promptText = user.text;
     let answer: { text: string; ts: number; idx: number } | undefined;
     for (let j = i + 1; j < enriched.length; j++) {
-      if (enriched[j].userType === 2) {
-        answer = enriched[j];
+      const cand = enriched[j];
+      if (!cand) continue;
+      if (cand.userType === 2) {
+        answer = cand;
         break;
       }
       // stop looking if we hit the next user before finding a bot
-      if (enriched[j].userType === 1) break;
+      if (cand.userType === 1) break;
     }
     if (answer) {
       // order = the bot's create_time. Display n is assigned post-merge (003).

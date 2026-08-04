@@ -80,8 +80,8 @@ describe("parseQianwenHistory — pairing + identity", () => {
       ]),
     ];
     const out = parseQianwenHistory(list);
-    expect(out[0].messageId).toBe("req-abc-123");
-    expect(out[0].order).toBe(9999);
+    expect(out[0]!.messageId).toBe("req-abc-123");
+    expect(out[0]!.order).toBe(9999);
   });
 });
 
@@ -98,7 +98,7 @@ describe("parseQianwenHistory — mime filtering (the subtle part)", () => {
     ];
     const out = parseQianwenHistory(list);
     expect(out).toHaveLength(1);
-    expect(out[0].answerText).toBe("THE-REAL-ANSWER");
+    expect(out[0]!.answerText).toBe("THE-REAL-ANSWER");
   });
 
   it("multiple multi_load/iframe blocks are joined", () => {
@@ -108,7 +108,7 @@ describe("parseQianwenHistory — mime filtering (the subtle part)", () => {
         { mime_type: "multi_load/iframe", content: "part-2" },
       ]),
     ];
-    expect(parseQianwenHistory(list)[0].answerText).toBe("part-1\npart-2");
+    expect(parseQianwenHistory(list)[0]!.answerText).toBe("part-1\npart-2");
   });
 });
 
@@ -130,7 +130,7 @@ describe("parseQianwenHistory — noise-drop / shape edge", () => {
     ];
     const out = parseQianwenHistory(list);
     expect(out).toHaveLength(1);
-    expect(out[0].promptText).toBe("Q1");
-    expect(out[0].answerText).toBe("");
+    expect(out[0]!.promptText).toBe("Q1");
+    expect(out[0]!.answerText).toBe("");
   });
 });

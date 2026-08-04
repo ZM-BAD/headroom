@@ -129,7 +129,7 @@ describe("parseChatGptHistory", () => {
         },
       },
     };
-    const [round] = parseChatGptHistory(resp);
+    const round = parseChatGptHistory(resp)[0]!;
     expect(round.promptText).toBe("p1\np2");
     expect(round.answerText).toBe("part 1\npart 2");
   });
@@ -157,7 +157,7 @@ describe("parseChatGptHistory", () => {
         },
       },
     };
-    const [round] = parseChatGptHistory(resp);
+    const round = parseChatGptHistory(resp)[0]!;
     expect(round.promptText).toBe("real text");
   });
 

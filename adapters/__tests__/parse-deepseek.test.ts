@@ -80,8 +80,8 @@ describe("parseDeepSeekHistory", () => {
     };
     const rounds = parseDeepSeekHistory(resp);
     expect(rounds).toHaveLength(2);
-    expect(rounds[0].promptText).toBe("Q1");
-    expect(rounds[1].promptText).toBe("Q2");
+    expect(rounds[0]!.promptText).toBe("Q1");
+    expect(rounds[1]!.promptText).toBe("Q2");
   });
 
   it("dedups by parent_id — keeps highest message_id (latest regenerate)", () => {
@@ -198,7 +198,7 @@ describe("parseDeepSeekHistory", () => {
         },
       },
     };
-    const [round] = parseDeepSeekHistory(resp);
+    const round = parseDeepSeekHistory(resp)[0]!;
     expect(round.promptText).toBe("part 1\npart 2");
     expect(round.answerText).toBe("answer part 1\nanswer part 2");
   });
@@ -227,7 +227,7 @@ describe("parseDeepSeekHistory", () => {
         },
       },
     };
-    const [round] = parseDeepSeekHistory(resp);
+    const round = parseDeepSeekHistory(resp)[0]!;
     expect(round.answerText).toBe("public answer");
   });
 
@@ -253,7 +253,7 @@ describe("parseDeepSeekHistory", () => {
         },
       },
     };
-    const [round] = parseDeepSeekHistory(resp);
+    const round = parseDeepSeekHistory(resp)[0]!;
     expect(round.createdAt).toBe(1782741816158);
   });
 
@@ -279,7 +279,7 @@ describe("parseDeepSeekHistory", () => {
         },
       },
     };
-    const [round] = parseDeepSeekHistory(resp);
+    const round = parseDeepSeekHistory(resp)[0]!;
     expect(round.createdAt).toBeUndefined();
   });
 
@@ -306,7 +306,7 @@ describe("parseDeepSeekHistory", () => {
         },
       },
     };
-    const [round] = parseDeepSeekHistory(resp);
+    const round = parseDeepSeekHistory(resp)[0]!;
     expect(round).toBeDefined();
     expect(round.promptText).toBe("long prompt");
     expect(round.answerText).toBe("partial");
@@ -335,7 +335,7 @@ describe("parseDeepSeekHistory", () => {
         },
       },
     };
-    const [round] = parseDeepSeekHistory(resp);
+    const round = parseDeepSeekHistory(resp)[0]!;
     expect(round).toEqual({
       messageId: "2",
       order: 2,
@@ -448,11 +448,11 @@ describe("parseDeepSeekHistory", () => {
     const rounds = parseDeepSeekHistory(resp);
     expect(rounds).toHaveLength(2);
     // Round 1: both prompt and answer have no fragments → empty strings
-    expect(rounds[0].promptText).toBe("");
-    expect(rounds[0].answerText).toBe("");
+    expect(rounds[0]!.promptText).toBe("");
+    expect(rounds[0]!.answerText).toBe("");
     // Round 2: fragments present → normal
-    expect(rounds[1].promptText).toBe("q");
-    expect(rounds[1].answerText).toBe("");
+    expect(rounds[1]!.promptText).toBe("q");
+    expect(rounds[1]!.answerText).toBe("");
   });
 
   it("trims whitespace from joined fragments", () => {
@@ -479,7 +479,7 @@ describe("parseDeepSeekHistory", () => {
         },
       },
     };
-    const [round] = parseDeepSeekHistory(resp);
+    const round = parseDeepSeekHistory(resp)[0]!;
     expect(round.promptText).toBe("prompt");
     // joinFragments joins with "\n" then trims the whole result
     expect(round.answerText).toBe("line1  \n  line2");

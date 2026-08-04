@@ -37,8 +37,8 @@ describe("SETTLE_RETRY_DELAYS_MS", () => {
     expect(SETTLE_RETRY_DELAYS_MS.length).toBeGreaterThan(0);
     expect(SETTLE_RETRY_DELAYS_MS.length).toBeLessThanOrEqual(5);
     for (let i = 1; i < SETTLE_RETRY_DELAYS_MS.length; i++) {
-      expect(SETTLE_RETRY_DELAYS_MS[i]).toBeGreaterThanOrEqual(
-        SETTLE_RETRY_DELAYS_MS[i - 1],
+      expect(SETTLE_RETRY_DELAYS_MS[i]!).toBeGreaterThanOrEqual(
+        SETTLE_RETRY_DELAYS_MS[i - 1]!,
       );
     }
   });

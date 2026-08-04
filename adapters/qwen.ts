@@ -46,7 +46,7 @@ export const qwenAdapter: PlatformAdapter = {
   parseDelete(_rawBody, url) {
     try {
       const m = new URL(url).pathname.match(/\/api\/v2\/chats\/([^/?#]+)/);
-      return m ? m[1] : null;
+      return m ? (m[1] ?? null) : null;
     } catch {
       return null;
     }

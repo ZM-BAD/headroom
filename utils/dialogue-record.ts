@@ -130,10 +130,10 @@ export function upsertRound(
   // Replace the existing round (same messageId): subtract its old total, add
   // the new one. Keeps the running-sum invariant intact (totalTokens is the
   // true lifetime sum even when older rounds are trimmed out of the array).
-  const totalTokens =
-    idx >= 0
-      ? base.totalTokens - base.rounds[idx].total + total
-      : base.totalTokens + total;
+  const prev = idx >= 0 ? base.rounds[idx] : undefined;
+  const totalTokens = prev
+    ? base.totalTokens - prev.total + total
+    : base.totalTokens + total;
   const rounds = upsertRoundInto(base.rounds, round).slice(
     -MAX_RETAINED_ROUNDS,
   );
@@ -180,7 +180,7 @@ export function projectUsage(record: DialogueRecord | null): UsageProjection {
       rounds: [],
     };
   }
-  const last = record.rounds[record.rounds.length - 1];
+  const last = record.rounds[record.rounds.length - 1]!;
   return {
     totalTokens: record.totalTokens,
     roundCount: record.roundCount,

@@ -675,7 +675,7 @@ export default defineBackground(() => {
     // Read current local record so we can append the synthetic round.
     const record = await getLocalDialogue(key);
     const lastOrder = record?.rounds.length
-      ? record.rounds[record.rounds.length - 1].order
+      ? record.rounds[record.rounds.length - 1]!.order
       : 0;
     const nextN = (record?.roundCount ?? 0) + 1;
     const now = Date.now();

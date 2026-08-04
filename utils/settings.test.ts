@@ -260,7 +260,7 @@ describe("saveSettings", () => {
       updatedAt: 0,
     };
     await saveSettings(partial);
-    const arg = mockSet.mock.calls[0][0] as Record<string, unknown>;
+    const arg = mockSet.mock.calls[0]![0] as Record<string, unknown>;
     const stored = arg[STORAGE_KEY] as Settings;
     expect(stored.thresholds).toEqual({ yellow: 10, red: 20 });
     expect(stored.language).toBe("auto");
