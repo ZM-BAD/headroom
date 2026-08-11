@@ -40,7 +40,7 @@
     "lint-staged": "^17.0.8",
     "prettier": "^3.9.4",
     "sharp": "^0.35.3",
-    "typescript": "^6.0.2",
+    "typescript": "^7.0.0",
     "typescript-eslint": "^8.63.0",
     "vitest": "^4.1.10",
     "wxt": "^0.21.0"
