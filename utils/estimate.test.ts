@@ -81,12 +81,17 @@ describe("estimateTokens", () => {
   });
 
   it("classifies a Cyrillic word even when mixed with Latin characters", () => {
-    // "привет123" has Cyrillic chars → Cyrillic word (1), not Latin
-    expect(estimateTokens("привет123", PLACEHOLDER)).toBeCloseTo(1 * 0.5);
+    // "привет123" has Cyrillic chars → Cyrillic word (1), not Latin;
+    // the digit run counts separately (\p{N}{1,3} → ceil(3/3)=1, spec 006)
+    expect(estimateTokens("привет123", PLACEHOLDER)).toBeCloseTo(
+      1 * 0.5 + 1 * 0.5,
+    );
   });
 
   it("classifies an Arabic word even when mixed with digits", () => {
-    expect(estimateTokens("مرحبا123", PLACEHOLDER)).toBeCloseTo(1 * 0.5);
+    expect(estimateTokens("مرحبا123", PLACEHOLDER)).toBeCloseTo(
+      1 * 0.5 + 1 * 0.5,
+    );
   });
 
   it("does not double-count a pure-CJK token as a Latin word", () => {
@@ -108,8 +113,24 @@ describe("estimateTokens", () => {
   // ---- edge cases ----
 
   it("treats digits/punctuation as Latin (fallback bucket)", () => {
-    // "123 !!!" → 2 Latin words (no char-based chars)
+    // "123" → ceil(3/3)=1 digit sub-word (spec 006); "!!!" → 1 word; "abc" → 1 word
     expect(estimateTokens("123 !!! abc", PLACEHOLDER)).toBeCloseTo(3 * 0.5);
+  });
+
+  it("counts digit runs per \\p{N}{1,3} chunk, not as one word (spec 006)", () => {
+    // BPE splits digit strings into 1–3-digit tokens: "2026" → 2 chunks,
+    // "年" is CJK. A dense date like "2026年8月11日" is no longer ONE word.
+    expect(estimateTokens("2026", PLACEHOLDER)).toBeCloseTo(2 * 0.5);
+    expect(estimateTokens("2026年8月11日", PLACEHOLDER)).toBeCloseTo(
+      2 * 0.5 + 2 * 0.6 + 1 * 0.5 + 1 * 0.6 + 1 * 0.5,
+    );
+  });
+
+  it("keeps digits inside a word counted separately from the word (spec 006)", () => {
+    // "Qwen2" → 1 latin word ("Qwen") + 1 digit sub-word ("2")
+    expect(estimateTokens("Qwen2", PLACEHOLDER)).toBeCloseTo(2 * 0.5);
+    // "P6" same shape
+    expect(estimateTokens("P6", PLACEHOLDER)).toBeCloseTo(2 * 0.5);
   });
 
   it("treats empty/whitespace-only strings as zero", () => {

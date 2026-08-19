@@ -8,6 +8,7 @@ import { ADAPTERS } from "../adapters";
 import { estimateTokens, resolveCoefficients } from "../utils/estimate";
 import {
   emptyDialogue,
+  mergeLifetimeTotal,
   projectUsage,
   upsertRound,
   unionRounds,
@@ -206,13 +207,17 @@ async function evaluateTab(
     .catch((e: unknown) => console.warn("[Headroom] setTitle failed", e));
   if (browser.sidePanel) {
     if (supported) {
-      await browser.sidePanel.setOptions({
-        tabId,
-        enabled: true,
-        path: "sidepanel.html",
-      });
+      await browser.sidePanel
+        .setOptions({
+          tabId,
+          enabled: true,
+          path: "sidepanel.html",
+        })
+        .catch(() => {});
     } else {
-      await browser.sidePanel.setOptions({ tabId, enabled: false });
+      await browser.sidePanel
+        .setOptions({ tabId, enabled: false })
+        .catch(() => {});
     }
   }
 }
@@ -289,6 +294,30 @@ async function broadcast(state: UsageState): Promise<void> {
     .catch(() => {
       // No side panel open (or it's asleep) — nothing to push to.
     });
+}
+
+/**
+ * Serialize read-modify-write cycles per dialogue key. applyHistory's
+ * cloud GET→union→SET (Upstash, 1–3 s) and the stop-path's read→write are
+ * both async; two interleaved invocations for the same key can both read the
+ * same stale record and the later writer wins with missing rounds (gauge
+ * regresses until the next history fetch). A promise chain per key makes the
+ * cycles strictly sequential. Same-key only — different dialogues proceed in
+ * parallel.
+ */
+const dialogueWriteChain = new Map<string, Promise<unknown>>();
+function withDialogueLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = dialogueWriteChain.get(key) ?? Promise.resolve();
+  const next = prev.then(fn, fn); // a failed predecessor must not block successors
+  const settled = next.catch(() => {});
+  dialogueWriteChain.set(key, settled);
+  // Prune the chain entry once THIS link settles — but only if it is still
+  // the latest: a newer cycle may have chained after us (that one prunes
+  // itself), so the map never grows during a long-lived service worker.
+  void settled.then(() => {
+    if (dialogueWriteChain.get(key) === settled) dialogueWriteChain.delete(key);
+  });
+  return next;
 }
 
 /**
@@ -672,30 +701,38 @@ export default defineBackground(() => {
     const coeff = resolveCoefficients(adapter, settings);
     const promptTokens = Math.round(estimateTokens(m.promptText, coeff));
     const answerTokens = Math.round(estimateTokens(m.answerText, coeff));
-    // Read current local record so we can append the synthetic round.
-    const record = await getLocalDialogue(key);
-    const lastOrder = record?.rounds.length
-      ? record.rounds[record.rounds.length - 1]!.order
-      : 0;
-    const nextN = (record?.roundCount ?? 0) + 1;
-    const now = Date.now();
-    const updated = upsertRound(
-      record,
-      adapter.platformId,
-      dialogueId,
-      contextLimit,
-      {
-        messageId: `stop:${now}`, // synthetic id — won't match any real messageId
-        order: lastOrder + 1,
-        n: nextN,
-        promptTokens,
-        answerTokens,
-        createdAt: now,
-      },
-    );
+    // Read-modify-write under the same per-key lock as applyHistory — a stop
+    // write racing an in-flight history rebuild must not clobber it. The LOCAL
+    // write happens INSIDE the locked callback: serializing read→upsert→write
+    // is what the lock guarantees (a write after release is only incidentally
+    // ordered by microtask timing).
+    const updated = await withDialogueLock(key, async () => {
+      const record = await getLocalDialogue(key);
+      const lastOrder = record?.rounds.length
+        ? record.rounds[record.rounds.length - 1]!.order
+        : 0;
+      const nextN = (record?.roundCount ?? 0) + 1;
+      const now = Date.now();
+      const upserted = upsertRound(
+        record,
+        adapter.platformId,
+        dialogueId,
+        contextLimit,
+        {
+          messageId: `stop:${now}`, // synthetic id — won't match any real messageId
+          order: lastOrder + 1,
+          n: nextN,
+          promptTokens,
+          toolTokens: 0, // stop-path has no tool text (DOM read, spec 005)
+          answerTokens,
+          createdAt: now,
+        },
+      );
+      await setLocalDialogue(key, upserted);
+      return upserted;
+    });
     // Write local-only — NEVER sync to Upstash (the next applyHistory
     // rebuilds the record from scratch, discarding this temporary round).
-    await setLocalDialogue(key, updated);
     void evictLocalCacheIfNeeded();
     const title = tabId != null ? (tabDialogueTitle.get(tabId) ?? null) : null;
     await broadcast(
@@ -747,15 +784,30 @@ export default defineBackground(() => {
     if (!adapter) return;
     const dialogueId = adapter.dialogueIdFromUrl?.(m.url) ?? null;
     if (!dialogueId) return;
+    const key = dialogueKey(adapter.platformId, dialogueId);
+    // Serialize same-key cycles (cloud GET→union→SET must not interleave).
+    await withDialogueLock(key, () =>
+      applyHistoryLocked(m, tabId, adapter, dialogueId, key),
+    );
+  }
 
+  async function applyHistoryLocked(
+    m: HistoryParsedMessage,
+    tabId: number | undefined,
+    adapter: PlatformAdapter,
+    dialogueId: string,
+    key: string,
+  ): Promise<void> {
     const settings = await getSettings();
     const coeff = resolveCoefficients(adapter, settings);
     const contextLimit = effectiveLimit(settings, adapter);
-    const key = dialogueKey(adapter.platformId, dialogueId);
 
     // 1. Estimate history rounds into RoundRecords (history is the live truth).
     const historyRounds = m.rounds.map((h, i) => {
       const promptTokens = Math.round(estimateTokens(h.promptText, coeff));
+      const toolTokens = h.toolText
+        ? Math.round(estimateTokens(h.toolText, coeff))
+        : 0;
       const answerTokens = Math.round(estimateTokens(h.answerText, coeff));
       // Round at the storage boundary: a token is the smallest unit, so the
       // stored/displayed count must be an integer. estimateTokens stays a
@@ -765,8 +817,9 @@ export default defineBackground(() => {
         order: h.order,
         n: i + 1, // display position — unionRounds reassigns when cloud merge runs
         promptTokens,
+        toolTokens,
         answerTokens,
-        total: promptTokens + answerTokens,
+        total: promptTokens + toolTokens + answerTokens,
         createdAt: h.createdAt ?? 0,
       };
     });
@@ -780,6 +833,7 @@ export default defineBackground(() => {
           order: r.order,
           n: r.n,
           promptTokens: r.promptTokens,
+          toolTokens: r.toolTokens,
           answerTokens: r.answerTokens,
           createdAt: r.createdAt,
         });
@@ -830,6 +884,17 @@ export default defineBackground(() => {
         historyRounds.map((r) => ({ ...r, n: 0 })),
       );
       record = buildRecord(mergedRounds);
+      // buildRecord re-sums only the RETAINED rounds — restore the true
+      // lifetime total: the cloud record's running sum (which survived its own
+      // trimming), adjusted for history's re-estimates and brand-new rounds.
+      // Without this, >MAX_RETAINED_ROUNDS unions silently drop the oldest
+      // rounds' totals (spec 003 trim-but-keep-totals).
+      record.totalTokens = mergeLifetimeTotal(
+        cloudRecord.totalTokens,
+        cloudRecord.rounds,
+        historyRounds,
+        adapter.monotonicOrder,
+      );
       // Only re-broadcast if the merged result actually differs from the
       // history-only snapshot already shown.
       if (record.totalTokens !== historyOnlyTotal) {
@@ -965,12 +1030,20 @@ export default defineBackground(() => {
     if (!tab.id || !tab.url || !isSupportedPlatformUrl(tab.url)) {
       return;
     }
-    if (browser.sidePanel) {
-      // Chrome/Edge: per-tab side panel.
-      await browser.sidePanel.open({ tabId: tab.id });
-    } else if (sidebarAction) {
-      // Firefox: global sidebar.
-      await sidebarAction.open();
+    try {
+      if (browser.sidePanel) {
+        // Chrome/Edge: per-tab side panel.
+        await browser.sidePanel.open({ tabId: tab.id });
+      } else if (sidebarAction) {
+        // Firefox: global sidebar.
+        await sidebarAction.open();
+      }
+    } catch (e) {
+      // Tab closed between the click and the open (rare race) — the next
+      // onActivated/onUpdated re-projects. Without this catch the async
+      // listener rejects and Chrome logs "Unchecked runtime.lastError:
+      // No tab with id".
+      console.warn("[Headroom] sidePanel.open failed", e);
     }
   });
 });

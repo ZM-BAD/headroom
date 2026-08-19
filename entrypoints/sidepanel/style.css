@@ -594,6 +594,10 @@ th.hd-round-cum {
   color: var(--accent);
   text-align: left;
 }
+.hd-round-tool {
+  color: var(--warn, #b58900);
+  text-align: left;
+}
 .hd-round-out {
   color: var(--fg);
   text-align: left;

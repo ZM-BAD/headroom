@@ -41,6 +41,141 @@ describe("parseDoubaoHistory", () => {
     ]);
   });
 
+  it("extracts search_query_result_block text into toolText (spec 005)", () => {
+    const messages = [
+      {
+        user_type: 2,
+        content_type: 9999,
+        content_block: [
+          {
+            content: {
+              search_query_result_block: {
+                summary: "搜索 2 个关键词,参考 3 篇资料",
+                queries: ["今日新闻", "全球头条"],
+                results: [
+                  { text_card: { summary: "美联储维持利率不变 2026-08-14" } },
+                  { text_card: { summary: "A股三大指数收涨" } },
+                ],
+              },
+            },
+          },
+          { content: { text_block: { text: "the answer" } } },
+        ],
+        create_time: "1719500001",
+        index_in_conv: "1",
+      },
+      {
+        user_type: 1,
+        content_type: 9999,
+        content_block: [{ content: { text_block: { text: "the prompt" } } }],
+        create_time: "1719500000",
+        index_in_conv: "0",
+      },
+    ];
+    const round = parseDoubaoHistory(messages)[0]!;
+    expect(round.answerText).toBe("the answer");
+    expect(round.toolText).toBe(
+      "今日新闻\n全球头条\n美联储维持利率不变 2026-08-14\nA股三大指数收涨",
+    );
+  });
+
+  it("leaves toolText unset when the bot message has no search block", () => {
+    const messages = [
+      {
+        user_type: 2,
+        content_type: 9999,
+        content_block: [{ content: { text_block: { text: "the answer" } } }],
+        create_time: "1719500001",
+        index_in_conv: "1",
+      },
+      {
+        user_type: 1,
+        content_type: 9999,
+        content_block: [{ content: { text_block: { text: "the prompt" } } }],
+        create_time: "1719500000",
+        index_in_conv: "0",
+      },
+    ];
+    expect(parseDoubaoHistory(messages)[0]!.toolText).toBeUndefined();
+  });
+
+  it("keeps a search-only bot row (no answer text) — search tokens still count", () => {
+    // The search ran but the answer failed/interrupted: the bot message has a
+    // search_query_result_block and NO text_block. The round must keep the
+    // toolText (answerText stays empty) instead of being dropped entirely.
+    const messages = [
+      {
+        user_type: 2,
+        content_type: 9999,
+        content_block: [
+          {
+            content: {
+              search_query_result_block: {
+                queries: ["今日新闻"],
+                results: [{ text_card: { summary: "搜索到的重要新闻" } }],
+              },
+            },
+          },
+        ],
+        create_time: "1719500001",
+        index_in_conv: "1",
+      },
+      {
+        user_type: 1,
+        content_type: 9999,
+        content_block: [{ content: { text_block: { text: "the prompt" } } }],
+        create_time: "1719500000",
+        index_in_conv: "0",
+      },
+    ];
+    const round = parseDoubaoHistory(messages)[0]!;
+    expect(round.answerText).toBe("");
+    expect(round.toolText).toBe("今日新闻\n搜索到的重要新闻");
+  });
+
+  it("merges the search card and the answer into ONE round when sent as separate bot messages", () => {
+    // IM streaming shape: the search card streams first, the text answer
+    // follows as its own bot message. Binding the round to the FIRST bot row
+    // would drop the real answer — every bot row between two users belongs
+    // to the round, ordered by the LAST bot's create_time.
+    const messages = [
+      {
+        user_type: 2,
+        content_type: 9999,
+        content_block: [
+          {
+            content: {
+              search_query_result_block: {
+                queries: ["今日新闻"],
+                results: [{ text_card: { summary: "搜索到的重要新闻" } }],
+              },
+            },
+          },
+        ],
+        create_time: "1719500001",
+        index_in_conv: "1",
+      },
+      {
+        user_type: 2,
+        content_type: 9999,
+        content_block: [{ content: { text_block: { text: "the answer" } } }],
+        create_time: "1719500002",
+        index_in_conv: "2",
+      },
+      {
+        user_type: 1,
+        content_type: 9999,
+        content_block: [{ content: { text_block: { text: "the prompt" } } }],
+        create_time: "1719500000",
+        index_in_conv: "0",
+      },
+    ];
+    const round = parseDoubaoHistory(messages)[0]!;
+    expect(round.answerText).toBe("the answer");
+    expect(round.toolText).toBe("今日新闻\n搜索到的重要新闻");
+    expect(round.order).toBe(1719500002); // the LAST bot's create_time
+  });
+
   it("reads the OLD content_type 1 shape (stringified {text})", () => {
     const messages = [
       {
@@ -315,6 +450,7 @@ describe("parseDoubaoHistory — user-anchored round identity", () => {
       order: r.order,
       n,
       promptTokens: 10,
+      toolTokens: 0,
       answerTokens: r.answerText ? 100 : 0,
       total: 10 + (r.answerText ? 100 : 0),
       createdAt: r.createdAt ?? 0,

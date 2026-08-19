@@ -89,6 +89,9 @@
   "roundHeaderInput": {
     "message": "Eingabe"
   },
+  "roundHeaderTool": {
+    "message": "Suche/Werkzeug"
+  },
   "roundHeaderOutput": {
     "message": "Ausgabe"
   },

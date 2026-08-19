@@ -7,12 +7,12 @@ import type { TokenCoefficients } from "../utils/estimate";
  * least trustworthy value (Seed-OSS carries little Japanese).
  */
 const DOUBAO_COEFFICIENTS: TokenCoefficients = {
-  cjk: 0.68,
-  kana: 1.27,
-  hangul: 0.82,
+  cjk: 0.67,
+  kana: 1.26,
+  hangul: 0.8,
   cyrillic: 2.04,
   arabic: 2.3,
-  latin: 1.38,
+  latin: 1.37,
 };
 
 // Doubao (豆包) — request CONFIRMED (POST /samantha/chat/completion, aliased
@@ -224,6 +224,18 @@ interface DoubaoContentBlock {
     | string
     | {
         text_block?: { text?: string };
+        /**
+         * Web-search payload (spec 005): `{summary, queries, results[]}` where
+         * each result's `text_card.summary` is the page text the model read.
+         * CONFIRMED live 2026-08-14.
+         */
+        search_query_result_block?: {
+          summary?: string;
+          queries?: string[];
+          results?: Array<{
+            text_card?: { summary?: string; title?: string };
+          }>;
+        };
       };
 }
 /** A row in the messages array (the fields we read). */
@@ -320,6 +332,35 @@ function tryParseJson<T>(raw: string): T | null {
 }
 
 /**
+ * Extract the web-search text from a Doubao message (spec 005): every
+ * `search_query_result_block` carries the search queries plus per-result
+ * `text_card.summary` — the page text injected into the model's context.
+ * Joined newline-separated (summary only — `text_card.title` exists in the
+ * payload but is NOT emitted; the summary is the page text the model reads,
+ * spec 005). Empty for messages without a search block.
+ */
+function doubaoMessageToolText(m: DoubaoMessage): string {
+  if (!Array.isArray(m.content_block)) return "";
+  const parts: string[] = [];
+  for (const b of m.content_block) {
+    const block = b?.content;
+    if (!block || typeof block === "string") continue;
+    const search = block.search_query_result_block;
+    if (!search) continue;
+    for (const q of search.queries ?? []) {
+      if (typeof q === "string" && q.trim()) parts.push(q.trim());
+    }
+    for (const r of search.results ?? []) {
+      const summary = r?.text_card?.summary;
+      if (typeof summary === "string" && summary.trim()) {
+        parts.push(summary.trim());
+      }
+    }
+  }
+  return parts.join("\n").trim();
+}
+
+/**
  * Parse the accumulated messages (NEW→OLD) into ASCENDING rounds (CONFIRMED
  * shape, 2026-06 Playwright). Doubao is an IM model: user (user_type 1) and
  * bot (user_type 2) ALTERNATE, so we walk the time-ascending list and pair each
@@ -329,16 +370,25 @@ function tryParseJson<T>(raw: string): T | null {
 export function parseDoubaoHistory(messages: DoubaoMessage[]): HistoryRound[] {
   if (!Array.isArray(messages)) return [];
   // Attach parsed text + time + the stable per-message index, drop empty.
+  // Keep a bot row that carries ONLY a search block (text "" but toolText
+  // present): the search ran and consumed tokens even if the answer failed
+  // or was interrupted — dropping it would silently lose the search cost.
   const enriched = messages
     .map((m) => ({
       userType: m.user_type,
       text: doubaoMessageText(m),
+      toolText: doubaoMessageToolText(m),
       ts: Number(m.create_time) || 0,
       idx: Number(m.index_in_conv) || 0,
     }))
-    .filter((m) => m.text);
+    .filter((m) => m.text || m.toolText);
   enriched.sort((a, b) => a.ts - b.ts); // ascending (oldest first)
-  // Pair each user (1) with the next bot (2) that follows it.
+  // Pair each user (1) with EVERY bot row that follows until the next user
+  // row. A search round often streams TWO bot messages — the search card
+  // first, the text answer after (IM shape). Binding the round to the FIRST
+  // bot row would silently drop the real answer (and the answer row would
+  // never be consumed); merging every bot row between two user rows keeps
+  // both answerText and toolText, ordered by the LAST bot's create_time.
   const rounds: HistoryRound[] = [];
   for (let i = 0; i < enriched.length; i++) {
     const user = enriched[i];
@@ -353,26 +403,33 @@ export function parseDoubaoHistory(messages: DoubaoMessage[]): HistoryRound[] {
     // the prompt forever. One anchor, one id.
     const messageId = `db:u${user.idx > 0 ? user.idx : "t" + user.ts}`;
     const promptText = user.text;
-    let answer: { text: string; ts: number; idx: number } | undefined;
+    const bots: { text: string; toolText: string; ts: number }[] = [];
     for (let j = i + 1; j < enriched.length; j++) {
       const cand = enriched[j];
       if (!cand) continue;
-      if (cand.userType === 2) {
-        answer = cand;
-        break;
-      }
-      // stop looking if we hit the next user before finding a bot
-      if (cand.userType === 1) break;
+      if (cand.userType === 1) break; // next user closes the round
+      if (cand.userType === 2) bots.push(cand);
     }
-    if (answer) {
-      // order = the bot's create_time. Display n is assigned post-merge (003).
+    if (bots.length) {
+      // order = the LAST bot's create_time. Display n is assigned post-merge (003).
+      const last = bots[bots.length - 1]!;
       rounds.push({
         messageId,
-        order: answer.ts,
+        order: last.ts,
         promptText,
-        answerText: answer.text,
+        // Join non-empty parts — a search-only bot row contributes "" here
+        // but its toolText below still counts.
+        answerText: bots
+          .map((b) => b.text)
+          .filter(Boolean)
+          .join("\n"),
+        toolText:
+          bots
+            .map((b) => b.toolText)
+            .filter(Boolean)
+            .join("\n") || undefined,
         // doubao create_time is epoch seconds → ms.
-        createdAt: answer.ts > 0 ? answer.ts * 1000 : undefined,
+        createdAt: last.ts > 0 ? last.ts * 1000 : undefined,
       });
     } else {
       // No bot reply follows this user (yet): either the write hasn't

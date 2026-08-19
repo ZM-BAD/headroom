@@ -355,10 +355,10 @@ export function estimateWith(coeffVec, counts) {
  * validation report. `encodeLen` is an (async ok) (text) => token count.
  * Returns { fitted, rounded, worst } for programmatic use.
  */
-export async function runCalibration(label, encodeLen) {
-  const rows = CORPUS.map((s) => countBuckets(s.text));
+export async function runCalibration(label, encodeLen, corpus = CORPUS) {
+  const rows = corpus.map((s) => countBuckets(s.text));
   const ys = [];
-  for (const s of CORPUS) ys.push(await encodeLen(s.text));
+  for (const s of corpus) ys.push(await encodeLen(s.text));
 
   const fitted = fitCoefficients(rows, ys);
   const rounded = fitted.map((c) => Math.round(c * 100) / 100);
@@ -373,12 +373,12 @@ export async function runCalibration(label, encodeLen) {
 
   console.log("\n== Calibration corpus fit (rounded coefficients) ==");
   const byGroup = new Map();
-  for (let s = 0; s < CORPUS.length; s++) {
+  for (let s = 0; s < corpus.length; s++) {
     const est = estimateWith(rounded, rows[s]);
-    const g = byGroup.get(CORPUS[s].group) ?? { actual: 0, est: 0 };
+    const g = byGroup.get(corpus[s].group) ?? { actual: 0, est: 0 };
     g.actual += ys[s];
     g.est += est;
-    byGroup.set(CORPUS[s].group, g);
+    byGroup.set(corpus[s].group, g);
   }
   for (const [group, g] of byGroup) {
     const err = ((g.est - g.actual) / g.actual) * 100;

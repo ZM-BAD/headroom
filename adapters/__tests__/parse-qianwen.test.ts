@@ -14,18 +14,23 @@ import type { QianwenRound } from "../qianwen";
  */
 
 /** Build one list item (a round) from its parts. */
+type TestMime = {
+  mime_type: string;
+  content?: string;
+  meta_data?: unknown;
+};
 const round = (
   req_id: string,
   created_at: number,
   prompt: string,
-  answerMimes: { mime_type: string; content: string }[] = [],
+  answerMimes: TestMime[] = [],
 ): QianwenRound => ({
   req_id,
   created_at,
   request_messages: prompt
     ? [{ mime_type: "text/plain", content: prompt }]
     : [],
-  response_messages: answerMimes,
+  response_messages: answerMimes as QianwenRound["response_messages"],
 });
 
 describe("parseQianwenHistory — empty / defensive", () => {
@@ -99,6 +104,43 @@ describe("parseQianwenHistory — mime filtering (the subtle part)", () => {
     const out = parseQianwenHistory(list);
     expect(out).toHaveLength(1);
     expect(out[0]!.answerText).toBe("THE-REAL-ANSWER");
+  });
+
+  it("extracts bar/iframe search summaries into toolText (spec 005)", () => {
+    const list = [
+      round("r1", 1, "Q1", [
+        {
+          mime_type: "bar/iframe",
+          meta_data: {
+            sources: [
+              {
+                content: {
+                  list: [
+                    { summary: "美联储维持利率不变 2026-08-14" },
+                    { summary: "A股三大指数收涨" },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        { mime_type: "multi_load/iframe", content: "THE-REAL-ANSWER" },
+      ]),
+    ];
+    const out = parseQianwenHistory(list);
+    expect(out[0]!.answerText).toBe("THE-REAL-ANSWER");
+    expect(out[0]!.toolText).toBe(
+      "美联储维持利率不变 2026-08-14\nA股三大指数收涨",
+    );
+  });
+
+  it("leaves toolText unset when no bar/iframe search message exists", () => {
+    const list = [
+      round("r1", 1, "Q1", [
+        { mime_type: "multi_load/iframe", content: "THE-REAL-ANSWER" },
+      ]),
+    ];
+    expect(parseQianwenHistory(list)[0]!.toolText).toBeUndefined();
   });
 
   it("multiple multi_load/iframe blocks are joined", () => {

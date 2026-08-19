@@ -3,12 +3,12 @@ import type { TokenCoefficients } from "../utils/estimate";
 
 /** Measured against tiktoken o200k_base — exact (spec 004 §4.3; scripts/calibrate-chatgpt.mjs). */
 const CHATGPT_COEFFICIENTS: TokenCoefficients = {
-  cjk: 0.83,
+  cjk: 0.82,
   kana: 0.78,
-  hangul: 0.66,
-  cyrillic: 1.76,
+  hangul: 0.65,
+  cyrillic: 1.77,
   arabic: 1.84,
-  latin: 1.3,
+  latin: 1.29,
 };
 
 // ChatGPT — completion CONFIRMED live (2026-07, Playwright): OpenAI moved the
@@ -150,7 +150,15 @@ interface ChatGptNode {
   id?: string;
   message?: {
     author?: { role?: string };
-    content?: { content_type?: string; parts?: unknown[] };
+    content?: {
+      content_type?: string;
+      parts?: unknown[];
+      /** The invocation text on `code` nodes (e.g. `search("…")`) — CONFIRMED
+       *  live 2026-08-16: code nodes carry `text`, NOT `parts`. */
+      text?: string;
+    };
+    /** "web" on the search-call node (spec 005: content_type "code"). */
+    recipient?: string;
     create_time?: number;
   } | null;
   parent?: string | null;
@@ -205,11 +213,13 @@ export function parseChatGptHistory(resp: unknown): HistoryRound[] {
     assistantId: string;
     promptText: string;
     answerText: string;
+    toolText: string;
   }[] = [];
   for (const node of Object.values(mapping)) {
     if (node?.message?.author?.role !== "user") continue;
     const promptText = joinChatGptParts(node.message?.content?.parts);
     if (!promptText) continue; // empty/hidden user node — skip
+    const toolText = findWebSearchCall(mapping, node.children);
     const answer = findFirstAssistantText(mapping, node.children);
     if (answer) {
       staged.push({
@@ -217,6 +227,7 @@ export function parseChatGptHistory(resp: unknown): HistoryRound[] {
         assistantId: answer.id,
         promptText,
         answerText: answer.text,
+        toolText,
       });
     } else {
       // No text-containing assistant found — user may have stopped
@@ -228,6 +239,7 @@ export function parseChatGptHistory(resp: unknown): HistoryRound[] {
           assistantId: any.id,
           promptText,
           answerText: "",
+          toolText,
         });
       }
     }
@@ -236,14 +248,65 @@ export function parseChatGptHistory(resp: unknown): HistoryRound[] {
   staged.sort((a, b) => a.ts - b.ts);
   // messageId = the assistant node's stable id (mapping key, survives across
   // fetches); order = create_time. Display n is assigned post-merge (003).
-  return staged.map(({ assistantId, ts, promptText, answerText }) => ({
-    messageId: assistantId,
-    order: ts,
-    promptText,
-    answerText,
-    // ChatGPT create_time is epoch seconds → ms.
-    createdAt: ts > 0 ? ts * 1000 : undefined,
-  }));
+  return staged.map(
+    ({ assistantId, ts, promptText, answerText, toolText }) => ({
+      messageId: assistantId,
+      order: ts,
+      promptText,
+      answerText,
+      toolText: toolText || undefined,
+      // ChatGPT create_time is epoch seconds → ms.
+      createdAt: ts > 0 ? ts * 1000 : undefined,
+    }),
+  );
+}
+
+/**
+ * Collect the web-search CALL nodes in a turn's children chain (spec 005): the
+ * assistant node(s) with `content_type === "code"` and `recipient === "web"`,
+ * whose `text` is the generated invocation (`search("…")`). The search RESULT
+ * text is not in the conversation API (server-side, verified 2026-08-14) — only
+ * the invocation counts. A turn may carry SEVERAL invocations (multi-step
+ * browsing) — all are joined. Returns "" when the round had no web search.
+ *
+ * TURN BOUNDARY: real mappings are LINEAR chains (user1 → assistant1 → user2 →
+ * assistant2 …). A user node CLOSES the current turn — its children belong to
+ * the NEXT round. Walking past it misattributes the next turn's search call to
+ * this round (and double-counts it on the search turn itself), so the children
+ * of user nodes are never enqueued.
+ */
+function findWebSearchCall(
+  mapping: Record<string, ChatGptNode>,
+  startChildren: string[] | undefined,
+): string {
+  const queue = [...(startChildren ?? [])];
+  const seen = new Set<string>();
+  const invocations: string[] = [];
+  while (queue.length) {
+    const id = queue.shift();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    const node = mapping[id];
+    if (!node) continue;
+    const msg = node.message;
+    if (
+      msg?.author?.role === "assistant" &&
+      msg.recipient === "web" &&
+      msg.content?.content_type === "code"
+    ) {
+      // Real payload (2026-08-16): the invocation lives in `content.text`
+      // (`search("…")`) — `parts` is absent on code nodes.
+      const text =
+        typeof msg.content.text === "string" ? msg.content.text.trim() : "";
+      const partsText = text || joinChatGptParts(msg.content?.parts);
+      if (partsText) invocations.push(partsText);
+    }
+    // Turn boundary — never traverse past a user node into the next turn.
+    if (msg?.author?.role !== "user") {
+      if (Array.isArray(node.children)) queue.push(...node.children);
+    }
+  }
+  return invocations.join("\n");
 }
 
 /**
@@ -282,15 +345,30 @@ function findFirstAssistantText(
       // assistant but not a text node (e.g. model_editable_context) — keep
       // walking ITS children in case the real reply is one more hop down.
     }
-    if (Array.isArray(node.children)) queue.push(...node.children);
+    // Turn boundary: a user node closes this turn — its children belong to
+    // the next round. Without this, a stopped turn steals the NEXT turn's
+    // answer (same cross-turn misattribution as findWebSearchCall).
+    if (node.message?.author?.role !== "user") {
+      if (Array.isArray(node.children)) queue.push(...node.children);
+    }
   }
   return null;
 }
 
 /**
- * Like findFirstAssistantText but returns the first assistant node regardless
- * of whether it has text content. Fallback when the user stopped generation
- * and the assistant node exists but has no readable text.
+ * Like findFirstAssistantText but returns the first REAL assistant node
+ * regardless of whether it has text content. Fallback when the user stopped
+ * generation and the assistant node exists but has no readable text.
+ *
+ * The `model_editable_context` stub is NEVER a valid anchor: it is a
+ * context-injection marker, not an answer, and its id differs from the answer
+ * node's. A fetch landing while the answer was still generating used to anchor
+ * the fallback round on the stub — the settled fetch then anchored on the
+ * answer id, and unionRounds' cloud-only retention kept BOTH rounds forever
+ * (the stub round double-counts the prompt; the Doubao zombie class, spec
+ * 003). Skip the stub and keep walking: a real answer node (even with empty
+ * parts) anchors the round on the id the settled fetch will use, so the round
+ * replaces in place instead of zombifying.
  */
 function findFirstAssistantAny(
   mapping: Record<string, ChatGptNode>,
@@ -305,6 +383,11 @@ function findFirstAssistantAny(
     const node = mapping[id];
     if (!node) continue;
     if (node.message?.author?.role === "assistant") {
+      if (node.message?.content?.content_type === "model_editable_context") {
+        // Stub — never a valid round anchor (see above); walk past it.
+        if (Array.isArray(node.children)) queue.push(...node.children);
+        continue;
+      }
       return {
         id,
         ts:
@@ -313,7 +396,11 @@ function findFirstAssistantAny(
             : 0,
       };
     }
-    if (Array.isArray(node.children)) queue.push(...node.children);
+    // Turn boundary: a user node closes this turn — its children belong to
+    // the next round (same rule as findFirstAssistantText).
+    if (node.message?.author?.role !== "user") {
+      if (Array.isArray(node.children)) queue.push(...node.children);
+    }
   }
   return null;
 }

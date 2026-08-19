@@ -2,7 +2,7 @@
 
 ## Status
 
-Union reconciliation engine, incremental cloud push, delete linkage (local + cloud DEL), and local cache LRU eviction implemented; live acceptance checked. Zombie cleanup unified engine implemented (periodic alarms 60min + home-page trigger, shared 5min throttle); reconciliation frequency control (debounce + REFRESH_HISTORY immediate pull) implemented. All 7 platforms' `fetchConversationList`, history-fetch APIs, and deletion endpoints reverse-engineered and live-captured (2026-06).
+Union reconciliation engine, incremental cloud push, delete linkage (local + cloud DEL), and local cache LRU eviction implemented; live acceptance checked. Zombie cleanup unified engine implemented (periodic alarms 60min + home-page trigger, shared 5min throttle); reconciliation frequency control implemented (SPA switch → immediate fetch, serialized by the in-flight guard with a queued re-run for the latest conversation; stale in-flight results discarded on URL change; REFRESH_HISTORY immediate pull). All 7 platforms' `fetchConversationList`, history-fetch APIs, and deletion endpoints reverse-engineered and live-captured (2026-06).
 
 **Scope**: Cross-device sync semantics. Combines [001](./001-headroom-core.md)'s estimation capability with [002](./002-upstash-data-layer.md)'s transport pipeline to make dialogue records correct across devices.
 
@@ -116,7 +116,7 @@ sequenceDiagram
 
 - [x] **Zombie cleanup (unified engine)**: `chrome.alarms` (60min period) + home-page open → shared throttle (5min) → `fetchConversationList` → diff against Upstash → DEL difference.
 - [x] **Settings pull (LWW)**: cloud settings flow back at three moments — **side-panel open** (creds already saved; adopt → persist locally + refresh UI), **successful credential "Test connection"** (pre-save; adopt into the working copy only, persisted by the user's Save), and an explicit **"Pull from cloud" button** in the Upstash section (git-pull semantics — the user just saved on device A and wants it on B now, without reopening the panel; adopt → persist + refresh, with per-outcome status feedback: adopted / already up to date / failed). Adopt iff `cloud.updatedAt > local.updatedAt` (`mergeCloudSettings`, the 002 primitive — first wiring); credentials never come from the cloud. Adoption keeps `updatedAt = cloud.updatedAt`; Save stamps local `updatedAt = now` and pushes the same `now` to the cloud, so LWW stays consistent across devices. Cost: 1 GET per pull — negligible vs the 500K/month budget. Silent paths (open/test) fail quietly and keep local; only the button reports errors.
-- [x] **Reconciliation frequency control**: debounce when rapidly switching conversations / only trigger full reconciliation for conversations stayed >N seconds.
+- [x] **Reconciliation frequency control**: SPA switch → immediate fetch (product decision 2026-08: snappiness over API economy — no debounce). Rapid tab-through is absorbed by the serialization in `fetchAndShipHistory`: one in-flight fetch at a time, later switches queue a re-run targeting only the LATEST conversation, and an in-flight result whose conversation changed mid-fetch is discarded (dialogueId guard).
 - [x] All 7 platforms' history-fetch APIs verified (2026-06 live capture, text extractable on all platforms).
 - [x] All 7 platforms' deletion endpoints confirmed (interception layer ready).
 
@@ -156,14 +156,14 @@ One reconciliation:
   mergedRounds.sort(by time-order).forEach((r,i)=> r.n = i+1)   // n is display-only, reassigned after merge by time
   record = { ...cloudRecord,
              rounds: mergedRounds,
-             totalTokens: Σ mergedRounds.total,        // real cumulative recomputed
+             totalTokens: mergeLifetimeTotal(cloudRecord.totalTokens, cloudRecord.rounds, newRounds),  // cloud running total adjusted by the merge diff (see below)
              roundCount: mergedRounds.length,          // = number of distinct messageIds in merged set
              updatedAt: now }
 ```
 
 - **Rounds still returned by platform** → re-estimated from platform text, overwriting old estimates (platform is text truth).
 - **Rounds no longer returned by platform** (truncation / pagination miss) → keep old estimates from `cloudRecord`, not lost.
-- **`totalTokens` / `roundCount`** recomputed from merged set: `totalTokens = Σ mergedRounds.total`; `roundCount = number of distinct messageIds in merged set` (stable-identity dedup, naturally truncation-resistant / duplicate-resistant). Both unaffected by `rounds[]` trimming (see 001 invariants).
+- **`totalTokens` / `roundCount`** recomputed from merged set: `totalTokens = mergeLifetimeTotal(...)` — the cloud record's true running total (which survived the cloud record's own trimming) adjusted by the merge diff: history re-estimates replace the cloud contribution of the same messageId, genuinely-new rounds (order beyond the retained window) add theirs, and trimmed rounds are NOT re-added (their totals already live in `cloudTotal` — the trimmed-window rule: platform order keys are monotonic, so a history round absent from the window with `order ≤ window max` can only be a trimmed round, never a new one). Equals `Σ mergedRounds.total` for ≤200-round dialogues, and stays correct when `unionRounds` trims the oldest rounds (>200) — a naive re-sum would silently drop the trimmed rounds' totals, a naive "add every absent round" double-counts them on every refetch. `roundCount = number of distinct messageIds in merged set` (stable-identity dedup, naturally truncation-resistant / duplicate-resistant). Both unaffected by `rounds[]` trimming (see 001 invariants).
 
 > **Normal case = full overwrite write**: When platform returns complete history, every round wins with a re-estimated value, old cloud values replaced as a whole — so coefficient upgrades (tokenizer change / 004 calibration / user override) are refreshed on every open; old estimates don't get stuck. Union's "selectivity" only manifests when platform **truncates / paginates**: dropped early rounds keep old cloud estimates; the cost is those rounds stay on whatever coefficient set they were estimated with (`DialogueRecord` stores only counts, no text, so no text means no re-estimation); the benefit is not losing those rounds' cumulative totals. DeepSeek returns full history, no pagination (see 001), so this limitation does not exist.
 
@@ -367,7 +367,6 @@ headroom:cleanup-state → { <platform>: lastCleanupTimestamp }
 
 - ChatGPT's mapping tree traversal: take the main line (current_node backtrack) or all user→assistant pairs? How to handle regenerated branches?
 - Gemini history content scraping method (2026-06 live-confirmed: content in SSR HTML / DOM, `fetchHistory` uses DOM scraping as fallback, text extractable; whether to upgrade to more stable batchexecute RPC left to [004](./004-optimizations.md)).
-- `fetchHistory` frequency control threshold: when rapidly switching conversations, how much debounce / how many seconds of stay before triggering full reconciliation?
 - Zombie cleanup trigger frequency: periodic alarms (60min) + home-page trigger, shared 5min throttle (already designed).
 - New conversation's first message has no dialogueId (Kimi etc.) → first round cannot fetchHistory; must wait for dialogueId to appear.
 - Whether `MAX_RETAINED_ROUNDS` (200) is still reasonable under full reconciliation: platform history may be longer; should reconciliation truncate?

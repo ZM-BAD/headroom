@@ -245,7 +245,7 @@ function render(state: UsageState, th: Thresholds): void {
   renderRounds(state.rounds);
 }
 
-/** Render the per-round input/output breakdown (↑prompt / ↓answer tokens + cumulative). */
+/** Render the per-round input/output breakdown (↑prompt / ⌘tool / ↓answer tokens + cumulative). */
 function renderRounds(rounds: UsageState["rounds"]): void {
   const tbody = els.roundsList;
   tbody.replaceChildren();
@@ -257,14 +257,25 @@ function renderRounds(rounds: UsageState["rounds"]): void {
     const pin = document.createElement("td");
     pin.className = "hd-round-in";
     pin.textContent = `↑${r.promptTokens.toLocaleString()}`;
+    // Search/tool tokens (spec 005) — "—" when 0 so old rounds keep a clean row.
+    const ptool = document.createElement("td");
+    ptool.className = "hd-round-tool";
+    ptool.textContent =
+      (r.toolTokens ?? 0) > 0
+        ? `⌘${(r.toolTokens ?? 0).toLocaleString()}`
+        : "—";
     const pout = document.createElement("td");
     pout.className = "hd-round-out";
     pout.textContent = `↓${r.answerTokens.toLocaleString()}`;
     const cum = document.createElement("td");
     cum.className = "hd-round-cum";
-    // Cumulative = prompt + answer, computed locally — no extra Upstash field.
-    cum.textContent = (r.promptTokens + r.answerTokens).toLocaleString();
-    tr.append(n, pin, pout, cum);
+    // Cumulative = prompt + tool + answer, computed locally — no extra Upstash field.
+    cum.textContent = (
+      r.promptTokens +
+      (r.toolTokens ?? 0) +
+      r.answerTokens
+    ).toLocaleString();
+    tr.append(n, pin, ptool, pout, cum);
     tbody.append(tr);
   }
 }

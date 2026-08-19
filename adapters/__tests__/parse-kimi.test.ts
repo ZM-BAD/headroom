@@ -40,7 +40,7 @@ describe("parseKimiHistory", () => {
     ]);
   });
 
-  it("drops think/tool/stage blocks — only text blocks count (reasoning excluded)", () => {
+  it("extracts web-search tool blocks into toolText, drops think/stage (spec 005)", () => {
     const resp = {
       messages: [
         {
@@ -55,7 +55,22 @@ describe("parseKimiHistory", () => {
           createTime: "2026-06-01T00:00:00Z",
           blocks: [
             { think: { content: "private reasoning" } },
-            { tool: { content: "search results" } },
+            {
+              tool: {
+                name: "web_search",
+                args: '{"queries":["今日新闻"]}',
+                contents: [
+                  {
+                    searchResult: {
+                      base: {
+                        title: "网易新闻",
+                        snippet: "今日头条 2026-08-14",
+                      },
+                    },
+                  },
+                ],
+              },
+            },
             { stage: { content: "thinking marker" } },
             { text: { content: "the answer" } },
           ],
@@ -65,6 +80,147 @@ describe("parseKimiHistory", () => {
     const round = parseKimiHistory(resp)[0]!;
     expect(round.promptText).toBe("the prompt");
     expect(round.answerText).toBe("the answer");
+    // tool block: args.queries + result title + snippet — the text the model read.
+    expect(round.toolText).toBe(
+      '{"queries":["今日新闻"]}\n网易新闻\n今日头条 2026-08-14',
+    );
+  });
+
+  it("leaves toolText unset when the round has no tool block", () => {
+    const resp = {
+      messages: [
+        {
+          id: "u1",
+          role: "user",
+          blocks: [{ text: { content: "the prompt" } }],
+        },
+        {
+          id: "a1",
+          role: "assistant",
+          parentId: "u1",
+          createTime: "2026-06-01T00:00:00Z",
+          blocks: [{ text: { content: "the answer" } }],
+        },
+      ],
+    };
+    const round = parseKimiHistory(resp)[0]!;
+    expect(round.toolText).toBeUndefined();
+  });
+
+  it("merges a tool-only assistant's search text into the paired round (same parent)", () => {
+    // The tree holds a text assistant (the reply) AND a tool-only assistant
+    // (the search ran but that attempt produced no text). The search text
+    // must not be dropped just because the parent is already paired.
+    const resp = {
+      messages: [
+        {
+          id: "u1",
+          role: "user",
+          blocks: [{ text: { content: "the prompt" } }],
+        },
+        {
+          id: "a1",
+          role: "assistant",
+          parentId: "u1",
+          createTime: "2026-06-01T00:00:00Z",
+          blocks: [{ text: { content: "the answer" } }],
+        },
+        {
+          id: "a2",
+          role: "assistant",
+          parentId: "u1",
+          createTime: "2026-06-01T00:00:01Z",
+          blocks: [
+            {
+              tool: {
+                name: "web_search",
+                contents: [
+                  {
+                    searchResult: {
+                      base: { title: "搜索标题", snippet: "搜索摘要" },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const rounds = parseKimiHistory(resp);
+    expect(rounds).toHaveLength(1); // same parent → ONE round
+    expect(rounds[0]!.answerText).toBe("the answer");
+    expect(rounds[0]!.toolText).toBe("搜索标题\n搜索摘要");
+  });
+
+  it("joins MULTIPLE tool-only assistants' search text into the paired round (multi-step search)", () => {
+    // Multi-step browsing: two sequential web searches within one turn — each
+    // search round-trip is its own assistant message, all sharing the same
+    // parent user. Spec 005: ALL invocations within one turn are joined.
+    // Regression: the `!target.toolText` guard silently dropped the second
+    // (and later) tool-only assistant's search text.
+    const resp = {
+      messages: [
+        {
+          id: "u1",
+          role: "user",
+          blocks: [{ text: { content: "the prompt" } }],
+        },
+        {
+          id: "a1",
+          role: "assistant",
+          parentId: "u1",
+          createTime: "2026-06-01T00:00:03Z",
+          blocks: [{ text: { content: "the answer" } }],
+        },
+        {
+          id: "a2",
+          role: "assistant",
+          parentId: "u1",
+          createTime: "2026-06-01T00:00:02Z",
+          blocks: [
+            {
+              tool: {
+                name: "web_search",
+                contents: [
+                  {
+                    searchResult: {
+                      base: { title: "第一轮搜索", snippet: "第一轮摘要" },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          id: "a3",
+          role: "assistant",
+          parentId: "u1",
+          createTime: "2026-06-01T00:00:01Z",
+          blocks: [
+            {
+              tool: {
+                name: "web_search",
+                contents: [
+                  {
+                    searchResult: {
+                      base: { title: "第二轮搜索", snippet: "第二轮摘要" },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const rounds = parseKimiHistory(resp);
+    expect(rounds).toHaveLength(1); // same parent → ONE round
+    expect(rounds[0]!.answerText).toBe("the answer");
+    expect(rounds[0]!.toolText).toBe(
+      "第一轮搜索\n第一轮摘要\n第二轮搜索\n第二轮摘要",
+    );
   });
 
   it("concatenates multiple text blocks (continued answer)", () => {

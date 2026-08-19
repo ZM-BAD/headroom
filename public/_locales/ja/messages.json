@@ -89,6 +89,9 @@
   "roundHeaderInput": {
     "message": "入力"
   },
+  "roundHeaderTool": {
+    "message": "検索/ツール"
+  },
   "roundHeaderOutput": {
     "message": "出力"
   },

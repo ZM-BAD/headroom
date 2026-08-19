@@ -143,11 +143,11 @@ Automation (typecheck / lint / unit test / build) cannot replace this checklist 
 - [x] **003-12** Wait 60min → DevTools Console shows no `zombie cleanup failed` errors
   - **Action**: Keep extension running >1h, occasionally check DevTools Console for zombie cleanup errors.
 
-### Reconciliation Frequency Control (Debounce)
+### Reconciliation Frequency Control (SPA Switch)
 
 - [x] **003-13** Rapid conversation switching → gauge switches instantly (reads from cache, no lag)
   - **Action**: Open a conversation and wait for it to load, switch to another, switch back to the first. Panel **instantly** shows the first conversation's data (from local cache), no brief blank or "detecting" state.
-- [x] **003-14** After reply completes, history is pulled immediately (code path review: REFRESH_HISTORY takes a separate branch calling `fetchAndShipHistory()` directly, bypassing SPA debounce)
+- [x] **003-14** After reply completes, history is pulled immediately (code path review: REFRESH_HISTORY calls `fetchAndShipHistory()` directly; no SPA debounce since 2026-08 — all switches fetch immediately, serialized by the in-flight guard)
 
 ---
 
@@ -213,6 +213,28 @@ Automation (typecheck / lint / unit test / build) cannot replace this checklist 
 - [x] **I18N-01** Switch to each UI language → panel text correct (verify at least en + zh_CN + ja)
 - [x] **I18N-02** Settings panel language labels correct
 - [x] **I18N-03** Status text ("Plenty of headroom" / "Headroom running low" etc.) translated correctly
+
+---
+
+## 005 Tool & Web-Search Tokens (Live)
+
+> Payload shapes were captured live 2026-08-14 (Playwright, this repo's standard method). The unit tests cover the parsers; these items verify the extension end-to-end in the real browser.
+
+### Round Breakdown
+
+- [ ] **005-01** Send a web-search question on **Kimi** → the round's new Tool column shows `⌘N > 0`; total = prompt + tool + answer
+- [ ] **005-02** Same on **Qwen** (web_search phase) and **Doubao** (search block) → Tool column populated
+- [ ] **005-03** Same on **通义 Qianwen** (bar/iframe sources) → Tool column populated
+- [ ] **005-04** **ChatGPT** with @网页搜索 → small `⌘N` (the `search("…")` call only — results are server-side)
+- [ ] **005-05** **DeepSeek** with 联网搜索 → Tool column `—` (search text not in history API — documented spec 005 limitation); prompt/answer estimates CORRECT on both A/B payload shapes (fragments[] 2026-06 + content 2026-08 — see spec 005 structure fix)
+- [ ] **005-06** **Gemini** with grounding → Tool column shows site-name-only `⌘N` (deduped, names only)
+- [ ] **005-07** A normal (no-search) round on any platform → Tool column `—`
+- [ ] **005-08** Old conversations (created before 005) → totals unchanged, Tool column `—`
+
+### Cross-Cutting
+
+- [ ] **005-09** Gauge total includes tool tokens; Upstash record stores `toolTokens` per round
+- [ ] **005-10** Reopen / SPA-switch a searched conversation → tool tokens re-estimated identically (stable messageId merge)
 
 ---
 
