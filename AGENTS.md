@@ -80,7 +80,7 @@ The sidepanel uses a two-layer translator (`t()` in `main.ts`):
 
 When a key is missing in the selected locale, `t()` explicitly falls back to `localeTables["en"]` — NOT to `browser.i18n.getMessage(key)`. The browser API uses the **browser's UI language**, which can be a third language (e.g. browser is zh_CN, user selected Deutsch). Explicit en fallback ensures untranslated keys always show English, not whatever the browser happens to speak.
 
-New keys only need to be added to `en/messages.json` and `zh_CN/messages.json`; the other 8 locales inherit English via the fallback chain. See `sidepanel/main.ts` → `t()` for the implementation.
+New keys can be added to `en/messages.json` and `zh_CN/messages.json` only, with the other 8 locales inheriting English via the fallback chain — **except high-frequency UI strings** (round headers, labels the user sees every session): those are translated in all 10 locales, because the fallback is a safety net, not a product state. 2026-08: `roundHeaderTool` (Search/Tool column) was added to all 8 remaining locales for this reason. See `sidepanel/main.ts` → `t()` for the implementation.
 
 ### Token estimation engine (spec 004)
 

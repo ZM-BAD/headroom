@@ -89,6 +89,9 @@
   "roundHeaderInput": {
     "message": "Ввод"
   },
+  "roundHeaderTool": {
+    "message": "Поиск/Инструмент"
+  },
   "roundHeaderOutput": {
     "message": "Вывод"
   },

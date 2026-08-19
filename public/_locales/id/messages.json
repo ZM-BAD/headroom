@@ -89,6 +89,9 @@
   "roundHeaderInput": {
     "message": "Masukan"
   },
+  "roundHeaderTool": {
+    "message": "Pencarian/Alat"
+  },
   "roundHeaderOutput": {
     "message": "Keluaran"
   },

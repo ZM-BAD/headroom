@@ -89,6 +89,9 @@
   "roundHeaderInput": {
     "message": "입력"
   },
+  "roundHeaderTool": {
+    "message": "검색/도구"
+  },
   "roundHeaderOutput": {
     "message": "출력"
   },
