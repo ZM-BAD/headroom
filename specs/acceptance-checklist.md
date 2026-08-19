@@ -227,7 +227,7 @@ Automation (typecheck / lint / unit test / build) cannot replace this checklist 
 - [ ] **005-03** Same on **通义 Qianwen** (bar/iframe sources) → Tool column populated
 - [ ] **005-04** **ChatGPT** with @网页搜索 → small `⌘N` (the `search("…")` call only — results are server-side)
 - [ ] **005-05** **DeepSeek** with 联网搜索 → Tool column `—` (search text not in history API — documented spec 005 limitation); prompt/answer estimates CORRECT on both A/B payload shapes (fragments[] 2026-06 + content 2026-08 — see spec 005 structure fix)
-- [ ] **005-06** **Gemini** with grounding → Tool column shows site-name-only `⌘N` (P1)
+- [ ] **005-06** **Gemini** with grounding → Tool column shows site-name-only `⌘N` (deduped, names only)
 - [ ] **005-07** A normal (no-search) round on any platform → Tool column `—`
 - [ ] **005-08** Old conversations (created before 005) → totals unchanged, Tool column `—`
 

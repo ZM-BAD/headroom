@@ -138,7 +138,7 @@ function isDigit(ch: string): boolean {
  * spec 006 calibration. Chunked counting fixes the largest source of that
  * bias without touching the 6-bucket structure. Deliberate approximation:
  * a digit run does NOT split the surrounding word ("qwen3.6-27b" = 1 word +
- * 2 chunks, BPE emits ~5) — the heuristic targets dense numeric text, and
+ * 3 chunks, BPE emits ~5) — the heuristic targets dense numeric text, and
  * splitting letters would over-correct prose. Don't "fix" it into a
  * regression without re-running scripts/calibrate-tool-text.mjs.
  *

@@ -1,8 +1,9 @@
 name: CI
 
 on:
+  # Run on ANY branch push (feature branches need the same gate as main) —
+  # the commitlint step falls back to `--last` when not on a PR.
   push:
-    branches: [main]
   pull_request:
     branches: [main]
 

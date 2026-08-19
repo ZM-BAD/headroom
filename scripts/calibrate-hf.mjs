@@ -20,6 +20,7 @@
  * instead of tokenizer.json, so it is loaded through the tiktoken wasm core
  * with the pat_str from moonshotai's tokenization_kimi.py.
  */
+import { readFileSync } from "node:fs";
 import { AutoTokenizer, env } from "@huggingface/transformers";
 import { Tiktoken } from "tiktoken";
 import { runCalibration, CORPUS } from "./calibration-lib.mjs";
