@@ -35,6 +35,8 @@ Expand from 2 to 6 writing systems, each with independent coefficients:
 
 > **Per-character vs. per-word**: CJK / Kana / Hangul counted per character (one character ≈ 1–3 tokens, low variance); Cyrillic / Arabic / Latin counted per whitespace-separated word (word length varies widely, per-word is more stable).
 
+**Digit-run sub-word counting (added 2026-08-17, spec 006)**: consecutive `\p{N}` characters are counted per `\p{N}{1,3}` chunk (BPE tokenizers split digit strings into 1–3-digit tokens — Kimi's pat_str literally carries `\p{N}{1,3}`), NOT as part of the surrounding word. Without this, a dense date/number string ("2026年8月11日") measured as ONE latin word (~1.4 tokens) while the real tokenizer emits ~4–5 — a measured 20–45% UNDERESTIMATE on tool text (search snippets, dates, stats; spec 006 §calibration). Digit chunks ride the latin bucket. All coefficients were re-fitted after this change (2026-08-17; shifts ≤0.02 — the prose corpus has almost no digits).
+
 **v2 estimation formula**:
 
 ```

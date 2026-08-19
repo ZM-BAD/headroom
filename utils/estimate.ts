@@ -83,6 +83,7 @@ const RE_KATAKANA = new RegExp("\\p{Script=Katakana}", "u");
 const RE_HANGUL = new RegExp("\\p{Script=Hangul}", "u");
 const RE_CYRILLIC = new RegExp("\\p{Script=Cyrillic}", "u");
 const RE_ARABIC = new RegExp("\\p{Script=Arabic}", "u");
+const RE_DIGIT = new RegExp("\\p{N}", "u");
 
 // ---- character-level classifiers (char-based scripts) ----
 
@@ -106,6 +107,18 @@ function isArabic(ch: string): boolean {
   return RE_ARABIC.test(ch);
 }
 
+/**
+ * Any Unicode digit (\p{N} — includes full-width digits). NOTE: \p{N} also
+ * matches Nl/No (U+3007 〇, ½, ², ①, Roman numerals) — they land in the
+ * digit bucket, not CJK; magnitudes are tiny and the BPE side splits them
+ * similarly, so this is accepted.
+ */
+function isDigit(ch: string): boolean {
+  // ASCII fast path: \d{0-9} dominates real text; the regex stays for
+  // full-width digits (\p{N}).
+  return (ch >= "0" && ch <= "9") || RE_DIGIT.test(ch);
+}
+
 // ---- public API ----
 
 /**
@@ -114,6 +127,20 @@ function isArabic(ch: string): boolean {
  * Char-based scripts (CJK, kana, Hangul): counted per character.
  * Word-based scripts (Cyrillic, Arabic, Latin): counted per whitespace-
  * separated word, each word assigned to at most one bucket.
+ *
+ * Sub-word heuristic (added 2026-08-17, spec 006): DIGIT RUNS are counted
+ * per `\p{N}{1,3}` chunk instead of as one word. BPE tokenizers split digit
+ * strings into 1–3-digit tokens (Kimi's pat_str literally carries
+ * `\p{N}{1,3}`; Qwen/DeepSeek tokenizers behave the same), so a dense
+ * numeric/date string like "2026年8月11日" was measured as ONE latin word
+ * (~1.4 tokens) while the real tokenizer emits ~4–5 — a 20–45% systematic
+ * UNDERESTIMATE on tool text (search snippets, dates, stats) measured in
+ * spec 006 calibration. Chunked counting fixes the largest source of that
+ * bias without touching the 6-bucket structure. Deliberate approximation:
+ * a digit run does NOT split the surrounding word ("qwen3.6-27b" = 1 word +
+ * 2 chunks, BPE emits ~5) — the heuristic targets dense numeric text, and
+ * splitting letters would over-correct prose. Don't "fix" it into a
+ * regression without re-running scripts/calibrate-tool-text.mjs.
  *
  * Single-pass: one iteration counts char-based scripts AND classifies
  * word-based scripts on whitespace boundaries. Chinese has no whitespace
@@ -135,9 +162,21 @@ export function estimateTokens(text: string, coeff: TokenCoefficients): number {
   let inWord = false;
   let wordClass = 0;
 
+  // Digit-run state: consecutive \p{N} characters form one run, counted as
+  // ceil(len/3) sub-words (BPE \p{N}{1,3}) — flushed on any non-digit char.
+  let digitRun = 0;
+
+  const flushDigitRun = (): void => {
+    if (digitRun > 0) {
+      latinWords += Math.ceil(digitRun / 3);
+      digitRun = 0;
+    }
+  };
+
   for (const ch of text) {
-    // Whitespace delimits words — flush the completed word.
+    // Whitespace delimits words — flush the completed word + digit run.
     if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+      flushDigitRun();
       if (inWord) {
         if (wordClass === 3) cyrillicWords++;
         else if (wordClass === 2) arabicWords++;
@@ -150,6 +189,14 @@ export function estimateTokens(text: string, coeff: TokenCoefficients): number {
     }
 
     inWord = true;
+
+    // Digit runs: counted per \p{N}{1,3} chunk, NOT as part of a word
+    // (spec 006 — word-level counting underestimates dense numeric text).
+    if (isDigit(ch)) {
+      digitRun++;
+      continue;
+    }
+    flushDigitRun();
 
     // Char-based: count per character, don't upgrade wordClass.
     if (isCJK(ch)) {
@@ -175,7 +222,8 @@ export function estimateTokens(text: string, coeff: TokenCoefficients): number {
     }
   }
 
-  // Flush the last word (text may not end with whitespace).
+  // Flush the last word + digit run (text may not end with whitespace).
+  flushDigitRun();
   if (inWord) {
     if (wordClass === 3) cyrillicWords++;
     else if (wordClass === 2) arabicWords++;

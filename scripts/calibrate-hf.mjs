@@ -20,12 +20,17 @@
  * instead of tokenizer.json, so it is loaded through the tiktoken wasm core
  * with the pat_str from moonshotai's tokenization_kimi.py.
  */
-import { readFileSync } from "node:fs";
 import { AutoTokenizer, env } from "@huggingface/transformers";
 import { Tiktoken } from "tiktoken";
-import { runCalibration } from "./calibration-lib.mjs";
+import { runCalibration, CORPUS } from "./calibration-lib.mjs";
 
 env.cacheDir = "/tmp/headroom-hf-cache";
+
+// spec 006: the tool-text corpus is NOT merged into the fit — dialogue prose
+// dominates real context, and merging pulls latin up (English technical
+// snippets) which overestimates English prose by 15–35%. Tool text is
+// instead handled by the digit-run sub-word engine (estimate.ts, shared) and
+// VALIDATED against the tool corpus in calibrate-tool-text.mjs (not fitted).
 
 const HUB_MODELS = [
   {
@@ -48,9 +53,11 @@ const HUB_MODELS = [
 
 for (const m of HUB_MODELS) {
   const tok = await AutoTokenizer.from_pretrained(m.id);
-  await runCalibration(m.label, (text) => {
-    return tok.encode(text, { add_special_tokens: false }).length;
-  });
+  await runCalibration(
+    m.label,
+    (text) => tok.encode(text, { add_special_tokens: false }).length,
+    CORPUS,
+  );
 }
 
 // —— Kimi K2.6: tiktoken-format vocab + the pat_str from tokenization_kimi.py

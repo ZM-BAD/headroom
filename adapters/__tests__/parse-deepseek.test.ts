@@ -4,12 +4,127 @@ import { parseDeepSeekHistory } from "../deepseek";
 
 /**
  * parseDeepSeekHistory turns a GET /api/v0/chat/history_messages response into
- * ascending rounds. Captured live (2026-06): messages is a flat array; each
- * ASSISTANT links to its parent USER via parent_id; fragments[{type,content}]
- * carry the text. Dedup: multiple assistants for the same parent → keep highest
- * message_id (latest regenerate).
+ * ascending rounds. DeepSeek A/B-rolls TWO payload shapes (both live):
+ *  - 2026-06 fragments[] shape — text in fragments[{type,content}]
+ *    (REQUEST/THINK/RESPONSE/TIP); confirmed on a real session 2026-08-16.
+ *  - 2026-08 top-level `content` shape.
+ * The parser must read both (fragments preferred, content as fallback).
+ * Dedup: multiple assistants for the same parent → keep highest message_id
+ * (latest regenerate).
  */
 describe("parseDeepSeekHistory", () => {
+  it("legacy fragments[] shape (live 2026-08-16): REQUEST→prompt, RESPONSE→answer, THINK/TIP dropped", () => {
+    // Real capture from a DeepSeek session — the 2026-06 shape DeepSeek still
+    // serves alongside the newer top-level `content` shape (A/B rollout). The
+    // parser must not read only `content` — that silently zeroes every round.
+    const resp = {
+      data: {
+        biz_data: {
+          chat_messages: [
+            {
+              message_id: 1,
+              parent_id: null,
+              role: "USER",
+              status: "FINISHED",
+              search_enabled: true,
+              fragments: [
+                {
+                  id: 1,
+                  type: "REQUEST",
+                  content: "炒股的话，需要了解哪些金融词汇？",
+                },
+              ],
+            },
+            {
+              message_id: 2,
+              parent_id: 1,
+              role: "ASSISTANT",
+              status: "FINISHED",
+              search_enabled: true,
+              fragments: [
+                {
+                  id: 2,
+                  type: "THINK",
+                  content: "private reasoning — must NOT count",
+                },
+                { id: 3, type: "RESPONSE", content: "需要了解A股、蓝筹股…" },
+                { id: 4, type: "TIP", content: "UI metadata — must NOT count" },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    expect(parseDeepSeekHistory(resp)).toEqual([
+      {
+        messageId: "2",
+        order: 2,
+        promptText: "炒股的话，需要了解哪些金融词汇？",
+        answerText: "需要了解A股、蓝筹股…",
+        createdAt: undefined,
+      },
+    ]);
+  });
+
+  it("prefers fragments[] over content when both are present (dual-shape safety)", () => {
+    const resp = {
+      data: {
+        biz_data: {
+          chat_messages: [
+            {
+              message_id: 1,
+              role: "USER",
+              content: "fallback content must not win",
+              fragments: [{ type: "REQUEST", content: "fragments win" }],
+            },
+            {
+              message_id: 2,
+              parent_id: 1,
+              role: "ASSISTANT",
+              status: "FINISHED",
+              content: "fallback answer must not win",
+              fragments: [{ type: "RESPONSE", content: "fragments answer" }],
+            },
+          ],
+        },
+      },
+    };
+    const round = parseDeepSeekHistory(resp)[0]!;
+    expect(round.promptText).toBe("fragments win");
+    expect(round.answerText).toBe("fragments answer");
+  });
+
+  it("joins MULTIPLE RESPONSE fragments with newlines (fragments[] shape)", () => {
+    // The fragments[]-join path (live 2026-06 shape) — same-type fragments
+    // concatenate with "\n" inside dsMessageText. Regression guard: the
+    // rewritten test file dropped direct coverage of this join.
+    const resp = {
+      data: {
+        biz_data: {
+          chat_messages: [
+            {
+              message_id: 1,
+              role: "USER",
+              fragments: [{ type: "REQUEST", content: "q" }],
+            },
+            {
+              message_id: 2,
+              parent_id: 1,
+              role: "ASSISTANT",
+              status: "FINISHED",
+              fragments: [
+                { type: "RESPONSE", content: "第一段" },
+                { type: "RESPONSE", content: "第二段" },
+              ],
+            },
+          ],
+        },
+      },
+    };
+    const round = parseDeepSeekHistory(resp)[0]!;
+    expect(round.answerText).toBe("第一段\n第二段");
+  });
+
   it("pairs an assistant with its parent user via REQUEST/RESPONSE fragments", () => {
     const resp = {
       data: {
@@ -18,16 +133,14 @@ describe("parseDeepSeekHistory", () => {
             {
               message_id: 1,
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "你好" }],
+              content: "你好",
             },
             {
               message_id: 2,
               parent_id: 1,
               role: "ASSISTANT",
               status: "FINISHED",
-              fragments: [
-                { type: "RESPONSE", content: "你好！有什么可以帮你？" },
-              ],
+              content: "你好！有什么可以帮你？",
               inserted_at: 1719500000.0,
             },
           ],
@@ -53,26 +166,26 @@ describe("parseDeepSeekHistory", () => {
             {
               message_id: 10,
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "Q2" }],
+              content: "Q2",
             },
             {
               message_id: 20,
               parent_id: 10,
               role: "ASSISTANT",
               status: "FINISHED",
-              fragments: [{ type: "RESPONSE", content: "A2" }],
+              content: "A2",
             },
             {
               message_id: 3,
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "Q1" }],
+              content: "Q1",
             },
             {
               message_id: 7,
               parent_id: 3,
               role: "ASSISTANT",
               status: "FINISHED",
-              fragments: [{ type: "RESPONSE", content: "A1" }],
+              content: "A1",
             },
           ],
         },
@@ -92,21 +205,21 @@ describe("parseDeepSeekHistory", () => {
             {
               message_id: 1,
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "question" }],
+              content: "question",
             },
             {
               message_id: 2,
               parent_id: 1,
               role: "ASSISTANT",
               status: "FINISHED",
-              fragments: [{ type: "RESPONSE", content: "first answer" }],
+              content: "first answer",
             },
             {
               message_id: 5,
               parent_id: 1,
               role: "ASSISTANT",
               status: "FINISHED",
-              fragments: [{ type: "RESPONSE", content: "regenerated answer" }],
+              content: "regenerated answer",
             },
           ],
         },
@@ -133,7 +246,7 @@ describe("parseDeepSeekHistory", () => {
               parent_id: 404,
               role: "ASSISTANT",
               status: "FINISHED",
-              fragments: [{ type: "RESPONSE", content: "orphan" }],
+              content: "orphan",
             },
           ],
         },
@@ -150,19 +263,19 @@ describe("parseDeepSeekHistory", () => {
             {
               message_id: 0,
               role: "SYSTEM",
-              fragments: [{ type: "REQUEST", content: "system prompt" }],
+              content: "system prompt",
             },
             {
               message_id: 1,
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "hello" }],
+              content: "hello",
             },
             {
               message_id: 2,
               parent_id: 1,
               role: "ASSISTANT",
               status: "FINISHED",
-              fragments: [{ type: "RESPONSE", content: "hi" }],
+              content: "hi",
             },
           ],
         },
@@ -171,7 +284,7 @@ describe("parseDeepSeekHistory", () => {
     expect(parseDeepSeekHistory(resp)).toHaveLength(1);
   });
 
-  it("joins multiple fragments of the same type with newlines", () => {
+  it("takes the message text from the top-level content string", () => {
     const resp = {
       data: {
         biz_data: {
@@ -179,20 +292,14 @@ describe("parseDeepSeekHistory", () => {
             {
               message_id: 1,
               role: "USER",
-              fragments: [
-                { type: "REQUEST", content: "part 1" },
-                { type: "REQUEST", content: "part 2" },
-              ],
+              content: "part 1\npart 2",
             },
             {
               message_id: 2,
               parent_id: 1,
               role: "ASSISTANT",
               status: "FINISHED",
-              fragments: [
-                { type: "RESPONSE", content: "answer part 1" },
-                { type: "RESPONSE", content: "answer part 2" },
-              ],
+              content: "answer part 1\nanswer part 2",
             },
           ],
         },
@@ -203,7 +310,7 @@ describe("parseDeepSeekHistory", () => {
     expect(round.answerText).toBe("answer part 1\nanswer part 2");
   });
 
-  it("drops non-matching fragment types (THINKING, etc.)", () => {
+  it("drops thinking_content — only the public content counts", () => {
     const resp = {
       data: {
         biz_data: {
@@ -211,17 +318,16 @@ describe("parseDeepSeekHistory", () => {
             {
               message_id: 1,
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "q" }],
+              content: "q",
             },
             {
               message_id: 2,
               parent_id: 1,
               role: "ASSISTANT",
               status: "FINISHED",
-              fragments: [
-                { type: "THINKING", content: "private reasoning" },
-                { type: "RESPONSE", content: "public answer" },
-              ],
+              content: "public answer",
+              thinking_content: "private reasoning",
+              search_enabled: "true",
             },
           ],
         },
@@ -229,6 +335,8 @@ describe("parseDeepSeekHistory", () => {
     };
     const round = parseDeepSeekHistory(resp)[0]!;
     expect(round.answerText).toBe("public answer");
+    // Search text is NOT in the history API (spec 005) — never estimated.
+    expect(round.toolText).toBeUndefined();
   });
 
   it("converts inserted_at epoch seconds to createdAt milliseconds", () => {
@@ -239,14 +347,14 @@ describe("parseDeepSeekHistory", () => {
             {
               message_id: 1,
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "q" }],
+              content: "q",
             },
             {
               message_id: 2,
               parent_id: 1,
               role: "ASSISTANT",
               status: "FINISHED",
-              fragments: [{ type: "RESPONSE", content: "a" }],
+              content: "a",
               inserted_at: 1782741816.158,
             },
           ],
@@ -265,14 +373,14 @@ describe("parseDeepSeekHistory", () => {
             {
               message_id: 1,
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "q" }],
+              content: "q",
             },
             {
               message_id: 2,
               parent_id: 1,
               role: "ASSISTANT",
               status: "FINISHED",
-              fragments: [{ type: "RESPONSE", content: "a" }],
+              content: "a",
               // no inserted_at
             },
           ],
@@ -293,14 +401,14 @@ describe("parseDeepSeekHistory", () => {
             {
               message_id: 1,
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "long prompt" }],
+              content: "long prompt",
             },
             {
               message_id: 2,
               parent_id: 1,
               role: "ASSISTANT",
               status: "STOPPED",
-              fragments: [{ type: "RESPONSE", content: "partial" }],
+              content: "partial",
             },
           ],
         },
@@ -322,14 +430,14 @@ describe("parseDeepSeekHistory", () => {
             {
               message_id: 1,
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "p" }],
+              content: "p",
             },
             {
               message_id: 2,
               parent_id: 1,
               role: "ASSISTANT",
               accumulated_token_usage: 999,
-              fragments: [{ type: "RESPONSE", content: "a" }],
+              content: "a",
             },
           ],
         },
@@ -369,19 +477,19 @@ describe("parseDeepSeekHistory", () => {
             {
               message_id: "string-id",
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "q" }],
+              content: "q",
             },
             {
               message_id: 1,
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "valid user" }],
+              content: "valid user",
             },
             {
               message_id: 2,
               parent_id: 1,
               role: "ASSISTANT",
               status: "FINISHED",
-              fragments: [{ type: "RESPONSE", content: "a" }],
+              content: "a",
             },
           ],
         },
@@ -398,14 +506,14 @@ describe("parseDeepSeekHistory", () => {
             {
               message_id: 1,
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "q" }],
+              content: "q",
             },
             {
               message_id: 2,
               parent_id: "1",
               role: "ASSISTANT",
               status: "FINISHED",
-              fragments: [{ type: "RESPONSE", content: "a" }],
+              content: "a",
             },
           ],
         },
@@ -414,7 +522,7 @@ describe("parseDeepSeekHistory", () => {
     expect(parseDeepSeekHistory(resp)).toEqual([]);
   });
 
-  it("handles missing / null / empty fragments on individual messages", () => {
+  it("handles missing / null / empty content on individual messages", () => {
     const resp = {
       data: {
         biz_data: {
@@ -422,24 +530,24 @@ describe("parseDeepSeekHistory", () => {
             {
               message_id: 1,
               role: "USER",
-              // fragments absent entirely
+              // content absent entirely
             },
             {
               message_id: 2,
               parent_id: 1,
               role: "ASSISTANT",
-              fragments: null,
+              content: null,
             },
             {
               message_id: 3,
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "q" }],
+              content: "q",
             },
             {
               message_id: 4,
               parent_id: 3,
               role: "ASSISTANT",
-              fragments: [],
+              content: "",
             },
           ],
         },
@@ -447,15 +555,15 @@ describe("parseDeepSeekHistory", () => {
     };
     const rounds = parseDeepSeekHistory(resp);
     expect(rounds).toHaveLength(2);
-    // Round 1: both prompt and answer have no fragments → empty strings
+    // Round 1: both prompt and answer have no content → empty strings
     expect(rounds[0]!.promptText).toBe("");
     expect(rounds[0]!.answerText).toBe("");
-    // Round 2: fragments present → normal
+    // Round 2: content present → normal
     expect(rounds[1]!.promptText).toBe("q");
     expect(rounds[1]!.answerText).toBe("");
   });
 
-  it("trims whitespace from joined fragments", () => {
+  it("trims whitespace from the content string", () => {
     const resp = {
       data: {
         biz_data: {
@@ -463,17 +571,14 @@ describe("parseDeepSeekHistory", () => {
             {
               message_id: 1,
               role: "USER",
-              fragments: [{ type: "REQUEST", content: "  prompt  " }],
+              content: "  prompt  ",
             },
             {
               message_id: 2,
               parent_id: 1,
               role: "ASSISTANT",
               status: "FINISHED",
-              fragments: [
-                { type: "RESPONSE", content: "  line1  " },
-                { type: "RESPONSE", content: "  line2  " },
-              ],
+              content: "  line1  \n  line2  ",
             },
           ],
         },
@@ -481,7 +586,6 @@ describe("parseDeepSeekHistory", () => {
     };
     const round = parseDeepSeekHistory(resp)[0]!;
     expect(round.promptText).toBe("prompt");
-    // joinFragments joins with "\n" then trims the whole result
     expect(round.answerText).toBe("line1  \n  line2");
   });
 });

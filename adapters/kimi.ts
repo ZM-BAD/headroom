@@ -7,12 +7,12 @@ import type { TokenCoefficients } from "../utils/estimate";
  * Chinese is ultra-cheap while non-Latin words run ~2.8 tok/word.
  */
 const KIMI_COEFFICIENTS: TokenCoefficients = {
-  cjk: 0.58,
-  kana: 0.85,
-  hangul: 0.98,
-  cyrillic: 2.77,
+  cjk: 0.57,
+  kana: 0.84,
+  hangul: 0.97,
+  cyrillic: 2.78,
   arabic: 2.78,
-  latin: 1.31,
+  latin: 1.3,
 };
 
 // Kimi — request CONFIRMED live 2026-06. Kimi migrated OFF the legacy
@@ -159,6 +159,18 @@ export const kimiAdapter: PlatformAdapter = {
 /** A content block — only the variants we inspect. */
 interface KimiBlock {
   text?: { content?: string };
+  /**
+   * Tool-call block (spec 005): web_search carries `args` (queries JSON) and
+   * `contents[].searchResult.base.{title,snippet}` — the search-result text
+   * injected into the model's context. CONFIRMED live 2026-08-14.
+   */
+  tool?: {
+    name?: string;
+    args?: string;
+    contents?: Array<{
+      searchResult?: { base?: { title?: string; snippet?: string } };
+    }>;
+  };
 }
 /** A row in the ListMessages `messages` array. */
 interface KimiMessage {
@@ -192,12 +204,13 @@ function readKimiToken(): string | null {
  * Parse a `POST .../ChatService/ListMessages` response into ASCENDING rounds
  * (CONFIRMED shape, 2026-06 Playwright). `messages` is an array (NEW→OLD),
  * tree-linked via parentId: each assistant's parentId points at the user it
- * answers → that pair = one round. A message's body is in blocks[]; only blocks
- * with a `text` field carry readable content — `think`/`tool`/`stage` blocks
- * are reasoning/search and are dropped. A failed assistant (no text block,
- * e.g. REASON_COMPLETION_OVERLOADED) is skipped; its retry pairs with a later
- * sibling. Rounds are sorted ascending by createTime. Defensive: a missing/
- * foreign shape → []; never throws.
+ * answers → that pair = one round. A message's body is in blocks[]; blocks
+ * with a `text` field carry the reply/prompt; `tool` blocks carry the
+ * web-search results (spec 005) which we join into toolText. `think`/`stage`
+ * blocks are reasoning/markers and are dropped. A failed assistant (no text
+ * block, e.g. REASON_COMPLETION_OVERLOADED) is skipped; its retry pairs with a
+ * later sibling. Rounds are sorted ascending by createTime. Defensive: a
+ * missing/foreign shape → []; never throws.
  */
 export function parseKimiHistory(resp: unknown): HistoryRound[] {
   const messages =
@@ -211,8 +224,10 @@ export function parseKimiHistory(resp: unknown): HistoryRound[] {
   const staged: {
     ts: string;
     assistantId: string;
+    parentId: string;
     promptText: string;
     answerText: string;
+    toolText: string;
   }[] = [];
   // Track which user ids have a text-containing assistant → those are paired.
   const pairedUsers = new Set<string>();
@@ -228,14 +243,18 @@ export function parseKimiHistory(resp: unknown): HistoryRound[] {
     staged.push({
       ts: typeof m.createTime === "string" ? m.createTime : "",
       assistantId: m.id,
+      parentId: parent.id!,
       promptText: joinKimiTextBlocks(parent.blocks),
       answerText,
+      toolText: joinKimiToolBlocks(m.blocks),
     });
   }
   // Second pass: assistants without text whose parent user was NOT paired
   // by a text-containing assistant. This covers user-stopped-generation where
   // the model produced no content — the user's prompt still counts as a round
-  // (answerTokens = 0).
+  // (answerTokens = 0). A tool-only assistant whose parent IS paired (the
+  // text reply exists elsewhere in the tree) still contributes its search
+  // text: merge it into that parent's round instead of dropping it.
   for (const m of messages) {
     if (m?.role !== "assistant") continue;
     if (typeof m.id !== "string") continue;
@@ -243,26 +262,49 @@ export function parseKimiHistory(resp: unknown): HistoryRound[] {
     const parentId = typeof m.parentId === "string" ? m.parentId : undefined;
     if (!parentId) continue;
     const parent = byId.get(parentId);
-    if (!parent || pairedUsers.has(parentId)) continue;
+    if (!parent) continue;
+    const toolText = joinKimiToolBlocks(m.blocks);
+    if (pairedUsers.has(parentId)) {
+      if (toolText) {
+        // Multi-step browsing runs several sequential searches within one
+        // turn — each round-trip is its own assistant message, all sharing
+        // the same parent. Spec 005: ALL invocations in one turn are joined
+        // into that round's toolText. Corner: in a regenerate tree the OLD
+        // attempt's tool messages share the parent too, so the old search
+        // text rides the newest revision's round — a deliberate
+        // approximation (the API exposes no attempt scope); a drop would be
+        // worse than the misattribution.
+        const target = staged.find((s) => s.parentId === parentId);
+        if (target) {
+          target.toolText = target.toolText
+            ? `${target.toolText}\n${toolText}`
+            : toolText;
+        }
+      }
+      continue;
+    }
     // Unpaired user — this assistant is the only reply, even if empty.
     staged.push({
       ts: typeof m.createTime === "string" ? m.createTime : "",
       assistantId: m.id,
+      parentId,
       promptText: joinKimiTextBlocks(parent.blocks),
       answerText: "",
+      toolText,
     });
   }
   // Order rounds chronologically (oldest first). createTime is an ISO-8601
   // string → lexicographic compare = chronological.
   staged.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
   // messageId = the assistant message's stable id; order = createTime epoch ms.
-  return staged.map(({ assistantId, ts, promptText, answerText }) => {
+  return staged.map(({ assistantId, ts, promptText, answerText, toolText }) => {
     const createdAt = Date.parse(ts) || 0;
     return {
       messageId: assistantId,
       order: createdAt,
       promptText,
       answerText,
+      toolText: toolText || undefined,
       createdAt,
     };
   });
@@ -282,4 +324,34 @@ function joinKimiTextBlocks(blocks: KimiBlock[] | undefined): string {
     .map((b) => b.text!.content!)
     .join("\n")
     .trim();
+}
+
+/**
+ * Join a tool block's text (spec 005): the search invocation (`args.queries`)
+ * plus every result's `title` + `snippet` — the text the model actually read.
+ * The invocation text is model-generated (output side); the results are
+ * injected context (input side). Both ride one toolText bucket (spec 005 — the
+ * invocation is ~tens of tokens, the snippets are the bulk). Empty when the
+ * round had no tool call.
+ */
+function joinKimiToolBlocks(blocks: KimiBlock[] | undefined): string {
+  if (!Array.isArray(blocks)) return "";
+  const parts: string[] = [];
+  for (const b of blocks) {
+    const tool = b?.tool;
+    if (!tool) continue;
+    if (typeof tool.args === "string" && tool.args.trim()) {
+      parts.push(tool.args.trim());
+    }
+    for (const c of tool.contents ?? []) {
+      const base = c?.searchResult?.base;
+      if (!base) continue;
+      const title = typeof base.title === "string" ? base.title.trim() : "";
+      const snippet =
+        typeof base.snippet === "string" ? base.snippet.trim() : "";
+      const block = [title, snippet].filter(Boolean).join("\n");
+      if (block) parts.push(block);
+    }
+  }
+  return parts.join("\n").trim();
 }

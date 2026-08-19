@@ -30,6 +30,16 @@ export interface HistoryRound {
   order: number;
   promptText: string;
   answerText: string;
+  /**
+   * Text the model consumed/produced for web-search & tool calls this round:
+   * search-result snippets/titles, opened pages, and the tool-invocation text
+   * the model generated (function name + args). Estimated into `toolTokens`
+   * by the caller like promptText/answerText. Absent/empty = no tools (spec
+   * 005). Platforms whose history API does not persist search text (DeepSeek,
+   * ChatGPT results) leave it unset — the invocation-only text ChatGPT exposes
+   * still rides here.
+   */
+  toolText?: string;
   /** Wall-clock epoch ms when this round was created on the platform. Optional — DOM-only platforms may omit (defaults to 0). */
   createdAt?: number;
 }
@@ -167,6 +177,15 @@ export interface PlatformAdapter {
    * Defaults to false — platforms that persist synchronously never retry.
    */
   historyNeedsSettleRetry?: boolean;
+  /**
+   * Whether this platform's `HistoryRound.order` keys are monotonic across
+   * fetches (timestamps / server sequence numbers). The trim-but-keep-totals
+   * merge (mergeLifetimeTotal) reads "absent from the window + order ≤ max"
+   * as a trimmed round — only sound when order never renumbers. False for
+   * DOM-derived order keys (Gemini's per-fetch DOM sequence index). Defaults
+   * to true — every API-based platform is monotonic.
+   */
+  monotonicOrder?: boolean;
   /** DOM selector for a single AI/assistant message (content-script side). */
   answerSelector: string;
   /** DOM selector for a single user message (optional; DOM prompt fallback). */

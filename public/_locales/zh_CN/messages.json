@@ -89,6 +89,9 @@
   "roundHeaderInput": {
     "message": "输入"
   },
+  "roundHeaderTool": {
+    "message": "搜索/工具"
+  },
   "roundHeaderOutput": {
     "message": "输出"
   },

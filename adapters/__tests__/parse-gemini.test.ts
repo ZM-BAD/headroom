@@ -25,6 +25,34 @@ describe("pairGeminiTurns", () => {
     ]);
   });
 
+  it("joins grounding source site names into toolText (spec 005 P1)", () => {
+    const turns: GeminiTurn[] = [
+      { kind: "user", text: "今天有什么新闻?" },
+      {
+        kind: "model",
+        text: "三条新闻…",
+        sources: ["美国之音", "Reuters", "美国之音"],
+      },
+    ];
+    expect(pairGeminiTurns(turns)).toEqual([
+      {
+        messageId: "gemini:1",
+        order: 1,
+        promptText: "今天有什么新闻?",
+        answerText: "三条新闻…",
+        toolText: "美国之音\nReuters",
+      },
+    ]);
+  });
+
+  it("leaves toolText unset when the model turn has no sources", () => {
+    const turns: GeminiTurn[] = [
+      { kind: "user", text: "Q1" },
+      { kind: "model", text: "A1" },
+    ];
+    expect(pairGeminiTurns(turns)[0]!.toolText).toBeUndefined();
+  });
+
   it("pairs multiple consecutive turns (1-based n, document order)", () => {
     const turns: GeminiTurn[] = [
       { kind: "user", text: "Q1" },

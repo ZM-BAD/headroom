@@ -73,13 +73,29 @@ export default defineContentScript({
     // design baseline regardless of answer length. Other platforms always ship
     // non-provisional (provisional defaults to false).
     //
-    // Guarded against concurrent calls: the DOM poll, SPA-switch, and
-    // REFRESH_HISTORY paths can all trigger fetchAndShipHistory in quick
-    // succession during streaming — only one in-flight fetch at a time.
+    // Serialization: the DOM poll, SPA-switch, and REFRESH_HISTORY paths can
+    // all trigger fetchAndShipHistory in quick succession (rapid tab-through,
+    // streaming) — only one in-flight fetch at a time. A call that arrives
+    // while a fetch is in flight is NOT dropped: it sets `rerunQueued`, and
+    // the finishing fetch re-runs it in its finally (re-reading location.href,
+    // so the re-run targets the LATEST conversation). Without the re-run, a
+    // rapid switch landing mid-fetch would silently skip the new conversation
+    // until the next trigger — the gauge would sit on the cached/zero value.
+    // The queued call's `provisional` flag is carried through: a provisional
+    // (Gemini streaming) call queued behind a non-provisional fetch must not
+    // degrade into a mid-stream cloud write — and vice versa. The LATEST
+    // queued call's flag is the current truth (OVERWRITE, not OR): Gemini's
+    // 2s settle timer re-arms on every DOM change, so the final
+    // non-provisional call always lands after the last provisional one — OR
+    // would swallow it and the round would never reach Upstash.
     let fetchInProgress = false;
+    let rerunQueued = false;
+    let rerunProvisional = false;
     const fetchAndShipHistory = async (provisional = false): Promise<void> => {
       if (fetchInProgress) {
-        log("fetchAndShipHistory SKIP — already in progress");
+        rerunQueued = true;
+        rerunProvisional = provisional;
+        log("fetchAndShipHistory QUEUED — another fetch is in flight");
         return;
       }
       if (!adapter.fetchHistory) {
@@ -116,6 +132,19 @@ export default defineContentScript({
           }
         }
         const elapsed = (performance.now() - t0).toFixed(0);
+        // Stale-result guard: `dialogueId` was captured at fetch START, but the
+        // send below reads location.href at FINISH. If the user switched
+        // conversations while this fetch was in flight, shipping would write
+        // the OLD conversation's rounds into the NEW one's record — and the
+        // union-merge's cloud-only retention would keep them there forever
+        // (phantom rounds inflating the new conversation's totals). Discard
+        // instead; the switch's own fetch replaces this result.
+        if (adapter.dialogueIdFromUrl?.(location.href) !== dialogueId) {
+          log(
+            `fetchAndShipHistory DISCARD — dialogueId changed during fetch (${elapsed}ms): fetched ${dialogueId}, now ${adapter.dialogueIdFromUrl?.(location.href)}`,
+          );
+          return;
+        }
         if (rounds.length === 0) {
           log(
             `fetchAndShipHistory DONE 0 rounds (${elapsed}ms) → NOT sending HISTORY_PARSED`,
@@ -140,6 +169,13 @@ export default defineContentScript({
         // fetch failed — the next trigger (open / switch / round-complete) re-fetches
       } finally {
         fetchInProgress = false;
+        if (rerunQueued) {
+          rerunQueued = false;
+          const p = rerunProvisional;
+          rerunProvisional = false;
+          log("fetchAndShipHistory RERUN — a newer conversation is waiting");
+          void fetchAndShipHistory(p);
+        }
       }
     };
 
@@ -256,35 +292,28 @@ export default defineContentScript({
     // AUTO-CLEARS when the context is invalidated (extension reload) — otherwise
     // the dead context throws "Extension context invalidated" every tick.
     //
-    // spec 003 P1 — debounce history fetches on SPA switches: rapid tab-through
-    // triggers immediate gauge reset (sendPageReady, from cache) but defers the
-    // full history fetch + union merge until the user settles on a conversation
-    // for ≥ DEBOUNCE_MS. Round-complete (REFRESH_HISTORY) and initial load are
-    // NOT debounced — only SPA switches are.
-    const DEBOUNCE_MS = 2000;
+    // NO DEBOUNCE (product decision 2026-08): every switch fetches the new
+    // conversation immediately — "click a conversation, see its count now".
+    // Rapid tab-through is absorbed by fetchAndShipHistory's serialization:
+    // only one fetch in flight, later switches queue a re-run for the LATEST
+    // conversation, and a fetch that finished after the URL moved on is
+    // discarded (dialogueId guard). Cost of a fast pass over N conversations:
+    // N fetches — accepted in exchange for snappiness. The conversation-list
+    // fetch keeps its own 30s throttle.
     let lastHref = location.href;
     let lastTitle = document.title;
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const debouncedFetch = (): void => {
-      if (debounceTimer != null) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        debounceTimer = null;
-        void fetchAndShipHistory();
-        void fetchAndShipConversationList();
-      }, DEBOUNCE_MS);
-    };
 
     // DOM-based turn detector: when the answer DOM changes — a new answer
     // element mounting OR the last answer's text still growing — re-arm the
-    // debounce; fetch only after a full quiet second. Primary mechanism for
-    // Gemini (whose webRequest onCompleted doesn't fire for StreamGenerate).
+    // 2s settle timer; fetch only after a full quiet 2s. Primary mechanism
+    // for Gemini (whose webRequest onCompleted doesn't fire for
+    // StreamGenerate).
     //
     // The signature folds in the LAST answer's text length because Gemini
     // mounts <model-response> at stream START and fills it for many seconds:
     // a count-only signature stabilised immediately and the old detector
     // scraped mid-stream (measured 2026-07: fired at 180 of 983 chars) with
-    // no later trigger to correct it. Text growth now keeps the debounce
+    // no later trigger to correct it. Text growth now keeps the settle timer
     // armed; an early fire on a >1s mid-stream pause self-corrects — the
     // next growth re-triggers and the re-scrape replaces the round in place.
     const answerSignature = (): string => {
@@ -298,54 +327,48 @@ export default defineContentScript({
     let lastAnswerSig = answerSignature();
     let domChangeTimer: ReturnType<typeof setTimeout> | null = null;
 
+    // URL/title poll at 500ms — snappy switch detection (≤0.5s from click to
+    // cached projection + fetch start). The DOM-stream detector below keeps
+    // its own 1500ms cadence so streaming provisional ships don't triple.
     ctx.setInterval(() => {
       if (location.href !== lastHref) {
         log("SPA SWITCH detected: old=", lastHref, "→ new=", location.href);
-        // When switching from a page with no dialogueId (home) to one
-        // with a dialogueId (conversation), fetch immediately — this is
-        // a new-conversation event, not a rapid tab-through.
-        const hadId = adapter.dialogueIdFromUrl?.(lastHref) != null;
-        const hasId = adapter.dialogueIdFromUrl?.(location.href) != null;
         lastHref = location.href;
         lastTitle = document.title;
         // Reset the answer signature for the new page so the DOM detector
         // starts from the new conversation's baseline.
         lastAnswerSig = answerSignature();
         sendPageReady(); // instant UX — gauge resets to cached/new record
-        if (!hadId && hasId) {
-          // Home → conversation: immediate fetch (cf. initial load).
-          log("SPA SWITCH home→conversation — immediate fetch");
-          void fetchAndShipHistory();
-          void fetchAndShipConversationList();
-        } else {
-          debouncedFetch();
-        }
+        void fetchAndShipHistory(); // immediate — no debounce
+        void fetchAndShipConversationList(); // own 30s throttle applies
       } else if (document.title !== lastTitle) {
         lastTitle = document.title;
         sendPageReady(); // title-only — rename detected, no history refetch needed
-      } else if (adapter.needsDomPollDetection) {
-        // DOM-based detection: any answer-DOM activity (new element OR text
-        // still streaming) ships a PROVISIONAL update (local broadcast only,
-        // no cloud write). A 2s settle timer runs alongside — when it fires
-        // without being re-armed, the final NON-provisional ship writes the
-        // cloud in exactly one GET+SET pair. 2s > 1.5s poll ⇒ ensures the
-        // poll sees quiescence and lets the timer fire before the next tick.
-        // Cost: real-time UI at 1.5s cadence (free, local broadcast),
-        // exactly 2 cloud commands per round (design baseline).
-        const currentSig = answerSignature();
-        if (currentSig !== lastAnswerSig) {
-          log(
-            `DOM CHANGE: answer signature ${lastAnswerSig} → ${currentSig} — shipping provisional`,
-          );
-          lastAnswerSig = currentSig;
-          void fetchAndShipHistory(true); // provisional — local only
-          if (domChangeTimer != null) clearTimeout(domChangeTimer);
-          domChangeTimer = setTimeout(() => {
-            domChangeTimer = null;
-            log("DOM settled for 2s — shipping final non-provisional");
-            void fetchAndShipHistory(false);
-          }, 2000);
-        }
+      }
+    }, 500);
+
+    // DOM-based detection (Gemini only): any answer-DOM activity ships a
+    // PROVISIONAL update (local broadcast only, no cloud write). A 2s settle
+    // timer runs alongside — when it fires without being re-armed, the final
+    // NON-provisional ship writes the cloud in exactly one GET+SET pair.
+    // 2s > 1.5s DOM poll ⇒ the poll sees quiescence and lets the timer fire
+    // before the next tick. Cost: real-time UI at 1.5s cadence (free, local
+    // broadcast), exactly 2 cloud commands per round (design baseline).
+    ctx.setInterval(() => {
+      if (!adapter.needsDomPollDetection) return;
+      const currentSig = answerSignature();
+      if (currentSig !== lastAnswerSig) {
+        log(
+          `DOM CHANGE: answer signature ${lastAnswerSig} → ${currentSig} — shipping provisional`,
+        );
+        lastAnswerSig = currentSig;
+        void fetchAndShipHistory(true); // provisional — local only
+        if (domChangeTimer != null) clearTimeout(domChangeTimer);
+        domChangeTimer = setTimeout(() => {
+          domChangeTimer = null;
+          log("DOM settled for 2s — shipping final non-provisional");
+          void fetchAndShipHistory(false);
+        }, 2000);
       }
     }, 1500);
   },

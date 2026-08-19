@@ -59,9 +59,9 @@ try {
       platformId: "testplatform",
       dialogueId: "test123",
       contextLimit: 1_048_576,
-      totalTokens: 42,
+      totalTokens: 57,
       roundCount: 1,
-      rounds: [{ messageId: "test-msg", order: 1, n: 1, promptTokens: 10, answerTokens: 32, total: 42, createdAt: 1 }],
+      rounds: [{ messageId: "test-msg", order: 1, n: 1, promptTokens: 10, toolTokens: 15, answerTokens: 32, total: 57, createdAt: 1 }],
       updatedAt: 1,
     };
     await cmd(["SET", CONV_KEY, JSON.stringify(rec)]);
@@ -71,10 +71,15 @@ try {
     const raw = await cmd(["GET", CONV_KEY]);
     assert(raw !== null, "conv missing after SET");
     const rec = JSON.parse(raw);
-    assert(rec.totalTokens === 42, `totalTokens mismatch: ${raw}`);
+    assert(rec.totalTokens === 57, `totalTokens mismatch: ${raw}`);
     assert(rec.roundCount === 1, `roundCount mismatch: ${raw}`);
     assert(rec.platformId === "testplatform", `platform mismatch: ${raw}`);
     assert(Array.isArray(rec.rounds) && rec.rounds.length === 1, "rounds mismatch");
+    // spec 005: toolTokens must survive the cloud round-trip (gauge reads it
+    // cross-device after the union merge).
+    const round = rec.rounds[0];
+    assert(round.toolTokens === 15, `toolTokens mismatch: ${raw}`);
+    assert(round.total === 57, `round total mismatch: ${raw}`);
   });
 
   await step("conv DEL removes it (idempotent)", async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  mergeLifetimeTotal,
   upsertRound,
   upsertRoundInto,
   unionRounds,
@@ -23,11 +24,17 @@ import {
  *      is the fix for the over-counting bug.
  */
 
-const round = (n: number, promptTokens: number, answerTokens: number) => ({
+const round = (
+  n: number,
+  promptTokens: number,
+  answerTokens: number,
+  toolTokens = 0,
+) => ({
   messageId: `m${n}`,
   order: n,
   n,
   promptTokens,
+  toolTokens,
   answerTokens,
   createdAt: 1_000,
 });
@@ -50,9 +57,45 @@ describe("upsertRound — first round", () => {
     expect(rec.rounds[0]).toMatchObject({
       n: 1,
       promptTokens: 100,
+      toolTokens: 0,
       answerTokens: 50,
       total: 150,
     });
+  });
+
+  it("includes toolTokens in the round total (spec 005)", () => {
+    const rec = upsertRound(
+      null,
+      "kimi",
+      "d1",
+      262_144,
+      round(1, 100, 50, 80), // prompt 100 + tool 80 + answer 50
+    );
+    expect(rec.totalTokens).toBe(230);
+    expect(rec.rounds[0]).toMatchObject({ toolTokens: 80, total: 230 });
+    // Re-emitting the same round with a corrected tool estimate replaces it.
+    const rec2 = upsertRound(
+      rec,
+      "kimi",
+      "d1",
+      262_144,
+      round(1, 100, 50, 120),
+    );
+    expect(rec2.totalTokens).toBe(270);
+    expect(rec2.rounds).toHaveLength(1);
+  });
+
+  it("treats an omitted toolTokens (legacy call) as 0", () => {
+    const rec = upsertRound(null, "p", "d", 100_000, {
+      messageId: "m1",
+      order: 1,
+      n: 1,
+      promptTokens: 10,
+      answerTokens: 20,
+      createdAt: 1,
+      // no toolTokens — pre-005 callers
+    });
+    expect(rec.rounds[0]).toMatchObject({ toolTokens: 0, total: 30 });
   });
 
   it("uses an existing record as the base when non-null", () => {
@@ -66,6 +109,7 @@ describe("upsertRound — first round", () => {
           order: 1,
           n: 1,
           promptTokens: 100,
+          toolTokens: 0,
           answerTokens: 50,
           total: 150,
           createdAt: 1,
@@ -167,6 +211,7 @@ describe("upsertRound — purity", () => {
           order: 1,
           n: 1,
           promptTokens: 10,
+          toolTokens: 0,
           answerTokens: 20,
           total: 30,
           createdAt: 1,
@@ -180,11 +225,17 @@ describe("upsertRound — purity", () => {
 });
 
 describe("upsertRoundInto — array-level replace/append (record + panel)", () => {
-  const r = (n: number, promptTokens: number, answerTokens: number) => ({
+  const r = (
+    n: number,
+    promptTokens: number,
+    answerTokens: number,
+    toolTokens = 0,
+  ) => ({
     messageId: `m${n}`,
     order: n,
     n,
     promptTokens,
+    toolTokens,
     answerTokens,
     createdAt: 1,
   });
@@ -196,6 +247,7 @@ describe("upsertRoundInto — array-level replace/append (record + panel)", () =
           order: 1,
           n: 1,
           promptTokens: 10,
+          toolTokens: 0,
           answerTokens: 20,
           total: 30,
           createdAt: 1,
@@ -214,6 +266,7 @@ describe("upsertRoundInto — array-level replace/append (record + panel)", () =
           order: 1,
           n: 1,
           promptTokens: 10,
+          toolTokens: 0,
           answerTokens: 20,
           total: 30,
           createdAt: 1,
@@ -231,6 +284,7 @@ describe("upsertRoundInto — array-level replace/append (record + panel)", () =
         order: 1,
         n: 1,
         promptTokens: 1,
+        toolTokens: 0,
         answerTokens: 1,
         total: 2,
         createdAt: 1,
@@ -303,6 +357,7 @@ describe("projectUsage — gauge projection from a record", () => {
           order: 499,
           n: 499,
           promptTokens: 1,
+          toolTokens: 0,
           answerTokens: 1,
           total: 2,
           createdAt: 499,
@@ -312,6 +367,7 @@ describe("projectUsage — gauge projection from a record", () => {
           order: 500,
           n: 500,
           promptTokens: 1,
+          toolTokens: 0,
           answerTokens: 1,
           total: 2,
           createdAt: 500,
@@ -340,13 +396,15 @@ describe("projectUsage — gauge projection from a record", () => {
     n: number,
     promptTokens: number,
     answerTokens: number,
+    toolTokens = 0,
   ): RoundRecord => ({
     messageId: `m${n}`,
     order: n,
     n,
     promptTokens,
+    toolTokens,
     answerTokens,
-    total: promptTokens + answerTokens,
+    total: promptTokens + toolTokens + answerTokens,
     createdAt: n * 100,
   });
 
@@ -371,6 +429,148 @@ describe("projectUsage — gauge projection from a record", () => {
       const out = unionRounds(cloud, history);
       expect(out).toHaveLength(1);
       expect(out[0]!.total).toBe(100); // history won, not 20
+    });
+  });
+
+  describe("unionRounds — toolTokens counted once (spec 005)", () => {
+    it("the same search round in cloud AND history yields ONE toolTokens value, not a sum", () => {
+      const cloud = [rr(1, 10, 20, 100)]; // search round: 10 + 100 + 20
+      const history = [rr(1, 10, 20, 100)]; // re-estimated identically
+      const out = unionRounds(cloud, history);
+      expect(out).toHaveLength(1);
+      // The BFS misattribution bug double-counted one search invocation across
+      // two rounds; the merge must never double it either: history overwrites
+      // the cloud entry on the same messageId, so toolTokens stays 100, NOT 200.
+      expect(out[0]!.toolTokens).toBe(100);
+      expect(out[0]!.total).toBe(130);
+    });
+  });
+
+  describe("mergeLifetimeTotal — union totals keep the cloud's true lifetime sum (spec 003)", () => {
+    it("keeps the cloud total when the merge trims old rounds (>MAX_RETAINED_ROUNDS)", () => {
+      const cloud: RoundRecord[] = Array.from(
+        { length: MAX_RETAINED_ROUNDS + 10 },
+        (_, i) => ({ ...rr(i + 1, 1, 1), messageId: `m${i + 1}` }),
+      );
+      const cloudTotal = cloud.reduce((s, r) => s + r.total, 0); // 2 × (MAX+10)
+      const history = [
+        rr(MAX_RETAINED_ROUNDS + 5, 1, 1),
+        rr(MAX_RETAINED_ROUNDS + 6, 1, 1),
+      ]; // recent rounds, already in cloud
+      const merged = unionRounds(cloud, history);
+      expect(merged).toHaveLength(MAX_RETAINED_ROUNDS); // oldest trimmed
+      const naiveSum = merged.reduce((s, r) => s + r.total, 0);
+      expect(naiveSum).toBeLessThan(cloudTotal); // would under-count
+      // The cloud record's running total survives trimming — the diff keeps it.
+      expect(mergeLifetimeTotal(cloudTotal, cloud, history)).toBe(cloudTotal);
+    });
+
+    it("replaces the cloud contribution of re-estimated rounds (history wins)", () => {
+      const cloud = [rr(1, 10, 10), rr(2, 20, 20)]; // totals 20 + 40 = 60
+      const history = [rr(1, 30, 30)]; // round 1 re-estimated to 60
+      expect(mergeLifetimeTotal(60, cloud, history)).toBe(100); // 60 − 20 + 60
+    });
+
+    it("adds brand-new history rounds to the cloud total", () => {
+      const cloud = [rr(1, 10, 10)]; // total 20
+      const history = [rr(1, 10, 10), rr(2, 15, 15)]; // same r1, new r2 (30)
+      expect(mergeLifetimeTotal(20, cloud, history)).toBe(50);
+    });
+
+    it("applies the diff once per messageId — the LAST occurrence wins (matches unionRounds)", () => {
+      // Pathological: the same messageId twice in one fetch. unionRounds
+      // dedups with last-wins; the total must follow the same winner —
+      // double-applying the earlier occurrence would break the
+      // "total = Σ merged rounds" equality for ≤200-round dialogues.
+      const cloud = [rr(1, 10, 10)]; // total 20
+      const history = [rr(1, 40, 40), rr(1, 30, 30)]; // same id, totals 80 then 60
+      expect(unionRounds(cloud, history)).toHaveLength(1);
+      expect(unionRounds(cloud, history)[0]!.total).toBe(60); // last wins
+      expect(mergeLifetimeTotal(20, cloud, history)).toBe(60); // NOT 120
+    });
+  });
+
+  describe("mergeLifetimeTotal — the trimmed-window real flow (spec 003)", () => {
+    it("does not double-count trimmed rounds on a full-history refetch", () => {
+      // The REAL record shape: rounds[] is trimmed to the last 200, but
+      // totalTokens is the true lifetime sum (trim-but-keep-totals). A full
+      // history refetch returns ALL 205 rounds — the 5 oldest are NOT new,
+      // their totals already live in cloudTotal. Adding them again would
+      // inflate the gauge on every open (compounding per fetch).
+      const all = Array.from({ length: 205 }, (_, i) => rr(i + 1, 1, 1));
+      const cloud = all.slice(-MAX_RETAINED_ROUNDS); // retained window 6..205
+      const cloudTotal = all.reduce((s, r) => s + r.total, 0); // 205 × 2 = 410
+      expect(cloud).toHaveLength(MAX_RETAINED_ROUNDS);
+      expect(mergeLifetimeTotal(cloudTotal, cloud, all)).toBe(410); // NOT 420
+    });
+
+    it("does not grow across consecutive fetches (no compounding)", () => {
+      const all = Array.from({ length: 202 }, (_, i) => rr(i + 1, 1, 1));
+      const cloud = all.slice(-MAX_RETAINED_ROUNDS);
+      let total = all.reduce((s, r) => s + r.total, 0); // 202 × 2 = 404
+      for (let k = 0; k < 3; k++) {
+        total = mergeLifetimeTotal(total, cloud, all); // full refetch each time
+      }
+      expect(total).toBe(404); // stays put — the inflated value would compound
+    });
+
+    it("still adds a genuinely new round beyond the retained window", () => {
+      const all = Array.from({ length: 205 }, (_, i) => rr(i + 1, 1, 1));
+      const cloud = all.slice(-MAX_RETAINED_ROUNDS);
+      const cloudTotal = all.reduce((s, r) => s + r.total, 0); // 410
+      const history = [...all, rr(206, 1, 1)]; // brand-new round, order 206
+      expect(mergeLifetimeTotal(cloudTotal, cloud, history)).toBe(412);
+    });
+  });
+
+  describe("mergeLifetimeTotal — base-era repair + order-key edge cases", () => {
+    it("repairs base-era cloud records whose total re-summed the trimmed window (cloudTotal == Σ window)", () => {
+      // Pre-005-era code rebuilt the record from the trimmed merged array, so
+      // the cloud total EQUALS the retained window sum — the trimmed rounds'
+      // totals were silently lost. An absent history round is then NOT a
+      // trimmed round (no trimming was ever counted): it must be added, or the
+      // undercount is permanent (every subsequent open re-skips it).
+      const all = Array.from({ length: 205 }, (_, i) => rr(i + 1, 1, 1));
+      const cloud = all.slice(-MAX_RETAINED_ROUNDS); // retained window 6..205
+      const trueTotal = all.reduce((s, r) => s + r.total, 0); // 410
+      const baseEraTotal = cloud.reduce((s, r) => s + r.total, 0); // 400 — wrong
+      expect(baseEraTotal).toBeLessThan(trueTotal);
+      expect(mergeLifetimeTotal(baseEraTotal, cloud, all)).toBe(trueTotal);
+    });
+
+    it("adds a genuinely new round whose order ties the window max (monotonic platforms)", () => {
+      // Second-granularity order keys (Qwen/Doubao timestamps): a new round can
+      // share the newest retained round's order. A trimmed round always has the
+      // LOWEST orders, so a tie at the max can only be a new round — count it.
+      const cloud = Array.from({ length: MAX_RETAINED_ROUNDS }, (_, i) =>
+        rr(i + 1, 1, 1),
+      ); // orders 1..200
+      const cloudTotal = cloud.reduce((s, r) => s + r.total, 0) + 2; // + a 2-token trimmed round, counted
+      const newRound = { ...rr(201, 15, 15), order: 200 }; // ties the window max
+      const history = [...cloud, newRound];
+      expect(mergeLifetimeTotal(cloudTotal, cloud, history)).toBe(
+        cloudTotal + 30,
+      );
+    });
+
+    it("monotonic=false (Gemini): does not add a round tying the window max — order is a renumbered DOM index", () => {
+      // Gemini's order is a per-fetch DOM sequence index: a round at the old
+      // max position may be a renumbered old round, not a new one — the
+      // conservative rule skips it (its total stays in cloudTotal).
+      const cloud = [rr(1, 10, 10), rr(2, 20, 20)]; // Σ window = 60, maxOrder 2
+      const cloudTotal = 62; // a trimmed round (2 tokens) is counted
+      const newRound = { ...rr(3, 15, 15), order: 2 }; // ties the max
+      const history = [rr(1, 10, 10), rr(2, 20, 20), newRound];
+      expect(mergeLifetimeTotal(cloudTotal, cloud, history, false)).toBe(62);
+    });
+
+    it("monotonic=false (Gemini): still adds a round beyond the window max", () => {
+      // DOM grew past the record's previous max — the round is new by any
+      // reading of the order keys, even when trimming was counted.
+      const cloud = [rr(1, 10, 10), rr(2, 20, 20)]; // Σ window = 60
+      const cloudTotal = 62; // a trimmed round (2 tokens) is counted
+      const history = [rr(1, 10, 10), rr(2, 20, 20), rr(3, 15, 15)]; // order 3
+      expect(mergeLifetimeTotal(cloudTotal, cloud, history, false)).toBe(92);
     });
   });
 
@@ -463,6 +663,7 @@ describe("projectUsage — gauge projection from a record", () => {
         order: i + 1,
         n: i + 1,
         promptTokens: i + 1,
+        toolTokens: 0,
         answerTokens: 0,
         total: i + 1,
         createdAt: i + 1,
@@ -472,6 +673,7 @@ describe("projectUsage — gauge projection from a record", () => {
         order: 21 + i, // real chronological order
         n: i + 1, // POSITIONAL — shifted! (real round is 21+i)
         promptTokens: 21 + i,
+        toolTokens: 0,
         answerTokens: 0,
         total: 21 + i,
         createdAt: 21 + i,

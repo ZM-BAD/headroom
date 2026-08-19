@@ -3,12 +3,12 @@ import type { TokenCoefficients } from "../utils/estimate";
 
 /** Measured via Gemma 4 — Google states Gemma ships the same tokenizer as Gemini (spec 004 §4.3; scripts/calibrate-hf.mjs). */
 const GEMINI_COEFFICIENTS: TokenCoefficients = {
-  cjk: 0.7,
-  kana: 0.52,
-  hangul: 0.62,
+  cjk: 0.69,
+  kana: 0.51,
+  hangul: 0.6,
   cyrillic: 1.73,
   arabic: 1.96,
-  latin: 1.35,
+  latin: 1.34,
 };
 
 // Gemini — the ONLY platform without a usable history API (investigated live
@@ -43,6 +43,10 @@ export const geminiAdapter: PlatformAdapter = {
     "*://gemini.google.com/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate",
   matchPattern: "*://gemini.google.com/*",
   contextLimit: 1_048_576, // 1M (1 << 20); overridable
+  // order keys are the DOM sequence index, renumbered on every fetch — the
+  // trimmed-round classification in mergeLifetimeTotal must never read
+  // "absent + order ≤ window max" as "trimmed" via order ties here.
+  monotonicOrder: false,
   tokenCoefficients: GEMINI_COEFFICIENTS, // spec 004 §4.3 calibrated (incl. markdown overhead)
   // Delete endpoint: CONFIRMED live (2026-06). Gemini folds EVERY RPC
   // (send/list/delete) into POST /_/BardChatUi/data/batchexecute, so the
@@ -167,6 +171,14 @@ export const geminiAdapter: PlatformAdapter = {
 export interface GeminiTurn {
   kind: "user" | "model";
   text: string;
+  /**
+   * Grounding source site names (spec 005 P1): the `.source-title` spans in a
+   * model response ("美国之音", "Reuters", …). Site names only — the snippet
+   * text lives in the per-source dialog, which we deliberately do NOT
+   * auto-open (would mutate the user's view). Counts as a minimal search-text
+   * signal; absent when the response has no sources.
+   */
+  sources?: string[];
   /** The turn-wrapper <div id="<16-hex>"> ancestor (user turns only) — Gemini's
    *  stable per-turn identity (verified stable across reload, build-independent),
    *  used as the union-merge key. */
@@ -222,7 +234,17 @@ function parseGeminiDom(doc: Document): HistoryRound[] {
       }
     } else if (tag === "model-response") {
       const text = el.querySelector(".markdown")?.textContent?.trim();
-      if (text) turns.push({ kind: "model", text });
+      if (text) {
+        // Grounding source site names (spec 005 P1): .source-title spans.
+        const sources = [...el.querySelectorAll(".source-title")]
+          .map((s) => s.textContent?.trim())
+          .filter((s): s is string => !!s);
+        turns.push({
+          kind: "model",
+          text,
+          sources: sources.length ? [...new Set(sources)] : undefined,
+        });
+      }
     }
   }
   return pairGeminiTurns(turns);
@@ -271,9 +293,15 @@ export function pairGeminiTurns(turns: GeminiTurn[]): HistoryRound[] {
     if (!turn || turn.kind !== "user") continue;
     const promptText = turn.text;
     let answerText = "";
+    let toolText = "";
     const next = turns[i + 1];
     if (next && next.kind === "model") {
       answerText = next.text;
+      // Site names only (spec 005 P1) — the snippet text needs the source
+      // dialog, which we don't auto-open. Empty when the reply has no sources.
+      if (next.sources?.length) {
+        toolText = [...new Set(next.sources)].join("\n");
+      }
     }
     if (promptText || answerText) {
       order++;
@@ -285,6 +313,7 @@ export function pairGeminiTurns(turns: GeminiTurn[]): HistoryRound[] {
         order,
         promptText,
         answerText,
+        toolText: toolText || undefined,
       });
     }
   }

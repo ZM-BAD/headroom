@@ -3,12 +3,12 @@ import type { TokenCoefficients } from "../utils/estimate";
 
 /** Same tokenizer family as Qwen — measured against Qwen3.6-27B (spec 004 §4.3; scripts/calibrate-hf.mjs). */
 const QIANWEN_COEFFICIENTS: TokenCoefficients = {
-  cjk: 0.61,
-  kana: 0.52,
-  hangul: 0.55,
+  cjk: 0.6,
+  kana: 0.51,
+  hangul: 0.54,
   cyrillic: 1.77,
   arabic: 1.71,
-  latin: 1.36,
+  latin: 1.35,
 };
 
 // 通义千问 consumer chat — request CONFIRMED live (2026-06):
@@ -172,6 +172,16 @@ export const qianwenAdapter: PlatformAdapter = {
 interface QianwenMessage {
   mime_type?: string;
   content?: string;
+  /**
+   * Search-result payload (spec 005): the "bar/iframe" response carries
+   * `sources[].content.list[].summary` — the per-result summary text the model
+   * read. CONFIRMED live 2026-08-14.
+   */
+  meta_data?: {
+    sources?: Array<{
+      content?: { list?: Array<{ summary?: string }> };
+    }>;
+  };
 }
 /** One round (a `data.list[]` item) in the msg/list response. */
 export interface QianwenRound {
@@ -211,8 +221,11 @@ function joinQianwenContents(
  * Parse the accumulated msg/list `data.list[]` (all pages, any order) into
  * HistoryRound[]. Pure: the HTTP pagination walk lives in fetchHistory; this is
  * the unit-tested half. prompt = request_messages "text/plain"; answer =
- * response_messages "multi_load/iframe" (the rest — signal/post, bar/progress,
- * paa/iframe — are metadata/recommendations, dropped). messageId = the list
+ * response_messages "multi_load/iframe"; toolText (spec 005) = the search
+ * summaries on the "bar/iframe" response message
+ * (`meta_data.sources[].content.list[].summary` — the text injected into the
+ * model's context). The rest (signal/post, bar/progress, paa/iframe
+ * recommendations) are metadata/recommendations, dropped. messageId = the list
  * item's req_id; order = created_at. Defensive: never throws.
  */
 export function parseQianwenHistory(
@@ -229,19 +242,42 @@ export function parseQianwenHistory(
       round?.response_messages,
       "multi_load/iframe",
     );
+    const toolText = joinQianwenSearchText(round?.response_messages);
     const createdAt =
       typeof round?.created_at === "number" ? round.created_at : 0;
-    if (promptText || answerText) {
+    if (promptText || answerText || toolText) {
       rounds.push({
         messageId: round?.req_id || `qwn:${createdAt}`,
         order: createdAt,
         promptText,
         answerText,
+        toolText: toolText || undefined,
         createdAt: createdAt || undefined,
       });
     }
   }
   return rounds;
+}
+
+/**
+ * Join the search-result summaries (spec 005): the "bar/iframe" response
+ * message's `meta_data.sources[].content.list[].summary` — one summary per
+ * result, newline-joined. Empty when the round had no web search.
+ */
+function joinQianwenSearchText(msgs: QianwenMessage[] | undefined): string {
+  if (!Array.isArray(msgs)) return "";
+  const parts: string[] = [];
+  for (const m of msgs) {
+    if (m?.mime_type !== "bar/iframe") continue;
+    for (const source of m.meta_data?.sources ?? []) {
+      for (const item of source.content?.list ?? []) {
+        if (typeof item?.summary === "string" && item.summary.trim()) {
+          parts.push(item.summary.trim());
+        }
+      }
+    }
+  }
+  return parts.join("\n").trim();
 }
 
 /**

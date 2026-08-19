@@ -3,51 +3,85 @@ import type { TokenCoefficients } from "../utils/estimate";
 
 /** Measured against the open DeepSeek-V4-Flash tokenizer — exact (spec 004 §4.3; scripts/calibrate-hf.mjs). */
 const DEEPSEEK_COEFFICIENTS: TokenCoefficients = {
-  cjk: 0.62,
-  kana: 0.74,
-  hangul: 0.78,
+  cjk: 0.61,
+  kana: 0.73,
+  hangul: 0.77,
   cyrillic: 2.1,
   arabic: 2.15,
-  latin: 1.33,
+  latin: 1.32,
 };
 
-/** DeepSeek `history_messages` fragment (REQUEST / RESPONSE / THINKING / ...). */
-interface DsFragment {
-  type?: string;
-  content?: string;
-}
-/** DeepSeek `history_messages` message row. */
+/**
+ * DeepSeek `history_messages` message row. DeepSeek A/B-rolls TWO payload
+ * shapes (both captured live, 2026-06 Playwright + 2026-08-14 probe):
+ *   - 2026-06 (STILL SERVED — confirmed on a real session 2026-08-16):
+ *     text lives in `fragments[]` ({type: REQUEST|THINK|RESPONSE|TIP});
+ *     there is NO top-level `content`.
+ *   - 2026-08: content moved to top-level string fields (`content`,
+ *     `thinking_content`); `fragments` absent.
+ * The parser must read BOTH (fragments preferred, content as fallback).
+ * `search_enabled` / `search_status` / `search_results` describe web-search
+ * rounds — but `search_results` is null in both WIP and FINISHED states
+ * (verified 2026-08-14): the search text exists only in the SSE completion
+ * stream, which MV3 webRequest cannot read. So search tokens are NOT countable
+ * for DeepSeek (spec 005).
+ */
 interface DsMessage {
   message_id?: number;
   parent_id?: number | null;
   role?: string;
+  /** User prompt / assistant answer text (2026-08 shape — replaces fragments[].content). */
+  content?: string;
+  /** Private reasoning — deliberately excluded from the estimate (like Qwen's thinking_summary). */
+  thinking_content?: string;
+  /** "true" when this round's send had web search enabled. */
+  search_enabled?: string | boolean;
+  /** Always null post-finish — search text is stream-only (spec 005 limitation). */
+  search_results?: unknown;
+  /** Text fragments (2026-06 shape — still served in the wild): REQUEST = user
+   *  text, RESPONSE = assistant answer, THINK = private reasoning (excluded),
+   *  TIP = UI metadata (excluded). */
   fragments?: DsFragment[];
   /** epoch float seconds (e.g. 1782741816.158). */
   inserted_at?: number;
   /** "FINISHED" for complete messages; absent/other for mid-stop or in-progress. */
   status?: string;
 }
+
+/** A text fragment in the 2026-06 `fragments[]` shape. */
+interface DsFragment {
+  type?: string;
+  content?: string;
+}
 /** The GET /api/v0/chat/history_messages response shape (the parts we read). */
 interface DsHistoryResponse {
   data?: { biz_data?: { chat_messages?: DsMessage[] } };
 }
 
-/** Concatenate the content of every fragment of `type` (newline-joined, trimmed). */
-function joinFragments(
-  fragments: DsFragment[] | undefined,
-  type: string,
-): string {
-  if (!Array.isArray(fragments)) return "";
-  return fragments
-    .filter((f) => f?.type === type)
-    .map((f) => (typeof f?.content === "string" ? f.content : ""))
-    .join("\n")
-    .trim();
+/**
+ * DeepSeek message text. DeepSeek A/B-rolls two payload shapes (both live —
+ * fragments[] 2026-06 confirmed again 2026-08-16, top-level content 2026-08):
+ * prefer the type-filtered `fragments[]` (REQUEST for user / RESPONSE for
+ * assistant; THINK/TIP are reasoning/metadata and stay excluded), fall back to
+ * the top-level `content` string. Empty when neither shape carries text.
+ */
+function dsMessageText(m: DsMessage | undefined, type: string): string {
+  if (Array.isArray(m?.fragments)) {
+    const joined = m.fragments
+      .filter((f) => f?.type === type)
+      .map((f) => (typeof f?.content === "string" ? f.content : ""))
+      .join("\n")
+      .trim();
+    if (joined) return joined;
+  }
+  // 2026-08 shape: the whole message text rides one top-level string.
+  return typeof m?.content === "string" ? m.content.trim() : "";
 }
 
 /**
  * Parse a `GET /api/v0/chat/history_messages?chat_session_id=<id>` response into
- * ASCENDING rounds (CONFIRMED shape, 2026-06 Playwright). Each ASSISTANT message
+ * ASCENDING rounds (DUAL SHAPE — DeepSeek A/B-rolls fragments[] 2026-06 and
+ * top-level `content` 2026-08; see DsMessage, both captured live). Each ASSISTANT message
  * is paired with its parent USER (parent_id) → one round. Status is NOT filtered —
  * stopped/incomplete generations still count (the user's prompt consumed tokens,
  * and the dedup below ensures a retry replaces the earlier attempt).
@@ -58,7 +92,8 @@ function joinFragments(
  *
  * Returns TEXT only — the platform's own `accumulated_token_usage` is dropped
  * (spec: tokens are always estimated, the platform's count is 004 calibration
- * only). Defensive: a missing/foreign shape → []; never throws.
+ * only). Search text is NOT returned (not in the history API — spec 005).
+ * Defensive: a missing/foreign shape → []; never throws.
  */
 export function parseDeepSeekHistory(resp: unknown): HistoryRound[] {
   const messages =
@@ -88,8 +123,8 @@ export function parseDeepSeekHistory(resp: unknown): HistoryRound[] {
     byParent.set(parentId, {
       messageId: String(m.message_id),
       order: m.message_id,
-      promptText: joinFragments(parent.fragments, "REQUEST"),
-      answerText: joinFragments(m.fragments, "RESPONSE"),
+      promptText: dsMessageText(parent, "REQUEST"),
+      answerText: dsMessageText(m, "RESPONSE"),
       createdAt:
         typeof m.inserted_at === "number"
           ? Math.round(m.inserted_at * 1000)
