@@ -2,7 +2,7 @@
 
 ## Summary
 
-调研 LLM 平台对 tool 调用/网页搜索结果在 context window 中的占用形式（2026-08-16，官方文档 + 论文 + 实测），建立**双模式分类模型**：tool 结果要么**持久化进对话历史**（持续占用 context、每轮重读），要么**当轮瞬时注入**（生成完即释放、不进历史）。该模型指导 Headroom 的计数策略：`toolTokens` 只对"历史接口可见"的平台计数，`—` 表示"无工具"或"平台不暴露"，两者语义不同但**都不影响 context window 剩余量监控的准确性**。
+调研 LLM 平台对 tool 调用/网页搜索结果在 context window 中的占用形式（2026-08-16，官方文档 + 论文 + 实测），建立**双模式分类模型**（含存档不重放变体）：tool 结果要么**持久化进对话历史且每轮重读**（持续占用 context），要么**当轮瞬时注入**（生成完即释放、不进历史）；ChatGPT 是变体——调用文本存档于历史接口但**不重放**。该模型指导 Headroom 的计数策略：`toolTokens` 只对"历史接口可见"的平台计数，`—` 表示"无工具"或"平台不暴露"，两者语义不同但**都不影响 context window 剩余量监控的准确性**。
 
 ## Motivation
 
@@ -22,31 +22,32 @@ Tool 调用文本 + 工具返回结果**作为对话历史的一部分被持久�
 
 ### 模式 B：当轮瞬时注入（EPHEMERAL）
 
-搜索/工具结果只注入**当轮**请求的 context（模型生成该轮回答时读取），生成完成即释放；后续轮次的请求**不携带**该内容。历史接口要么完全不保存（DeepSeek Web：`search_results` null、`TOOL_SEARCH`/`TOOL_OPEN` 空壳），要么只保存调用文本不保存结果（ChatGPT Web：`content_type:"code"` 的 `search("…")` 调用，结果 server-side）。
+搜索/工具结果只注入**当轮**请求的 context（模型生成该轮回答时读取），生成完成即释放；后续轮次的请求**不携带**该内容。历史接口要么完全不保存（DeepSeek Web：`search_results` null、`TOOL_SEARCH`/`TOOL_OPEN` 空壳），要么只存档调用文本但不重放（ChatGPT Web：`content_type:"code"` 的 `search("…")` 调用存档于 conversation API，结果 server-side；2026-08-24 实测调用文本不进入后续轮次的 context，见 [证据](#关键机制细节证据)）。
 
 ### 平台归类（2026-08-16 实测 + 文档）
 
-| 平台          | 层  | Tool/搜索结果的占用形式                                            | 历史接口可见 | Headroom 计数      |
-| ------------- | --- | ------------------------------------------------------------------ | ------------ | ------------------ |
-| Kimi Web      | Web | 模式 A（tool block 含 title+snippet，持久）                        | ✅           | toolTokens ✅      |
-| Qwen Web      | Web | 模式 A（web_search phase，持久）                                   | ✅           | toolTokens ✅      |
-| Qianwen Web   | Web | 模式 A（bar/iframe sources，持久）                                 | ✅           | toolTokens ✅      |
-| Doubao Web    | Web | 模式 A（search_query_result_block，持久）                          | ✅           | toolTokens ✅      |
-| ChatGPT Web   | Web | 模式 B 结果 + 模式 A 调用（code node 持久，结果 server-side）      | ⚠️ 调用仅    | 调用 toolTokens    |
-| DeepSeek Web  | Web | 模式 B（SSE 流注入，历史空壳标记）                                 | ❌           | `—`（正确）        |
-| Gemini Web    | Web | 模式 B 结果（grounding 当轮注入，site names 在 DOM）               | ⚠️ DOM 名称  | site names（已计） |
-| OpenAI API    | API | 模式 A（tool 消息入历史，stateful 也计费）                         | —            | —                  |
-| Anthropic API | API | 模式 A（tool_result 入 messages，官方 context editing 需主动清除） | —            | —                  |
-| Gemini API    | API | 模式 A（functionResponse 入 contents，stateless 每轮重发）         | —            | —                  |
-| DeepSeek API  | API | 模式 A（OpenAI 兼容 tool 消息）                                    | —            | —                  |
+| 平台          | 层  | Tool/搜索结果的占用形式                                                       | 历史接口可见 | Headroom 计数                           |
+| ------------- | --- | ----------------------------------------------------------------------------- | ------------ | --------------------------------------- |
+| Kimi Web      | Web | 模式 A（tool block 含 title+snippet，持久）                                   | ✅           | toolTokens ✅                           |
+| Qwen Web      | Web | 模式 A（web_search phase，持久）                                              | ✅           | toolTokens ✅                           |
+| Qianwen Web   | Web | 模式 A（bar/iframe sources，持久）                                            | ✅           | toolTokens ✅                           |
+| Doubao Web    | Web | 模式 A（search_query_result_block，持久）                                     | ✅           | toolTokens ✅                           |
+| ChatGPT Web   | Web | 模式 B（code node 调用文本存档于 conversation API，不重放；结果 server-side） | ⚠️ 调用存档  | 调用 toolTokens（与 prompt 重复的扣除） |
+| DeepSeek Web  | Web | 模式 B（SSE 流注入，历史空壳标记）                                            | ❌           | `—`（正确）                             |
+| Gemini Web    | Web | 模式 B 结果（grounding 当轮注入，site names 在 DOM）                          | ⚠️ DOM 名称  | site names（已计）                      |
+| OpenAI API    | API | 模式 A（tool 消息入历史，stateful 也计费）                                    | —            | —                                       |
+| Anthropic API | API | 模式 A（tool_result 入 messages，官方 context editing 需主动清除）            | —            | —                                       |
+| Gemini API    | API | 模式 A（functionResponse 入 contents，stateless 每轮重发）                    | —            | —                                       |
+| DeepSeek API  | API | 模式 A（OpenAI 兼容 tool 消息）                                               | —            | —                                       |
 
-> API 层（非 Headroom 监控对象）全部是模式 A——OpenAI 兼容格式的 `tool` 消息是消息数组的一部分。Web 层分化：搜索文本进历史接口的持久，否则瞬时。
+> API 层（非 Headroom 监控对象）全部是模式 A——OpenAI 兼容格式的 `tool` 消息是消息数组的一部分。Web 层分化：搜索文本进历史接口且每轮重读的持久（模式 A），否则瞬时（模式 B）——ChatGPT 是 B 的变体：调用文本进历史接口但**不重放**。
 
 ## 关键机制细节（证据）
 
 - **DeepSeek Web 增量续传**（006 实测，2026-08-16）：追问的 `POST /api/v0/chat/completion` 请求体 = `{chat_session_id, parent_message_id: 2, prompt: "…"}`——不带任何历史文本。服务端从持久化消息树重建 context，而持久化里搜索内容为空 → **搜索不进入后续 context**。fragments 出现 `TOOL_SEARCH`/`TOOL_OPEN`/`SEARCH` 类型但 content 全空（仅证明搜索发生过；类型名本身也在变体，2026-08-17 又见 `SEARCH`）。
 - **DeepSeek 行为实验**（006 补充，2026-08-17）：新对话第一轮搜索"宇树科技IPO进展"（12 条结果，第一条来源证券之星，回答刻意不透露标题）；第二轮追问"第一轮搜索返回的第一条结果的完整标题"（UI 关闭智能搜索无效——`aria-pressed=false` 但请求体 `search_enabled` 仍为 true，键盘事件可切换视觉状态但请求参数不受控）→ 模型回答占位式编造（"宇树科技IPO最新进展 - 宇树科技IPO最新进展"），**无法引用第一轮搜索结果**。结合请求体观察：第一轮搜索结果在第二轮生成时不在 context 中；后续轮次唯一的信息留存是**第一轮回答文本**（模型已把搜索结果消化成回答）。
 - **ChatGPT Web**：搜索以系统提示注入（顶层隐藏规则）+ 窗口化分页提取（windowed/sliced page retrieval，非整页）注入当轮；`search_context_size`（low/medium/high）控制注入预算；未文档化的 `search_context_ttl` 控制服务端缓存生命周期（黑盒逆向）。conversation API 只持久化 `search("…")` 调用节点。
+- **ChatGPT 行为实验**（006 补充，2026-08-24）：completion 请求体两次实测均为「仅当前消息 + conversation_id」（前端不重发历史，服务端从消息树重建）。搜索词不出现在 user message（要求模型自行生成）时，第二轮追问搜索词 → 模型答「没有执行任何搜索词」；直白探针（"你能读到第一轮 search() 函数调用的内容吗"）→ 模型答「不能」。**结论：code node 调用文本虽存档于 conversation API（可被 Headroom 抓取解析），但不进入后续轮次的 context 重建**——prompt 原文不会因搜索调用而双计，spec 005 的去重策略成立。与 DeepSeek 的差别仅剩「历史接口是否可见」。
 - **OpenAI Responses API 状态化计费**：`previous_response_id` 下服务端自动带上下文，但**历史 input tokens 全部照常计费**；`truncation="auto"` 超限丢旧消息；Server-side Compaction 把历史动作压缩成状态（5M tokens / 150 tool calls 不丢精度）——侧面证明 tool 结果默认持续占用。
 - **Anthropic**：`tool_result` 是 messages 的一部分，官方文档明示"tool_result is the real context killer"（一个 2000-token 结果在后续每轮重复出现）；官方提供 `clear_tool_uses_20250919` context editing 主动从历史清除已用完的 tool 结果。
 - **Gemini API**：stateless，functionResponse 必须随完整历史重发；提供 ContextWindowCompressionConfig（如 triggerTokens 10000 → slidingWindow 5000）压缩。

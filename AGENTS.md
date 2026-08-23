@@ -97,6 +97,8 @@ Six writing systems, each with an independent coefficient:
 
 Char-based scripts are NOT double-counted as words. Coefficients are user-overridable per platform in the Advanced Settings panel. The engine lives in `utils/estimate.ts`; coefficients flow through `Settings.tokenCoefficients` → Upstash cloud sync.
 
+Tool & web-search text rides the same engine (spec [005](specs/005-tool-search-tokens.md)): search snippets / tool invocations are counted per-round into a `toolTokens` bucket — `total = promptTokens + toolTokens + answerTokens` — shown in the round table's Search/Tool column. Per-platform exposure modes (persisted & replayed, vs archived-but-not-replayed, vs ephemeral — "—" is correct on DeepSeek web; ChatGPT web counts its search-call text minus prompt-duplicates) are spec [006](specs/006-tool-context-occupancy.md).
+
 **Coefficient values are measured, never guessed.** Per-platform defaults live in each adapter's `tokenCoefficients`; the calibrated matrix + method are in spec 004 §4.3–4.4. To re-calibrate (e.g. after a platform swaps models): `npm i --no-save tiktoken @huggingface/transformers`, then `node --experimental-strip-types scripts/calibrate-chatgpt.mjs` and `scripts/calibrate-hf.mjs`. **Landmine (2026-07):** the BPE-era rule of thumb "1 Chinese char ≈ 1.5–2.5 tokens" is wrong for modern 129K–262K vocabs — measured CJK is 0.58–0.83 tok/char (multi-char words pack into single tokens). An "informed estimate" shipped as calibration overestimated CJK 2–3×; only an actual tokenizer run counts as calibration.
 
 ### Adapter zero-coupling rule ⚠️

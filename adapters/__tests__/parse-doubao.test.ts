@@ -79,6 +79,55 @@ describe("parseDoubaoHistory", () => {
     );
   });
 
+  it("keeps prompt and tool text separate when the query differs from the prompt (live 2026-08-21)", () => {
+    // Live Doubao search turn: the bot message carries BOTH a text_block (the
+    // answer) and a search_query_result_block whose query is a MODEL-GENERATED
+    // short query ("2026年8月21日杭州天气 最新预报") — NOT a copy of the prompt
+    // ("今天杭州的天气怎么样？…"). No ChatGPT-style duplication.
+    const messages = [
+      {
+        user_type: 2,
+        content_type: 9999,
+        content_block: [
+          {
+            content: {
+              search_query_result_block: {
+                summary: "搜索 1 个关键词,参考 1 篇资料",
+                queries: ["2026年8月21日杭州天气 最新预报"],
+                results: [
+                  { text_card: { summary: "杭州 08/21 小雨转阴 32/25℃" } },
+                ],
+              },
+            },
+          },
+          { content: { text_block: { text: "杭州今天小雨转阴，32/25℃。" } } },
+        ],
+        create_time: "1719500001",
+        index_in_conv: "1",
+      },
+      {
+        user_type: 1,
+        content_type: 9999,
+        content_block: [
+          {
+            content: {
+              text_block: { text: "今天杭州的天气怎么样？请联网搜索最新预报" },
+            },
+          },
+        ],
+        create_time: "1719500000",
+        index_in_conv: "0",
+      },
+    ];
+    const round = parseDoubaoHistory(messages)[0]!;
+    expect(round.promptText).toBe("今天杭州的天气怎么样？请联网搜索最新预报");
+    expect(round.toolText).toBe(
+      "2026年8月21日杭州天气 最新预报\n杭州 08/21 小雨转阴 32/25℃",
+    );
+    // The tool text must not re-count the prompt (the ChatGPT bug class).
+    expect(round.toolText?.includes(round.promptText)).toBe(false);
+  });
+
   it("leaves toolText unset when the bot message has no search block", () => {
     const messages = [
       {

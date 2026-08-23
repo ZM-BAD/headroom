@@ -63,6 +63,8 @@ describe("parseChatGptHistory", () => {
     // conversation API) — only the invocation counts.
     // CONFIRMED live 2026-08-16: the invocation text lives in `content.text`
     // (`search("…")`) — code nodes have NO `parts` array.
+    // The query here DIFFERS from the prompt (the model rewrote it) — a query
+    // that duplicates the prompt is deduped (separate test below, 2026-08-21).
     const resp = {
       mapping: {
         u1: {
@@ -83,7 +85,7 @@ describe("parseChatGptHistory", () => {
             recipient: "web",
             content: {
               content_type: "code",
-              text: 'search("@网页搜索 今天有什么新闻")',
+              text: 'search("@网页搜索 今天的科技新闻")',
             },
             create_time: 1719500000,
           },
@@ -102,7 +104,7 @@ describe("parseChatGptHistory", () => {
     };
     const round = parseChatGptHistory(resp)[0]!;
     expect(round.answerText).toBe("这是回答。");
-    expect(round.toolText).toBe('search("@网页搜索 今天有什么新闻")');
+    expect(round.toolText).toBe('search("@网页搜索 今天的科技新闻")');
   });
 
   it("falls back to content.parts when content.text is absent (legacy shape)", () => {
@@ -126,7 +128,7 @@ describe("parseChatGptHistory", () => {
             recipient: "web",
             content: {
               content_type: "code",
-              parts: ['search("@网页搜索 今天有什么新闻")'],
+              parts: ['search("@网页搜索 今天的科技新闻")'],
             },
             create_time: 1719500000,
           },
@@ -144,7 +146,295 @@ describe("parseChatGptHistory", () => {
       },
     };
     const round = parseChatGptHistory(resp)[0]!;
-    expect(round.toolText).toBe('search("@网页搜索 今天有什么新闻")');
+    expect(round.toolText).toBe('search("@网页搜索 今天的科技新闻")');
+  });
+
+  it("dedupes a search invocation that duplicates the prompt (Input == Search/Tool symptom, live 2026-08-21)", () => {
+    // Live reproduction: the code node's text is `search("<full prompt>")` —
+    // the query IS the prompt verbatim. Counting it as tool text re-counts the
+    // prompt (17 == 17 after rounding, measured on a real round). The prompt
+    // is already in promptTokens → no tool text.
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: {
+              content_type: "text",
+              parts: ["今天杭州的天气怎么样？请联网搜索最新预报"],
+            },
+          },
+          children: ["w1"],
+        },
+        w1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "web",
+            content: {
+              content_type: "code",
+              text: 'search("今天杭州的天气怎么样？请联网搜索最新预报")',
+            },
+            create_time: 1719500000,
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            content: { content_type: "text", parts: ["天气回答"] },
+            create_time: 1719500001,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)[0]!.toolText).toBeUndefined();
+  });
+
+  it("dedupes a search-command-prefixed prompt duplication (@网页搜索 …)", () => {
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: {
+              content_type: "text",
+              parts: ["@网页搜索 今天有什么新闻"],
+            },
+          },
+          children: ["w1"],
+        },
+        w1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "web",
+            content: {
+              content_type: "code",
+              text: 'search("@网页搜索 今天有什么新闻")',
+            },
+            create_time: 1719500000,
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            content: { content_type: "text", parts: ["这是回答。"] },
+            create_time: 1719500001,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)[0]!.toolText).toBeUndefined();
+  });
+
+  it("decodes literal \\uXXXX escapes and dedupes (live 2026-08-21 code-node shape)", () => {
+    // The live conversation API returned the code node's text DOUBLE-ENCODED:
+    // literal `\uXXXX` sequences instead of real CJK (user/answer nodes were
+    // real). Escaped text counts as latin (~2–3× inflation, 45 vs 17 measured).
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: {
+              content_type: "text",
+              parts: ["今天杭州的天气怎么样？请联网搜索最新预报"],
+            },
+          },
+          children: ["w1"],
+        },
+        w1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "web",
+            content: {
+              content_type: "code",
+              text: 'search("\\u4eca\\u5929\\u676d\\u5dde\\u7684\\u5929\\u6c14\\u600e\\u4e48\\u6837\\uff1f\\u8bf7\\u8054\\u7f51\\u641c\\u7d22\\u6700\\u65b0\\u9884\\u62a5")',
+            },
+            create_time: 1719500000,
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            content: { content_type: "text", parts: ["天气回答"] },
+            create_time: 1719500001,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)[0]!.toolText).toBeUndefined();
+  });
+
+  it("decodes \\uXXXX escapes and KEEPS a query that differs from the prompt", () => {
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: {
+              content_type: "text",
+              parts: ["@网页搜索 今天有什么新闻"],
+            },
+          },
+          children: ["w1"],
+        },
+        w1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "web",
+            content: {
+              content_type: "code",
+              text: 'search("\\u4eca\\u5929\\u7684\\u79d1\\u6280\\u65b0\\u95fb")',
+            },
+            create_time: 1719500000,
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            content: { content_type: "text", parts: ["这是回答。"] },
+            create_time: 1719500001,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)[0]!.toolText).toBe(
+      'search("今天的科技新闻")',
+    );
+  });
+
+  it("dedupes when BOTH sides carry literal \\uXXXX escapes (2026-08-21 shape escaped only the code node; both-sides escapes must still dedupe)", () => {
+    // b72ee40: the prompt side is decoded too, so a payload that escapes both
+    // sides compares equal after decode — real characters pass through.
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: {
+              content_type: "text",
+              parts: [
+                "\\u4eca\\u5929\\u676d\\u5dde\\u7684\\u5929\\u6c14\\u600e\\u4e48\\u6837",
+              ],
+            },
+          },
+          children: ["w1"],
+        },
+        w1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "web",
+            content: {
+              content_type: "code",
+              text: 'search("\\u4eca\\u5929\\u676d\\u5dde\\u7684\\u5929\\u6c14\\u600e\\u4e48\\u6837")',
+            },
+            create_time: 1719500000,
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            content: { content_type: "text", parts: ["天气回答"] },
+            create_time: 1719500001,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)[0]!.toolText).toBeUndefined();
+  });
+
+  it("KEEPS a non-search() invocation that duplicates the prompt (e.g. browse)", () => {
+    // isPromptDuplication only drops `search("…")` shapes — any other tool
+    // shape is never a prompt duplicate and must keep counting (spec 005:
+    // non-search shapes are never dropped).
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: {
+              content_type: "text",
+              parts: ["今天杭州的天气怎么样？请联网搜索最新预报"],
+            },
+          },
+          children: ["w1"],
+        },
+        w1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "web",
+            content: {
+              content_type: "code",
+              text: 'browse("今天杭州的天气怎么样？请联网搜索最新预报")',
+            },
+            create_time: 1719500000,
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            content: { content_type: "text", parts: ["天气回答"] },
+            create_time: 1719500001,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)[0]!.toolText).toBe(
+      'browse("今天杭州的天气怎么样？请联网搜索最新预报")',
+    );
+  });
+
+  it("KEEPS a near-match query (prompt + extra characters)", () => {
+    // The comparison is deliberately EXACT — a model-rewritten/expanded query
+    // must keep counting even if it is the prompt plus a few characters.
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: {
+              content_type: "text",
+              parts: ["今天杭州的天气怎么样？请联网搜索最新预报"],
+            },
+          },
+          children: ["w1"],
+        },
+        w1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "web",
+            content: {
+              content_type: "code",
+              text: 'search("今天杭州的天气怎么样？请联网搜索最新预报的天气情况")',
+            },
+            create_time: 1719500000,
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            content: { content_type: "text", parts: ["天气回答"] },
+            create_time: 1719500001,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)[0]!.toolText).toBe(
+      'search("今天杭州的天气怎么样？请联网搜索最新预报的天气情况")',
+    );
   });
 
   it("leaves toolText unset when the turn had no web-search call", () => {
@@ -209,7 +499,7 @@ describe("parseChatGptHistory", () => {
             recipient: "web",
             content: {
               content_type: "code",
-              text: 'search("@网页搜索 今天有什么新闻")',
+              text: 'search("@网页搜索 今天的科技新闻")',
             },
             create_time: 1719500001,
           },
@@ -228,7 +518,7 @@ describe("parseChatGptHistory", () => {
     const rounds = parseChatGptHistory(resp);
     expect(rounds).toHaveLength(2);
     expect(rounds[0]!.toolText).toBeUndefined(); // turn 1 never saw the search
-    expect(rounds[1]!.toolText).toBe('search("@网页搜索 今天有什么新闻")');
+    expect(rounds[1]!.toolText).toBe('search("@网页搜索 今天的科技新闻")');
   });
 
   it("joins MULTIPLE search invocations within one turn (multi-step browsing)", () => {

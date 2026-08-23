@@ -1,6 +1,6 @@
 # Privacy Policy
 
-> **Last updated:** 2026-06-22
+> **Last updated:** 2026-08-20
 >
 > This policy is version-controlled alongside the source code. The live URL
 > submitted to each store points at this file on the `main` branch.
@@ -22,6 +22,7 @@ To compute your context-window usage, the extension reads:
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
 | Your **prompt text** for each message you send      | `webRequest` observes the outgoing request to the AI platform's API; the adapter extracts the prompt field                                 | Needed to count the tokens you're submitting                                                             |
 | The **AI's reply text**                             | A content script reads the rendered reply from the page DOM once a round settles                                                           | Needed to count the tokens in the reply                                                                  |
+| Search / tool result text                           | Read from the platform's history API or the page DOM (search snippets, opened pages, tool calls, Gemini site names)                        | Needed to count tokens consumed by web searches and tool calls (Search/Tool column)                      |
 | A **conversation/session id**                       | From the same request body or the page URL                                                                                                 | Needed to group rounds into one conversation tally                                                       |
 | The **full conversation history** (all past rounds) | When you open a conversation, the extension calls the platform's own history API (using your existing login session) to fetch prior rounds | Needed to estimate tokens for rounds sent from other devices (e.g. chatted on mobile or another machine) |
 

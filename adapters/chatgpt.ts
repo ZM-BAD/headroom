@@ -222,7 +222,7 @@ export function parseChatGptHistory(resp: unknown): HistoryRound[] {
     if (node?.message?.author?.role !== "user") continue;
     const promptText = joinChatGptParts(node.message?.content?.parts);
     if (!promptText) continue; // empty/hidden user node — skip
-    const toolText = findWebSearchCall(mapping, node.children);
+    const toolText = findWebSearchCall(mapping, node.children, promptText);
     const answer = findFirstAssistantText(mapping, node.children);
     if (answer) {
       staged.push({
@@ -272,6 +272,17 @@ export function parseChatGptHistory(resp: unknown): HistoryRound[] {
  * the invocation counts. A turn may carry SEVERAL invocations (multi-step
  * browsing) — all are joined. Returns "" when the round had no web search.
  *
+ * DEDUP (verified live 2026-08-21): the invocation embeds the FULL prompt —
+ * `search("今天杭州的天气怎么样？…")` wraps the user's message verbatim, so
+ * counting it as tool text re-counts the prompt (the Input == Search/Tool
+ * symptom). A query that is just the prompt (possibly with a search-command
+ * prefix like `@网页搜索 `) is dropped — the code node is ARCHIVED but never
+ * replayed into later context (behavior probe 2026-08-24: the model cannot
+ * read its own search() call on the next turn; spec 006), so the prompt text
+ * occupies context exactly once and dropping is the correct accounting. A
+ * query the model rewrote/expanded still counts. Literal `\uXXXX` escapes
+ * (the live 2026-08-21 code-node shape) are decoded before comparing/counting.
+ *
  * TURN BOUNDARY: real mappings are LINEAR chains (user1 → assistant1 → user2 →
  * assistant2 …). A user node CLOSES the current turn — its children belong to
  * the NEXT round. Walking past it misattributes the next turn's search call to
@@ -281,10 +292,15 @@ export function parseChatGptHistory(resp: unknown): HistoryRound[] {
 function findWebSearchCall(
   mapping: Record<string, ChatGptNode>,
   startChildren: string[] | undefined,
+  promptText: string,
 ): string {
   const queue = [...(startChildren ?? [])];
   const seen = new Set<string>();
   const invocations: string[] = [];
+  // Decode the prompt side too: the live 2026-08-21 shape escaped ONLY the
+  // code node, but both sides are decoded before compare so a payload that
+  // escapes both still dedups (real characters pass through untouched).
+  const decodedPrompt = decodeChatGptEscapes(promptText);
   while (queue.length) {
     const id = queue.shift();
     if (!id || seen.has(id)) continue;
@@ -302,7 +318,12 @@ function findWebSearchCall(
       const text =
         typeof msg.content.text === "string" ? msg.content.text.trim() : "";
       const partsText = text || joinChatGptParts(msg.content?.parts);
-      if (partsText) invocations.push(partsText);
+      if (partsText) {
+        const decoded = decodeChatGptEscapes(partsText);
+        if (!isPromptDuplication(decoded, decodedPrompt)) {
+          invocations.push(decoded);
+        }
+      }
     }
     // Turn boundary — never traverse past a user node into the next turn.
     if (msg?.author?.role !== "user") {
@@ -310,6 +331,42 @@ function findWebSearchCall(
     }
   }
   return invocations.join("\n");
+}
+
+/**
+ * Decode literal `\uXXXX` escape sequences. Live 2026-08-21: the code node's
+ * `text` carries ESCAPED unicode (`search("今天…")` with literal
+ * backslashes) while user/answer nodes carry real characters — counting the
+ * escapes as latin inflates toolTokens ~2–3× (45 vs 17 measured on the same
+ * round). Real characters pass through untouched.
+ */
+function decodeChatGptEscapes(s: string): string {
+  return s.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) =>
+    String.fromCharCode(parseInt(hex, 16)),
+  );
+}
+
+/**
+ * True when an invocation is just `search("<query>")` whose query duplicates
+ * the round's prompt (optionally with a search-command prefix such as
+ * `@网页搜索 `). The prompt is already counted in promptTokens — counting it
+ * again as tool text double-counts the round (the Input == Search/Tool
+ * symptom). Non-`search()` shapes (e.g. `browse`) are never dropped.
+ *
+ * The comparison is deliberately EXACT — case/whitespace are NOT normalized.
+ * A model-rewritten query must keep counting; only verbatim duplicates are
+ * dropped. A near-match that slips through re-counts a few tokens (the old
+ * symptom); a fuzzy match that mis-fires would silently under-count real
+ * search content. Conservative direction on purpose.
+ */
+function isPromptDuplication(invocation: string, promptText: string): boolean {
+  const q = invocation.match(/^search\("(.*)"\)$/s)?.[1];
+  if (q === undefined) return false; // not a plain search() call — keep it
+  // Strip a search-command prefix ("@网页搜索 ") from BOTH sides: the user
+  // prompt carries it too, so `search("@网页搜索 今天有什么新闻")` with prompt
+  // `@网页搜索 今天有什么新闻` is a pure duplication.
+  const stripPrefix = (s: string) => s.trim().replace(/^@\S*\s*/, "");
+  return stripPrefix(q) === stripPrefix(promptText);
 }
 
 /**

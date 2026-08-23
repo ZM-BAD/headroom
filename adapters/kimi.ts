@@ -36,8 +36,10 @@ const KIMI_COEFFICIENTS: TokenCoefficients = {
 //   field on the response (no nextPageToken / hasMore), so a single request
 //   suffices (same as DeepSeek; verified against a multi-round chat 2026-06).
 //   Tree-linked via parentId: each assistant's parentId → the user it answers.
-//   The body is in blocks[]; only blocks with a `text` field carry reply/prompt
-//   content — `think`/`tool`/`stage` blocks are reasoning/search and dropped.
+//   The body is in blocks[]; blocks with a `text` field carry reply/prompt
+//   content — `think`/`stage` blocks are reasoning and dropped, but `tool`
+//   blocks ARE counted into toolText (spec 005: args + searchResult title/
+//   snippet via joinKimiToolBlocks).
 //   Auth = Bearer JWT read from localStorage.access_token (DeepSeek-style 踩坑 C).
 //   NOTE: a failed assistant (e.g. REASON_COMPLETION_OVERLOADED) has only an
 //   `exception` block, no `text` → skip it; the user re-sent, so the retry's

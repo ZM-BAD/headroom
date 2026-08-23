@@ -40,8 +40,8 @@ requirements/
 
 # Docs — working design docs + plans, not part of codebase
 docs/
+handoff.md
 
 # QA — local manual acceptance checklist, not version-controlled
 qa.md
 coverage/
-docs/
