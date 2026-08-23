@@ -794,7 +794,7 @@ function buildAbout(): void {
 
   const name = document.createElement("p");
   name.className = "hd-about-name";
-  name.textContent = "Headroom v0.0.1";
+  name.textContent = `Headroom v${browser.runtime.getManifest().version}`;
 
   const desc = document.createElement("p");
   desc.className = "hd-ref-note";
