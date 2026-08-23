@@ -26,7 +26,7 @@
 - **Per-round breakdown** — See estimated token counts for every Q&A pair, input and output separately.
 - **Privacy by design** — Conversation text is read transiently to count tokens, then discarded. Only the token counts are stored, locally and optionally in your own cloud storage. No Headroom server exists.
 
-**Supported Platforms & Default Context:** **DeepSeek (1M), ChatGPT (128K), Gemini (1M), Kimi (256K), Qwen (1M), 通义千问 (1M), 豆包/Doubao (256K).**
+**Supported Platforms & Default Context:** **DeepSeek (1M), ChatGPT (27K), Gemini (1M), Kimi (1M), Qwen (1M), 通义千问 (1M), 豆包/Doubao (256K).**
 
 Context limits are auto-detected per platform and user-overridable. All seven platforms' request parsing and DOM selectors were captured live (2026-06). Built with a platform-agnostic adapter architecture — adding a new AI chat platform is a matter of writing one adapter.
 

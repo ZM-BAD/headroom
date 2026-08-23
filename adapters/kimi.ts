@@ -2,9 +2,12 @@ import type { HistoryRound, PlatformAdapter } from "../utils/platform-adapter";
 import type { TokenCoefficients } from "../utils/estimate";
 
 /**
- * Measured against Kimi-K2.6's tiktoken vocab — exact (spec 004 §4.3;
- * scripts/calibrate-hf.mjs). K2.6 pre-tokenizes [\p{Han}]+ separately, so
- * Chinese is ultra-cheap while non-Latin words run ~2.8 tok/word.
+ * Measured against Kimi's open tiktoken vocab — exact (spec 004 §4.3;
+ * scripts/calibrate-hf.mjs). Web default is K3 since 2026-07-16, and K3's
+ * open weights ship the byte-identical vocab file the coefficients were
+ * fitted on (md5-verified 2026-08-20). Kimi pre-tokenizes [\p{Han}]+
+ * separately, so Chinese is ultra-cheap while non-Latin words run
+ * ~2.8 tok/word.
  */
 const KIMI_COEFFICIENTS: TokenCoefficients = {
   cjk: 0.57,
@@ -55,7 +58,7 @@ export const kimiAdapter: PlatformAdapter = {
   host: "www.kimi.com",
   completionUrl: "*://www.kimi.com/apiv2/kimi.gateway.chat.v1.ChatService/Chat",
   matchPattern: "*://www.kimi.com/*",
-  contextLimit: 262_144, // 256K (1 << 18); overridable
+  contextLimit: 1_048_576, // 1M — K3 default (2026-07-16) (1 << 20); overridable
   tokenCoefficients: KIMI_COEFFICIENTS, // spec 004 §4.3 calibrated (incl. markdown overhead)
   // Delete endpoint: CONFIRMED live (2026-06). Same gRPC-Gateway style as
   // send: POST /apiv2/kimi.chat.v1.ChatService/DeleteChat, body {"chat_id":"<id>"}

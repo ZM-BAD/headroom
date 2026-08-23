@@ -27,10 +27,10 @@ To compute your context-window usage, the extension reads:
 
 **Scope:** reading is limited to the seven supported AI-chat domains listed in
 `host_permissions` (`chat.deepseek.com`, `chatgpt.com`, `gemini.google.com`,
-`www.kimi.com`, `chat.qwen.ai`, `www.qianwen.com` + its API host
-`chat2.qianwen.com`, `www.doubao.com`). Headroom does **not** read, and has no
-access to, any other website, your other tabs, your browsing history, or any
-data outside those seven domains.
+`www.kimi.com`, `chat.qwen.ai`, `www.qianwen.com` + its API hosts
+`chat2.qianwen.com` / `chat2-api.qianwen.com`, `www.doubao.com`). Headroom does
+**not** read, and has no access to, any other website, your other tabs, your
+browsing history, or any data outside those seven domains.
 
 ## What Headroom stores, and where
 
@@ -62,13 +62,14 @@ record** per conversation to **your** Upstash instance. The record contains:
 - The conversation id, platform id, context limit, and a rolling list of rounds
   (capped at 200).
 - Each round carries **only numeric metadata**: round number, estimated prompt
-  token count, estimated answer token count, and a timestamp.
+  token count, estimated answer token count, estimated tool/search token count,
+  and a timestamp.
 
 > **Your conversation text is never persisted.** Headroom reads your prompt and
 > the AI's reply to count tokens, but it stores **only the token counts** — not
 > the text itself. Neither your local device nor your Upstash KV retains what
 > either side actually said. This is by design (`utils/dialogue-record.ts`:
-> `RoundRecord` is `{ messageId, order, n, promptTokens, answerTokens, total, createdAt }`
+> `RoundRecord` is `{ messageId, order, n, promptTokens, answerTokens, toolTokens, total, createdAt }`
 > — numbers and platform-stable identifiers only, no text).
 
 **Your Upstash credentials never leave your device.** They are stored only in

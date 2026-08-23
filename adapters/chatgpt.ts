@@ -31,8 +31,11 @@ const CHATGPT_COEFFICIENTS: TokenCoefficients = {
 //   {accessToken} (NextAuth pattern; DeepSeek-style 踩坑 C). Cookies-only on
 //   that session endpoint.
 // DOM UNVERIFIED: OpenAI rewrites the DOM constantly, so selectors are
-// data-attr-first best-guesses — verify live in DevTools. contextLimit is an
-// approximate default (GPT-4o family); overridable in settings later.
+// data-attr-first best-guesses — verify live in DevTools. contextLimit is the
+// ChatGPT WEB free-tier instant window (openai.com pricing, 2026-08): Free
+// 27K / Go·Plus·Business 54K / Pro 128K — the API's 1.05M does NOT apply to
+// chatgpt.com. Tier is not detectable; default to Free, user overrides in
+// settings (note rendered under the row).
 export const chatgptAdapter: PlatformAdapter = {
   platformId: "chatgpt",
   displayName: "ChatGPT",
@@ -49,7 +52,7 @@ export const chatgptAdapter: PlatformAdapter = {
   // adds a redundant refresh at page load.
   continueUrl: "*://chatgpt.com/backend-api/conversation*",
   matchPattern: "*://chatgpt.com/*",
-  contextLimit: 131_072, // 128K (1 << 17); overridable
+  contextLimit: 27_648, // 27K — ChatGPT web FREE-tier instant window (openai.com pricing 2026-08); overridable
   tokenCoefficients: CHATGPT_COEFFICIENTS, // spec 004 §4.3 calibrated (incl. markdown overhead)
   // Delete endpoint: CONFIRMED live (2026-06). ChatGPT soft-deletes via
   // PATCH /backend-api/conversation/<id> (not a real DELETE) — body is a

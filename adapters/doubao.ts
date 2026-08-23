@@ -3,8 +3,9 @@ import type { TokenCoefficients } from "../utils/estimate";
 
 /**
  * Measured via ByteDance's open Seed-OSS-36B as proxy — the production
- * tokenizer is closed (spec 004 §4.3; scripts/calibrate-hf.mjs). Kana is the
- * least trustworthy value (Seed-OSS carries little Japanese).
+ * tokenizer is closed; Seed-OSS-36B remains the latest open Seed LLM
+ * (2026-08), no newer proxy exists (spec 004 §4.3; scripts/calibrate-hf.mjs).
+ * Kana is the least trustworthy value (Seed-OSS carries little Japanese).
  */
 const DOUBAO_COEFFICIENTS: TokenCoefficients = {
   cjk: 0.67,

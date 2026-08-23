@@ -1,7 +1,7 @@
 import type { HistoryRound, PlatformAdapter } from "../utils/platform-adapter";
 import type { TokenCoefficients } from "../utils/estimate";
 
-/** Measured via Gemma 4 — Google states Gemma ships the same tokenizer as Gemini (spec 004 §4.3; scripts/calibrate-hf.mjs). */
+/** Measured via Gemma 4 (2026-04) — the current open Google family, 262K SentencePiece; Google's "same tokenizer as Gemini" claim dates to the Gemma 3/Gemini 3 era, 3.6 Flash unconfirmed unchanged (spec 004 §4.3; scripts/calibrate-hf.mjs). */
 const GEMINI_COEFFICIENTS: TokenCoefficients = {
   cjk: 0.69,
   kana: 0.51,

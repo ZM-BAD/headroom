@@ -1,7 +1,7 @@
 import type { HistoryRound, PlatformAdapter } from "../utils/platform-adapter";
 import type { TokenCoefficients } from "../utils/estimate";
 
-/** Measured against Qwen3.6-27B — closest open sibling of web Qwen 3.7 (spec 004 §4.3; scripts/calibrate-hf.mjs). */
+/** Measured against Qwen3.6-27B's tokenizer — web default Qwen3.8-Max's open weights ship the byte-identical vocab.json + merges.txt (md5-verified 2026-08-20), so the fitted coefficients carry over (spec 004 §4.3; scripts/calibrate-hf.mjs). */
 const QWEN_COEFFICIENTS: TokenCoefficients = {
   cjk: 0.6,
   kana: 0.51,

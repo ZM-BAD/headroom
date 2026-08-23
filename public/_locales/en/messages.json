@@ -80,6 +80,9 @@
   "ctxLimitInvalid": {
     "message": "Enter a whole number ≥ 1"
   },
+  "chatgptContextLimitNote": {
+    "message": "Web context limit is tier-based (openai.com pricing): Free 27K · Go/Plus/Business 54K · Pro 128K — the API's 1.05M does not apply to chatgpt.com."
+  },
   "roundsTitle": {
     "message": "Token usage by round"
   },
@@ -246,22 +249,22 @@
     "message": "Measured against the open DeepSeek-V4 tokenizer (exact). Chinese is cheap: ~0.6 tok/ch; Cyrillic/Arabic ~2.1 tok/wd."
   },
   "platformRefNoteChatgpt": {
-    "message": "Measured offline with tiktoken o200k_base (exact). CJK ~0.8 tok/ch; Latin ~1.3 tok/wd."
+    "message": "Measured offline with tiktoken o200k_base (exact — GPT-5.6 keeps the same tokenizer, confirmed 2026-08). CJK ~0.8 tok/ch; Latin ~1.3 tok/wd."
   },
   "platformRefNoteGemini": {
-    "message": "Tokenizer not public; measured via Gemma, which Google states is the same tokenizer. CJK ~0.7 tok/ch."
+    "message": "Tokenizer not public; measured via Gemma 4 — Google's open family, 262K SentencePiece in the same lineage; 3.6 Flash's tokenizer unconfirmed unchanged. CJK ~0.7 tok/ch."
   },
   "platformRefNoteKimi": {
-    "message": "Measured against the open K2.6 tiktoken vocab (exact). Chinese ~0.6 tok/ch; Cyrillic/Arabic words are costly (~2.8 tok/wd)."
+    "message": "Measured against the open Kimi K3 tiktoken vocab (exact). Chinese ~0.6 tok/ch; Cyrillic/Arabic words are costly (~2.8 tok/wd)."
   },
   "platformRefNoteQwen": {
-    "message": "Measured against the open Qwen3.6 tokenizer — the closest open sibling of the web model. CJK ~0.6 tok/ch."
+    "message": "Measured against the open Qwen tokenizer (exact — Qwen3.8-Max open weights ship the same vocab as 3.6). CJK ~0.6 tok/ch."
   },
   "platformRefNoteQianwen": {
     "message": "Same tokenizer family as Qwen — shares the same measured coefficients."
   },
   "platformRefNoteDoubao": {
-    "message": "Closed tokenizer; measured via ByteDance's open Seed-OSS as proxy. Tune if the gauge drifts — kana is the least reliable value."
+    "message": "Closed tokenizer; measured via ByteDance's open Seed-OSS-36B (still the latest open Seed model, 2026-08) as proxy. Tune if the gauge drifts — kana is the least reliable value."
   },
   "aboutStack": {
     "message": "Built with WXT, Vitest, and TypeScript."

@@ -469,6 +469,14 @@ function buildContextLimitRows(): void {
     unit.textContent = "K tokens";
     row.append(label, field, unit);
     list.append(row);
+    if (a.platformId === "chatgpt") {
+      // ChatGPT web caps context per plan (openai.com pricing); the API's 1.05M
+      // does not apply — one-line hint under the row.
+      const note = document.createElement("p");
+      note.className = "hd-hint";
+      note.textContent = t("chatgptContextLimitNote");
+      list.append(note);
+    }
     ctxInputs[a.platformId] = input;
   }
 }
@@ -673,31 +681,31 @@ const PLATFORM_REF: PlatformInfo[] = [
   },
   {
     platformId: "chatgpt",
-    model: "GPT-5.5 Instant",
+    model: "GPT-5.6 (Luna / Sol)",
     tokenizer: "o200k_base (tiktoken)",
     tokenizerNote: "platformRefNoteChatgpt",
   },
   {
     platformId: "gemini",
-    model: "Gemini 3.5 Flash",
+    model: "Gemini 3.6 Flash",
     tokenizer: "SentencePiece (Gemma-family)",
     tokenizerNote: "platformRefNoteGemini",
   },
   {
     platformId: "kimi",
-    model: "Kimi K2.6/K3",
+    model: "Kimi K3",
     tokenizer: "tiktoken-format BPE (open-source)",
     tokenizerNote: "platformRefNoteKimi",
   },
   {
     platformId: "qwen",
-    model: "Qwen 3.7",
+    model: "Qwen 3.8 Max",
     tokenizer: "BBPE (Qwen2Tokenizer lineage)",
     tokenizerNote: "platformRefNoteQwen",
   },
   {
     platformId: "qianwen",
-    model: "Qwen 3.7",
+    model: "Qwen 3.8 Max",
     tokenizer: "BBPE (Qwen2Tokenizer lineage)",
     tokenizerNote: "platformRefNoteQianwen",
   },

@@ -80,6 +80,9 @@
   "ctxLimitInvalid": {
     "message": "请输入 ≥1 的整数"
   },
+  "chatgptContextLimitNote": {
+    "message": "网页端上下文按套餐限制（openai.com 定价页）：Free 27K · Go/Plus/Business 54K · Pro 128K —— API 的 1.05M 不适用于 chatgpt.com 网页版。"
+  },
   "roundsTitle": {
     "message": "每轮 token 用量"
   },
@@ -246,22 +249,22 @@
     "message": "按开源 DeepSeek-V4 分词器精确标定。中文很省：约 0.6 tok/字；西里尔/阿拉伯约 2.1 tok/词。"
   },
   "platformRefNoteChatgpt": {
-    "message": "用 tiktoken o200k_base 离线精确标定。CJK 约 0.8 tok/字；拉丁约 1.3 tok/词。"
+    "message": "用 tiktoken o200k_base 离线精确标定（GPT-5.6 沿用同一分词器，2026-08 核实）。CJK 约 0.8 tok/字；拉丁约 1.3 tok/词。"
   },
   "platformRefNoteGemini": {
-    "message": "分词器未公开；经 Gemma 标定（Google 声明与 Gemini 为同一分词器）。CJK 约 0.7 tok/字。"
+    "message": "分词器未公开；经 Gemma 4 标定（Google 开源家族，262K SentencePiece，同源系；Gemini 3.6 分词器是否延续未证实）。CJK 约 0.7 tok/字。"
   },
   "platformRefNoteKimi": {
-    "message": "按开源 K2.6 tiktoken 词表精确标定。中文约 0.6 tok/字；西里尔/阿拉伯词较贵（约 2.8 tok/词）。"
+    "message": "按开源 Kimi K3 tiktoken 词表精确标定。中文约 0.6 tok/字；西里尔/阿拉伯词较贵（约 2.8 tok/词）。"
   },
   "platformRefNoteQwen": {
-    "message": "按开源 Qwen3.6 分词器标定——网页版模型最接近的开源姊妹。CJK 约 0.6 tok/字。"
+    "message": "按开源 Qwen 分词器标定（Qwen3.8-Max 开源权重与 3.6 同词表，实测一致）。CJK 约 0.6 tok/字。"
   },
   "platformRefNoteQianwen": {
     "message": "与 Qwen 同族分词器，共用同一套实测系数。"
   },
   "platformRefNoteDoubao": {
-    "message": "闭源分词器；经字节开源 Seed-OSS 代理标定。如计量漂移请手动调优——假名系数可信度最低。"
+    "message": "闭源分词器；经字节开源 Seed-OSS-36B 代理标定（2026-08 仍为最新开源 Seed 模型）。如计量漂移请手动调优——假名系数可信度最低。"
   },
   "aboutStack": {
     "message": "基于 WXT、Vitest 和 TypeScript 构建。"

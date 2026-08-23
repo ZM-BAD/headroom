@@ -4,13 +4,15 @@
  * platform's model family is open; nearest open sibling as proxy otherwise.
  *
  *   DeepSeek  → deepseek-ai/DeepSeek-V4-Flash    (EXACT: web default is V4 Pro/Flash, same tokenizer)
- *   Qwen/千问 → Qwen/Qwen3.6-27B                 (proxy: web default Qwen 3.7 plus is closed;
- *                                                  3.6 is the newest open sibling, vocab 248320)
- *   Kimi      → moonshotai/Kimi-K2.6             (EXACT: web default; tiktoken-format vocab file)
- *   Gemini    → google/gemma-4-12B-it            (proxy: Gemini 3.5 tokenizer not public;
- *                                                  Gemma 4 is the Google open family, vocab 262144)
- *   Doubao    → ByteDance-Seed/Seed-OSS-36B      (proxy: Doubao 2.1 not public; ByteDance's
- *                                                  open family, vocab 155136)
+ *   Qwen/千问 → Qwen/Qwen3.6-27B                 (EXACT BPE: web default Qwen3.8-Max open weights ship
+ *                                                  byte-identical vocab.json + merges.txt as 3.6 — md5-verified 2026-08-20; vocab 248320)
+ *   Kimi      → moonshotai/Kimi-K3               (EXACT: web default; tiktoken-format vocab file)
+ *   Gemini    → google/gemma-4-12B-it            (proxy: Gemini 3.6 Flash tokenizer not public;
+ *                                                  Gemma 4 (2026-04) is the current Google open
+ *                                                  family, vocab 262144)
+ *   Doubao    → ByteDance-Seed/Seed-OSS-36B      (proxy: Doubao Seed 2.1 tokenizer closed;
+ *                                                  Seed-OSS-36B still the latest open Seed LLM
+ *                                                  (2026-08), vocab 155136)
  *
  * Run:  npm i --no-save tiktoken @huggingface/transformers
  *       node --experimental-strip-types scripts/calibrate-hf.mjs
@@ -40,7 +42,7 @@ const HUB_MODELS = [
   },
   {
     id: "Qwen/Qwen3.6-27B",
-    label: "Qwen / 通义千问 — Qwen3.6-27B tokenizer (open sibling of 3.7 plus, vocab 248,320)",
+    label: "Qwen / 通义千问 — Qwen3.6-27B tokenizer (EXACT BPE — 3.8-Max open weights share the vocab, vocab 248,320)",
   },
   {
     id: "google/gemma-4-12B-it-qat-q4_0-unquantized",
@@ -61,7 +63,7 @@ for (const m of HUB_MODELS) {
   );
 }
 
-// —— Kimi K2.6: tiktoken-format vocab + the pat_str from tokenization_kimi.py
+// —— Kimi K3: tiktoken-format vocab + the pat_str from tokenization_kimi.py
 // (Rust regex class intersection [..&&[^\p{Han}]] is supported by the tiktoken
 // wasm core — same engine the Python reference implementation uses). ——
 const KIMI_VOCAB = "/tmp/headroom-tokenizers/kimi-tiktoken.model";
@@ -79,7 +81,7 @@ const KIMI_PAT = [
 const kimi = new Tiktoken(readFileSync(KIMI_VOCAB, "utf8"), {}, KIMI_PAT);
 try {
   await runCalibration(
-    "Kimi — Kimi-K2.6 tiktoken vocab (exact, vocab 163,840)",
+    "Kimi — Kimi-K3 tiktoken vocab (exact, vocab 163,584)",
     (text) => kimi.encode(text).length,
   );
 } finally {

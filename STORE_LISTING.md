@@ -203,8 +203,9 @@ Dashboard: https://chrome.google.com/webstore/devconsole/
   > be updated. No request body content is stored or transmitted.
 
   **Each AI-chat `host_permissions` entry** (`chat.deepseek.com`, `chatgpt.com`,
-  `gemini.google.com`, `kimi.moonshot.cn`, `chat.qwen.ai`, `tongyi.aliyun.com`,
-  `doubao.com`):
+  `gemini.google.com`, `www.kimi.com`, `chat.qwen.ai`, `www.qianwen.com`,
+  `chat2.qianwen.com`, `chat2-api.qianwen.com`, `www.doubao.com` — mirrors
+  `wxt.config.ts`):
 
   > This is an AI chat platform the user chooses to monitor. Headroom reads
   > conversation text on this domain solely to estimate token counts; it retains
