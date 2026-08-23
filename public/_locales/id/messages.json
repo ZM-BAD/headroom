@@ -80,8 +80,14 @@
   "ctxLimitInvalid": {
     "message": "Masukkan bilangan bulat ≥ 1"
   },
+  "chatgptContextLimitNote": {
+    "message": "· Batas web per paket: Free 27K · Go/Plus/Business 54K · Pro 128K"
+  },
   "roundsTitle": {
     "message": "Token per ronde"
+  },
+  "roundToolLegend": {
+    "message": "- berarti tidak ada konten pencarian/alat tambahan pada ronde ini; pencarian DeepSeek/ChatGPT tidak pernah masuk ke konteks."
   },
   "roundHeaderN": {
     "message": "Ronde"

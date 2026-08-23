@@ -729,6 +729,11 @@ th.hd-round-cum {
   color: var(--fg-muted);
 }
 
+/* Footnote variant — one size smaller than .hd-hint. */
+.hd-hint--sm {
+  font-size: 10px;
+}
+
 /* ---- Advanced Settings (spec 004 — token coefficients) ---- */
 
 .hd-advanced {

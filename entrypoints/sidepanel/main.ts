@@ -187,6 +187,16 @@ function applyI18n(root: ParentNode = document.body): void {
   root.querySelectorAll<HTMLElement>("[data-i18n-aria-label]").forEach((el) => {
     el.setAttribute("aria-label", t(el.dataset.i18nAriaLabel!));
   });
+  // Variant for strings that render a bold leading dash (round table legend).
+  // The dash is translated text, so bold it at render time via innerHTML —
+  // escape first, then wrap the leading "-" in <b>.
+  root.querySelectorAll<HTMLElement>("[data-i18n-dash]").forEach((el) => {
+    const text = t(el.dataset.i18nDash!)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+    el.innerHTML = text.replace(/^-/, "<b>-</b>");
+  });
 }
 
 // ---------- main view rendering ----------
@@ -232,7 +242,7 @@ function render(state: UsageState, th: Thresholds): void {
   els.barFill.dataset.level = level;
 
   els.tokenUsed.textContent = used.toLocaleString();
-  els.tokenLimit.textContent = limit > 0 ? limit.toLocaleString() : "—";
+  els.tokenLimit.textContent = limit > 0 ? limit.toLocaleString() : "-";
 
   els.statusDot.dataset.level = level;
   els.statusText.textContent = statusText(level);
@@ -241,7 +251,7 @@ function render(state: UsageState, th: Thresholds): void {
   els.lastRound.textContent =
     state.lastRoundTokens != null
       ? state.lastRoundTokens.toLocaleString()
-      : "—";
+      : "-";
   renderRounds(state.rounds);
 }
 
@@ -257,13 +267,14 @@ function renderRounds(rounds: UsageState["rounds"]): void {
     const pin = document.createElement("td");
     pin.className = "hd-round-in";
     pin.textContent = `↑${r.promptTokens.toLocaleString()}`;
-    // Search/tool tokens (spec 005) — "—" when 0 so old rounds keep a clean row.
+    // Search/tool tokens (spec 005) — "-" when 0 so old rounds keep a clean
+    // row (hyphen matches the legend's bolded dash glyph, main.ts data-i18n-dash).
     const ptool = document.createElement("td");
     ptool.className = "hd-round-tool";
     ptool.textContent =
       (r.toolTokens ?? 0) > 0
         ? `⌘${(r.toolTokens ?? 0).toLocaleString()}`
-        : "—";
+        : "-";
     const pout = document.createElement("td");
     pout.className = "hd-round-out";
     pout.textContent = `↓${r.answerTokens.toLocaleString()}`;
@@ -470,10 +481,11 @@ function buildContextLimitRows(): void {
     row.append(label, field, unit);
     list.append(row);
     if (a.platformId === "chatgpt") {
-      // ChatGPT web caps context per plan (openai.com pricing); the API's 1.05M
-      // does not apply — one-line hint under the row.
+      // ChatGPT web caps context per plan (openai.com pricing) — one-line
+      // footnote under the row, dot-marked, translated in all 10 locales
+      // (settings strings are user-visible UI).
       const note = document.createElement("p");
-      note.className = "hd-hint";
+      note.className = "hd-hint hd-hint--sm";
       note.textContent = t("chatgptContextLimitNote");
       list.append(note);
     }
@@ -755,9 +767,9 @@ function buildPlatformReference(): void {
       ctxLimit >= 1_048_576
         ? `${ctxLimit / 1_048_576}M`
         : `${ctxLimit / 1024}K`;
-    addRow("platformRefModel", info?.model ?? "—");
+    addRow("platformRefModel", info?.model ?? "-");
     addRow("platformRefContext", `${ctx} tokens`);
-    addRow("platformRefTokenizer", info?.tokenizer ?? "—");
+    addRow("platformRefTokenizer", info?.tokenizer ?? "-");
 
     if (info?.tokenizerNote) {
       const note = document.createElement("p");

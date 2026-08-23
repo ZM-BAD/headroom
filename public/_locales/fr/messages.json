@@ -80,8 +80,14 @@
   "ctxLimitInvalid": {
     "message": "Entrez un nombre entier ≥ 1"
   },
+  "chatgptContextLimitNote": {
+    "message": "· Limite web selon le forfait : Free 27K · Go/Plus/Business 54K · Pro 128K"
+  },
   "roundsTitle": {
     "message": "Tokens par tour"
+  },
+  "roundToolLegend": {
+    "message": "- signifie qu'il n'y a aucun contenu de recherche/outil supplémentaire pour ce tour ; la recherche DeepSeek/ChatGPT n'entre jamais dans le contexte."
   },
   "roundHeaderN": {
     "message": "Tour"

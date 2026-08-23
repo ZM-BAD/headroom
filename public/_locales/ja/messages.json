@@ -80,8 +80,14 @@
   "ctxLimitInvalid": {
     "message": "1 以上の整数を入力してください"
   },
+  "chatgptContextLimitNote": {
+    "message": "· ウェブ版の上限はプラン別：Free 27K · Go/Plus/Business 54K · Pro 128K"
+  },
   "roundsTitle": {
     "message": "ラウンド別トークン数"
+  },
+  "roundToolLegend": {
+    "message": "- はこのラウンドに追加の検索/ツールコンテンツがないことを表します；DeepSeek/ChatGPT の検索はコンテキストに入らない。"
   },
   "roundHeaderN": {
     "message": "ラウンド"

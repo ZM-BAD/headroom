@@ -81,10 +81,13 @@
     "message": "Enter a whole number ≥ 1"
   },
   "chatgptContextLimitNote": {
-    "message": "Web context limit is tier-based (openai.com pricing): Free 27K · Go/Plus/Business 54K · Pro 128K — the API's 1.05M does not apply to chatgpt.com."
+    "message": "· Web context by plan: Free 27K · Go/Plus/Business 54K · Pro 128K"
   },
   "roundsTitle": {
     "message": "Token usage by round"
+  },
+  "roundToolLegend": {
+    "message": "- means no extra search/tool content this round; DeepSeek/ChatGPT search content never persists into later rounds."
   },
   "roundHeaderN": {
     "message": "Round"
@@ -237,7 +240,7 @@
     "message": "How token estimation works"
   },
   "estimationGuideText": {
-    "message": "Headroom estimates token counts from the conversation text using per-script coefficients — it never trusts the platform's own count. CJK ideographs, Japanese kana, and Korean Hangul are counted per character. Cyrillic, Arabic, and Latin (and anything else) are counted per whitespace-separated word. Each script has a coefficient that represents the average tokens per counting unit for that model's tokenizer, calibrated by observing real tokenizer output. You can adjust these coefficients per platform in the Advanced settings above."
+    "message": "Headroom estimates token counts from the conversation text using per-script coefficients — it never trusts the platform's own count. CJK ideographs, Japanese kana, and Korean Hangul are counted per character. Cyrillic, Arabic, and Latin (and anything else) are counted per whitespace-separated word. Each script has a coefficient that represents the average tokens per counting unit for that model's tokenizer, calibrated by observing real tokenizer output. You can adjust these coefficients per platform in the Advanced settings above. Web-search results and tool-call text are counted into the round's total the same way, shown in the Search/Tool column of the round table."
   },
   "aboutTitle": {
     "message": "About"

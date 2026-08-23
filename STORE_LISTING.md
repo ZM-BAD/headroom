@@ -68,7 +68,8 @@ Gate 1 passed — copy describes verified behavior.
   > - **Real-time gauge** — Color-coded green / yellow / red thresholds show you
   >   exactly when to start a new conversation. Customizable per platform.
   > - **Per-round breakdown** — Estimated input and output token counts for every
-  >   Q&A pair in the conversation.
+  >   Q&A pair in the conversation, with web-search / tool-call tokens in a
+  >   separate Search/Tool column.
   > - **Per-platform context limits** — Each platform's default context window is
   >   built-in and user-overridable.
   > - **Optional cloud sync** — Connect your own Upstash Redis instance (free
@@ -117,7 +118,8 @@ Gate 1 passed — copy describes verified behavior.
   > **主要功能：**
   >
   > - **实时仪表盘** — 绿/黄/红三色阈值直观展示，可按平台自定义。
-  > - **逐轮明细** — 每一轮问答的输入和输出 token 估算量分别展示。
+  > - **逐轮明细** — 每一轮问答的输入和输出 token 估算量分别展示，搜索/工具
+  >   调用的 token 单独成列。
   > - **平台感知** — 内置各平台默认上下文窗口上限，支持用户按平台覆盖。
   > - **可选云同步** — 接入你自己的 Upstash Redis 实例（免费层绰绰有余），
   >   跨设备同步设置和计数。完全可选——仪表盘纯离线也能正常工作。

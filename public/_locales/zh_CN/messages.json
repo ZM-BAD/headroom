@@ -81,10 +81,13 @@
     "message": "请输入 ≥1 的整数"
   },
   "chatgptContextLimitNote": {
-    "message": "网页端上下文按套餐限制（openai.com 定价页）：Free 27K · Go/Plus/Business 54K · Pro 128K —— API 的 1.05M 不适用于 chatgpt.com 网页版。"
+    "message": "· 网页端按套餐限窗：Free 27K · Go/Plus/Business 54K · Pro 128K"
   },
   "roundsTitle": {
     "message": "每轮 token 用量"
+  },
+  "roundToolLegend": {
+    "message": "- 表示本轮无搜索/工具内容；DeepSeek/ChatGPT 搜索内容不进入后续轮次。"
   },
   "roundHeaderN": {
     "message": "轮次"
@@ -237,7 +240,7 @@
     "message": "Token 估算原理"
   },
   "estimationGuideText": {
-    "message": "Headroom 使用文字系统系数从对话文本估算 token 数量——不信任平台自身的计数。CJK 表意文字、日文假名、韩文谚文按字符计数；西里尔字母、阿拉伯字母、拉丁字母（及其他）按空格分词后的单词计数。每种文字系统的系数代表该模型分词器下平均每计数单位产生的 token 数，通过观测真实分词器输出校准得出。你可以在上方「高级设置」中按平台调整这些系数。"
+    "message": "Headroom 使用文字系统系数从对话文本估算 token 数量——不信任平台自身的计数。CJK 表意文字、日文假名、韩文谚文按字符计数；西里尔字母、阿拉伯字母、拉丁字母（及其他）按空格分词后的单词计数。每种文字系统的系数代表该模型分词器下平均每计数单位产生的 token 数，通过观测真实分词器输出校准得出。你可以在上方「高级设置」中按平台调整这些系数。搜索/工具调用的文本同样计入对应轮次，在轮次表的 Search/Tool 列展示。"
   },
   "aboutTitle": {
     "message": "关于"

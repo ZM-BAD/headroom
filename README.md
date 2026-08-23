@@ -23,7 +23,7 @@
 
 - **Zero setup** — No account, no API key, no configuration. Install and it just works.
 - **Real-time gauge** — Watch your context window fill up as you chat. 🟢 Green (plenty of room) · 🟠 Yellow (filling up) · 🔴 Red (time for a new conversation).
-- **Per-round breakdown** — See estimated token counts for every Q&A pair, input and output separately.
+- **Per-round breakdown** — See estimated token counts for every Q&A pair — prompt and answer separately, plus web-search and tool-call tokens in a dedicated Search/Tool column.
 - **Privacy by design** — Conversation text is read transiently to count tokens, then discarded. Only the token counts are stored, locally and optionally in your own cloud storage. No Headroom server exists.
 
 **Supported Platforms & Default Context:** **DeepSeek (1M), ChatGPT (27K), Gemini (1M), Kimi (1M), Qwen (1M), 通义千问 (1M), 豆包/Doubao (256K).**

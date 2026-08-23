@@ -80,8 +80,14 @@
   "ctxLimitInvalid": {
     "message": "Ganzzahl ≥ 1 eingeben"
   },
+  "chatgptContextLimitNote": {
+    "message": "· Web-Limit je Tarif: Free 27K · Go/Plus/Business 54K · Pro 128K"
+  },
   "roundsTitle": {
     "message": "Token-Nutzung pro Runde"
+  },
+  "roundToolLegend": {
+    "message": "- bedeutet: kein zusätzlicher Such-/Tool-Inhalt in dieser Runde; DeepSeek/ChatGPT-Suche fließt nie in den Kontext ein."
   },
   "roundHeaderN": {
     "message": "Runde"

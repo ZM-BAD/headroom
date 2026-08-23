@@ -80,8 +80,14 @@
   "ctxLimitInvalid": {
     "message": "Введите целое число ≥ 1"
   },
+  "chatgptContextLimitNote": {
+    "message": "· Лимит веб-версии зависит от тарифа: Free 27K · Go/Plus/Business 54K · Pro 128K"
+  },
   "roundsTitle": {
     "message": "Расход токенов по раундам"
+  },
+  "roundToolLegend": {
+    "message": "- означает, что в этом раунде нет дополнительного контента поиска/инструментов; поиск DeepSeek/ChatGPT не попадает в контекст."
   },
   "roundHeaderN": {
     "message": "Раунд"

@@ -80,8 +80,14 @@
   "ctxLimitInvalid": {
     "message": "1 이상의 정수를 입력하세요"
   },
+  "chatgptContextLimitNote": {
+    "message": "· 웹 버전 한도는 요금제별: Free 27K · Go/Plus/Business 54K · Pro 128K"
+  },
   "roundsTitle": {
     "message": "라운드별 토큰 사용량"
+  },
+  "roundToolLegend": {
+    "message": "- 는 이번 라운드에 추가 검색/도구 콘텐츠가 없음을 뜻합니다; DeepSeek/ChatGPT 검색은 컨텍스트에 들어가지 않음."
   },
   "roundHeaderN": {
     "message": "라운드"
