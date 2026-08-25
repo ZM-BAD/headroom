@@ -9,7 +9,7 @@
   <a href="https://chromewebstore.google.com/detail/headroom/ededcdndmfhljdjppngbhgmaoogcihjc"><img src="https://img.shields.io/chrome-web-store/v/ededcdndmfhljdjppngbhgmaoogcihjc?label=%20&style=flat-square" alt="Chrome Web Store"></a>
   &nbsp;&nbsp;&nbsp;
   <a href="https://microsoftedge.microsoft.com/addons/detail/headroom/hlnpmnlemmiohohhobkbdljomdmhhcnl"><img src="https://raw.githubusercontent.com/alrra/browser-logos/main/src/edge/edge.svg" width="48" alt="Edge"></a>
-  <a href="https://microsoftedge.microsoft.com/addons/detail/headroom/hlnpmnlemmiohohhobkbdljomdmhhcnl"><img src="https://img.shields.io/badge/Edge%20Add--ons-安装-0078D7?style=flat-square" alt="Edge Add-ons"></a>
+  <a href="https://microsoftedge.microsoft.com/addons/detail/headroom/hlnpmnlemmiohohhobkbdljomdmhhcnl"><img src="https://img.shields.io/badge/%20-v0.1.0-ea7233?style=flat-square" alt="Edge Add-ons"></a>
   &nbsp;&nbsp;&nbsp;
   <a href="https://addons.mozilla.org/firefox/addon/headroom/"><img src="https://raw.githubusercontent.com/alrra/browser-logos/main/src/firefox/firefox.svg" width="48" alt="Firefox"></a>
   <a href="https://addons.mozilla.org/firefox/addon/headroom/"><img src="https://img.shields.io/amo/v/headroom?label=%20&style=flat-square" alt="Firefox Add-ons"></a>
@@ -28,7 +28,7 @@
 
 **支持平台及默认上下文：** **DeepSeek (1M)、ChatGPT (27K)、Gemini (1M)、Kimi (1M)、Qwen (1M)、通义千问 (1M)、豆包/Doubao (256K)。**
 
-上下文上限按平台自动识别，支持用户按平台覆盖。7 家平台的请求解析和 DOM 选择器均经真机实测确认（2026-06）。采用平台无关的适配器架构——新增 AI 聊天平台只需编写一个新适配器。
+上下文上限按平台自动识别，支持用户按平台覆盖。7 家平台的请求解析和 DOM 选择器均经真机实测确认（2026-08）。采用平台无关的适配器架构——新增 AI 聊天平台只需编写一个新适配器。
 
 ## 为什么用 Headroom
 

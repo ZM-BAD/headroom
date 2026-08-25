@@ -9,7 +9,7 @@
   <a href="https://chromewebstore.google.com/detail/headroom/ededcdndmfhljdjppngbhgmaoogcihjc"><img src="https://img.shields.io/chrome-web-store/v/ededcdndmfhljdjppngbhgmaoogcihjc?label=%20&style=flat-square" alt="Chrome Web Store"></a>
   &nbsp;&nbsp;&nbsp;
   <a href="https://microsoftedge.microsoft.com/addons/detail/headroom/hlnpmnlemmiohohhobkbdljomdmhhcnl"><img src="https://raw.githubusercontent.com/alrra/browser-logos/main/src/edge/edge.svg" width="48" alt="Edge"></a>
-  <a href="https://microsoftedge.microsoft.com/addons/detail/headroom/hlnpmnlemmiohohhobkbdljomdmhhcnl"><img src="https://img.shields.io/badge/Edge%20Add--ons-Install-0078D7?style=flat-square" alt="Edge Add-ons"></a>
+  <a href="https://microsoftedge.microsoft.com/addons/detail/headroom/hlnpmnlemmiohohhobkbdljomdmhhcnl"><img src="https://img.shields.io/badge/%20-v0.1.0-ea7233?style=flat-square" alt="Edge Add-ons"></a>
   &nbsp;&nbsp;&nbsp;
   <a href="https://addons.mozilla.org/firefox/addon/headroom/"><img src="https://raw.githubusercontent.com/alrra/browser-logos/main/src/firefox/firefox.svg" width="48" alt="Firefox"></a>
   <a href="https://addons.mozilla.org/firefox/addon/headroom/"><img src="https://img.shields.io/amo/v/headroom?label=%20&style=flat-square" alt="Firefox Add-ons"></a>
@@ -28,7 +28,7 @@
 
 **Supported Platforms & Default Context:** **DeepSeek (1M), ChatGPT (27K), Gemini (1M), Kimi (1M), Qwen (1M), 通义千问 (1M), 豆包/Doubao (256K).**
 
-Context limits are auto-detected per platform and user-overridable. All seven platforms' request parsing and DOM selectors were captured live (2026-06). Built with a platform-agnostic adapter architecture — adding a new AI chat platform is a matter of writing one adapter.
+Context limits are auto-detected per platform and user-overridable. All seven platforms' request parsing and DOM selectors were captured live (2026-08). Built with a platform-agnostic adapter architecture — adding a new AI chat platform is a matter of writing one adapter.
 
 ## Why Headroom
 
