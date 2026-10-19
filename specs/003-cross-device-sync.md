@@ -93,8 +93,8 @@ sequenceDiagram
 
 **Added**:
 
-- **Open-and-full-reconciliation (core)**: content script `PAGE_READY` → background `fetchHistory` → full platform history → estimate tokens per round with 001 engine → union merge → overwrite-write local cache + Upstash → re-project gauge.
-- **Union merge (by messageId)**: `getDialogue` → `union(cloudRounds, historyRounds)` → `setDialogue`. 002's `setDialogue` is pure overwrite-write; merge orchestration is in this spec.
+- **Open-and-full-reconciliation (core)**: content script `PAGE_READY` → background `fetchHistory` → full platform history → estimate tokens per round with 001 engine → local-first reconcile (cache as fallback) → display → cloud reconcile when available → best-effort Upstash write → re-project gauge.
+- **Union merge (by messageId)**: local fallback + cloud base + history reconcile through one pure `reconcileDialogue()` function. 002's `setDialogue` is pure overwrite-write; merge orchestration and local-first fallback are in this spec.
 - **Zombie cleanup (unified engine, two trigger entries)**: periodic alarms (60min) + home-page open → shared throttle (5min) → `fetchConversationList` → diff against Upstash keys → DEL difference.
 - **Multi-conversation local cache + LRU eviction**.
 - **Product boundary statement**: Headroom only accurately records conversations "opened on a device with the extension installed." Cross-device relies on "open-and-sync" — as long as a conversation is opened on any device with the extension, it fully syncs; conversations never opened on an extension-installed device are not in the data. README / PRIVACY state this explicitly.
@@ -149,25 +149,26 @@ headroom:conv-index         → { <full-key>: updatedAt } metadata (for LRU evic
 
 ```
 One reconciliation:
-  cloudRecord  = getDialogue(key)                     // may be empty
+  localRecord   = getLocalDialogue(key)               // cache fallback
   historyRounds = fetchHistory(dialogueId)            // full platform history, each round carries stable messageId
-  newRounds = historyRounds.map(h => ({ messageId: h.messageId, ...estimate(h) }))
-  mergedRounds = union(cloudRecord.rounds, newRounds)  // by messageId: history wins; cloud-only messageIds preserved
-  mergedRounds.sort(by time-order).forEach((r,i)=> r.n = i+1)   // n is display-only, reassigned after merge by time
-  record = { ...cloudRecord,
-             rounds: mergedRounds,
-             totalTokens: mergeLifetimeTotal(cloudRecord.totalTokens, cloudRecord.rounds, newRounds),  // cloud running total adjusted by the merge diff (see below)
-             roundCount: mergedRounds.length,          // = number of distinct messageIds in merged set
-             updatedAt: now }
+  newRounds     = historyRounds.map(h => ({ messageId: h.messageId, ...estimate(h) }))
+  provisional   = reconcileDialogue(localRecord, newRounds)  // display immediately; preserves cache-only rounds
+  cloudRecord   = getDialogue(key)                    // may be empty; do not write after a failed read
+  record        = reconcileDialogue(cloudRecord ?? localRecord, newRounds)
+  // inside reconcileDialogue:
+  //   sort history by order, reassign n, union by messageId, history wins,
+  //   strip synthetic stop-path rounds, cap retained rounds at 200,
+  //   totalTokens = mergeLifetimeTotal(...),
+  //   roundCount  = mergeLifetimeRoundCount(...)
 ```
 
 - **Rounds still returned by platform** → re-estimated from platform text, overwriting old estimates (platform is text truth).
 - **Rounds no longer returned by platform** (truncation / pagination miss) → keep old estimates from `cloudRecord`, not lost.
-- **`totalTokens` / `roundCount`** recomputed from merged set: `totalTokens = mergeLifetimeTotal(...)` — the cloud record's true running total (which survived the cloud record's own trimming) adjusted by the merge diff: history re-estimates replace the cloud contribution of the same messageId, genuinely-new rounds (order beyond the retained window) add theirs, and trimmed rounds are NOT re-added (their totals already live in `cloudTotal` — the trimmed-window rule: platform order keys are monotonic, so a history round absent from the window with `order ≤ window max` can only be a trimmed round, never a new one). Equals `Σ mergedRounds.total` for ≤200-round dialogues, and stays correct when `unionRounds` trims the oldest rounds (>200) — a naive re-sum would silently drop the trimmed rounds' totals, a naive "add every absent round" double-counts them on every refetch. `roundCount = number of distinct messageIds in merged set` (stable-identity dedup, naturally truncation-resistant / duplicate-resistant). Both unaffected by `rounds[]` trimming (see 001 invariants).
+- **`totalTokens` / `roundCount`** recomputed from merged set: `totalTokens = mergeLifetimeTotal(...)` — the cloud record's true running total (which survived the cloud record's own trimming) adjusted by the merge diff: history re-estimates replace the cloud contribution of the same messageId, genuinely-new rounds (order beyond the retained window) add theirs, and trimmed rounds are NOT re-added (their totals already live in `cloudTotal` — the trimmed-window rule: platform order keys are monotonic, so a history round absent from the window with `order ≤ window max` can only be a trimmed round, never a new one). Equals `Σ mergedRounds.total` for ≤200-round dialogues, and stays correct when `unionRounds` trims the oldest rounds (>200) — a naive re-sum would silently drop the trimmed rounds' totals, a naive "add every absent round" double-counts them on every refetch. `roundCount = mergeLifetimeRoundCount(baseRoundCount, baseRounds, newRounds)` — the count analogue of `mergeLifetimeTotal`, preserving the true lifetime count when `rounds[]` is trimmed to 200. Both totals and counts are unaffected by retention trimming (see 001 invariants).
 
 > **Normal case = full overwrite write**: When platform returns complete history, every round wins with a re-estimated value, old cloud values replaced as a whole — so coefficient upgrades (tokenizer change / 004 calibration / user override) are refreshed on every open; old estimates don't get stuck. Union's "selectivity" only manifests when platform **truncates / paginates**: dropped early rounds keep old cloud estimates; the cost is those rounds stay on whatever coefficient set they were estimated with (`DialogueRecord` stores only counts, no text, so no text means no re-estimation); the benefit is not losing those rounds' cumulative totals. DeepSeek returns full history, no pagination (see 001), so this limitation does not exist.
 
-**Display-first-then-sync** (key UX): reconciliation computes record → immediately write local cache + broadcast gauge (user sees in ms, not waiting for network) → background best-effort `setDialogue` pushes to Upstash (failure only warns, does not block UI, recovered on next open).
+**Display-first-then-sync** (key UX): reconciliation computes a local-first record (previous cache + history) → immediately write local cache + broadcast gauge (user sees in ms, not waiting for network) → read cloud and reconcile again; a failed cloud read keeps the local fallback and skips the cloud write → background best-effort `setDialogue` pushes the final record to Upstash (failure only warns, does not block UI, recovered on next open).
 
 ### Local Cache Eviction (LRU)
 

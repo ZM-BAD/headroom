@@ -273,3 +273,138 @@ export function projectUsage(record: DialogueRecord | null): UsageProjection {
     rounds: record.rounds,
   };
 }
+
+// ── Reconciliation (cloud/local base + live history) ──────────────────
+
+/** Synthetic stop-path ids never survive a real history reconciliation. */
+function isSyntheticStopRound(round: RoundRecord): boolean {
+  return round.messageId.startsWith("stop:");
+}
+
+/** Sort history ascending and assign display positions after ordering. */
+function normalizeHistoryRounds(rounds: RoundRecord[]): RoundRecord[] {
+  return rounds
+    .slice()
+    .sort((a, b) => a.order - b.order || a.messageId.localeCompare(b.messageId))
+    .map((round, index) => ({ ...round, n: index + 1 }));
+}
+
+/**
+ * True lifetime round count after merging a durable base record with live
+ * history. Mirrors `mergeLifetimeTotal`'s trimmed-window discrimination: a
+ * history round already present in the retained base window does not add a
+ * round; a history round absent from a trimmed base is only provably new when
+ * its order is beyond the retained window (or ties the max on monotonic-order
+ * platforms). This preserves the true count when `rounds[]` is capped at 200.
+ */
+export function mergeLifetimeRoundCount(
+  baseRoundCount: number,
+  baseRounds: RoundRecord[],
+  historyRounds: RoundRecord[],
+  monotonicOrder = true,
+): number {
+  const baseIds = new Set(baseRounds.map((r) => r.messageId));
+  const trimmedCounted = baseRoundCount > baseRounds.length;
+  let maxOrder = -Infinity;
+  for (const r of baseRounds) maxOrder = Math.max(maxOrder, r.order);
+  const seen = new Set<string>();
+  let count = Math.max(baseRoundCount, baseRounds.length);
+  for (let i = historyRounds.length - 1; i >= 0; i--) {
+    const h = historyRounds[i];
+    if (h === undefined || seen.has(h.messageId)) continue;
+    seen.add(h.messageId);
+    if (baseIds.has(h.messageId)) continue;
+    if (
+      trimmedCounted === false ||
+      h.order > maxOrder ||
+      (monotonicOrder && h.order === maxOrder)
+    ) {
+      count++;
+    }
+  }
+  return count;
+}
+
+export interface ReconcileDialogueInput {
+  platformId: string;
+  dialogueId: string;
+  contextLimit: number;
+  /** Durable base: cloud when available, otherwise the local cache fallback. */
+  base: DialogueRecord | null;
+  /** Live history. Input order is ignored; rounds are sorted by `order`. */
+  historyRounds: RoundRecord[];
+  monotonicOrder?: boolean;
+  /** Injected for deterministic tests. */
+  now?: number;
+}
+
+/**
+ * Single reconciliation entry point. History wins on the same messageId;
+ * base-only rounds survive; output is sorted, de-duplicated by messageId,
+ * capped at MAX_RETAINED_ROUNDS, and carries the true lifetime total/count
+ * even when the retained array is trimmed.
+ *
+ * A local cache base is acceptable for offline fallback. Synthetic stop-path
+ * rounds are stripped so they cannot become permanent after a real history
+ * reconciliation.
+ */
+export function reconcileDialogue(
+  input: ReconcileDialogueInput,
+): DialogueRecord {
+  const rawBaseRounds = input.base?.rounds ?? [];
+  const syntheticRounds = rawBaseRounds.filter(isSyntheticStopRound);
+  const baseRounds = rawBaseRounds.filter(
+    (r) => isSyntheticStopRound(r) === false,
+  );
+  const syntheticTokens = syntheticRounds.reduce((sum, r) => sum + r.total, 0);
+  const baseTotalTokens = Math.max(
+    0,
+    (input.base?.totalTokens ?? 0) - syntheticTokens,
+  );
+  const baseRoundCount = Math.max(
+    0,
+    (input.base?.roundCount ?? 0) - syntheticRounds.length,
+  );
+
+  const orderedHistory = normalizeHistoryRounds(input.historyRounds);
+  const mergedRounds = unionRounds(baseRounds, orderedHistory);
+  const totalTokens = Math.max(
+    0,
+    mergeLifetimeTotal(
+      baseTotalTokens,
+      baseRounds,
+      orderedHistory,
+      input.monotonicOrder ?? true,
+    ),
+  );
+  const roundCount = Math.max(
+    mergeLifetimeRoundCount(
+      baseRoundCount,
+      baseRounds,
+      orderedHistory,
+      input.monotonicOrder ?? true,
+    ),
+    mergedRounds[mergedRounds.length - 1]?.n ?? 0,
+  );
+
+  return {
+    platformId: input.platformId,
+    dialogueId: input.dialogueId,
+    contextLimit: input.contextLimit,
+    totalTokens,
+    roundCount,
+    rounds: mergedRounds,
+    updatedAt: input.now ?? Date.now(),
+  };
+}
+
+/** Compare user-visible record content while ignoring the LRU timestamp. */
+export function dialogueRecordContentEqual(
+  a: DialogueRecord,
+  b: DialogueRecord,
+): boolean {
+  return (
+    JSON.stringify({ ...a, updatedAt: 0 }) ===
+    JSON.stringify({ ...b, updatedAt: 0 })
+  );
+}

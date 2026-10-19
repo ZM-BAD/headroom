@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   mergeLifetimeTotal,
+  mergeLifetimeRoundCount,
+  reconcileDialogue,
+  dialogueRecordContentEqual,
   upsertRound,
   upsertRoundInto,
   unionRounds,
@@ -685,5 +688,147 @@ describe("projectUsage — gauge projection from a record", () => {
       expect(ids).toEqual(Array.from({ length: 50 }, (_, i) => `m${i + 1}`));
       expect(out.reduce((s, r) => s + r.total, 0)).toBe(1275); // Σ(1..50)
     });
+  });
+});
+
+describe("reconcileDialogue — shared history + durable base", () => {
+  const historyRound = (
+    messageId: string,
+    order: number,
+    promptTokens = 1,
+    answerTokens = 1,
+  ): RoundRecord => ({
+    messageId,
+    order,
+    n: 0,
+    promptTokens,
+    toolTokens: 0,
+    answerTokens,
+    total: promptTokens + answerTokens,
+    createdAt: order,
+  });
+
+  const fullBase = (count: number, perRound = 2): DialogueRecord => {
+    let record = emptyDialogue("qianwen", "d1", 1_000);
+    for (let i = 1; i <= count; i++) {
+      record = upsertRound(record, "qianwen", "d1", 1_000, {
+        messageId: `m${i}`,
+        order: i,
+        n: i,
+        promptTokens: 1,
+        toolTokens: 0,
+        answerTokens: perRound - 1,
+        createdAt: i,
+      });
+    }
+    return record;
+  };
+
+  it("sorts NEW→OLD history and assigns display n after ordering", () => {
+    const record = reconcileDialogue({
+      platformId: "qianwen",
+      dialogueId: "d1",
+      contextLimit: 1_000,
+      base: null,
+      historyRounds: [historyRound("m2", 2, 2, 2), historyRound("m1", 1, 1, 1)],
+      now: 123,
+    });
+
+    expect(record.rounds.map((r) => r.messageId)).toEqual(["m1", "m2"]);
+    expect(record.rounds.map((r) => r.n)).toEqual([1, 2]);
+    expect(record.totalTokens).toBe(6);
+    expect(record.roundCount).toBe(2);
+    expect(record.updatedAt).toBe(123);
+  });
+
+  it("preserves true roundCount when history only returns the latest window", () => {
+    const base = fullBase(250);
+    const history = Array.from({ length: 100 }, (_, i) =>
+      historyRound(`m${151 + i}`, 151 + i),
+    );
+
+    const merged = reconcileDialogue({
+      platformId: "qianwen",
+      dialogueId: "d1",
+      contextLimit: 1_000,
+      base,
+      historyRounds: history,
+      now: 123,
+    });
+
+    expect(merged.rounds).toHaveLength(MAX_RETAINED_ROUNDS);
+    expect(merged.roundCount).toBe(250);
+    expect(merged.totalTokens).toBe(500);
+    expect(merged.rounds[merged.rounds.length - 1]?.messageId).toBe("m250");
+  });
+
+  it("retains base-only rounds when history is truncated", () => {
+    const base = fullBase(3);
+    const history = [historyRound("m3", 3, 10, 10)];
+
+    const merged = reconcileDialogue({
+      platformId: "qianwen",
+      dialogueId: "d1",
+      contextLimit: 1_000,
+      base,
+      historyRounds: history,
+      now: 123,
+    });
+
+    expect(merged.rounds.map((r) => r.messageId)).toEqual(["m1", "m2", "m3"]);
+    expect(merged.rounds[2]?.total).toBe(20);
+    expect(merged.roundCount).toBe(3);
+  });
+
+  it("strips synthetic stop-path rounds during real reconciliation", () => {
+    const base = fullBase(1);
+    const withStop = upsertRound(base, "qianwen", "d1", 1_000, {
+      messageId: "stop:123",
+      order: 2,
+      n: 2,
+      promptTokens: 5,
+      toolTokens: 0,
+      answerTokens: 6,
+      createdAt: 2,
+    });
+
+    const merged = reconcileDialogue({
+      platformId: "qianwen",
+      dialogueId: "d1",
+      contextLimit: 1_000,
+      base: withStop,
+      historyRounds: [historyRound("m1", 1)],
+      now: 123,
+    });
+
+    expect(merged.rounds.map((r) => r.messageId)).toEqual(["m1"]);
+    expect(merged.roundCount).toBe(1);
+    expect(merged.totalTokens).toBe(2);
+  });
+
+  it("compares content while ignoring updatedAt", () => {
+    const base = fullBase(1);
+    expect(
+      dialogueRecordContentEqual(
+        { ...base, updatedAt: 1 },
+        { ...base, updatedAt: 999 },
+      ),
+    ).toBe(true);
+  });
+
+  it("mergeLifetimeRoundCount is the count analogue of mergeLifetimeTotal", () => {
+    const base = fullBase(250);
+    const history = Array.from({ length: 250 }, (_, i) =>
+      historyRound(`m${i + 1}`, i + 1),
+    );
+    expect(mergeLifetimeRoundCount(base.roundCount, base.rounds, history)).toBe(
+      250,
+    );
+    expect(
+      mergeLifetimeRoundCount(base.roundCount, base.rounds, [
+        ...history,
+        historyRound("m251", 251),
+      ]),
+    ).toBe(251);
   });
 });

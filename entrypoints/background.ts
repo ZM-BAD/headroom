@@ -7,12 +7,12 @@ import type { PlatformAdapter } from "../utils/platform-adapter";
 import { ADAPTERS } from "../adapters";
 import { estimateTokens, resolveCoefficients } from "../utils/estimate";
 import {
-  emptyDialogue,
-  mergeLifetimeTotal,
   projectUsage,
   upsertRound,
-  unionRounds,
+  reconcileDialogue,
+  dialogueRecordContentEqual,
   type DialogueRecord,
+  type RoundRecord,
 } from "../utils/dialogue-record";
 import {
   convIndexAfterDelete,
@@ -807,20 +807,18 @@ export default defineBackground(() => {
     const coeff = resolveCoefficients(adapter, settings);
     const contextLimit = effectiveLimit(settings, adapter);
 
-    // 1. Estimate history rounds into RoundRecords (history is the live truth).
-    const historyRounds = m.rounds.map((h, i) => {
+    // 1. Estimate history rounds. Reconciliation sorts by `order`, so adapter
+    //    order is not trusted (Tongyi Qianwen returns NEW→OLD).
+    const historyRounds: RoundRecord[] = m.rounds.map((h, i) => {
       const promptTokens = Math.round(estimateTokens(h.promptText, coeff));
       const toolTokens = h.toolText
         ? Math.round(estimateTokens(h.toolText, coeff))
         : 0;
       const answerTokens = Math.round(estimateTokens(h.answerText, coeff));
-      // Round at the storage boundary: a token is the smallest unit, so the
-      // stored/displayed count must be an integer. estimateTokens stays a
-      // precise float so its unit tests + 004 coefficient calibration hold.
       return {
         messageId: h.messageId,
         order: h.order,
-        n: i + 1, // display position — unionRounds reassigns when cloud merge runs
+        n: i + 1,
         promptTokens,
         toolTokens,
         answerTokens,
@@ -829,104 +827,99 @@ export default defineBackground(() => {
       };
     });
 
-    // Helper: build a DialogueRecord from an array of RoundRecords.
-    const buildRecord = (rounds: typeof historyRounds): DialogueRecord => {
-      let rec = emptyDialogue(adapter.platformId, dialogueId, contextLimit);
-      for (const r of rounds) {
-        rec = upsertRound(rec, adapter.platformId, dialogueId, contextLimit, {
-          messageId: r.messageId,
-          order: r.order,
-          n: r.n,
-          promptTokens: r.promptTokens,
-          toolTokens: r.toolTokens,
-          answerTokens: r.answerTokens,
-          createdAt: r.createdAt,
-        });
-      }
-      return rec;
-    };
-
-    // 2. Show history-only estimate IMMEDIATELY — don't wait for the cloud
-    //    read (Upstash, 1–3 s). The panel re-renders on STATE_UPDATE instantly.
-    let record = buildRecord(historyRounds);
-    const historyOnlyTotal = record.totalTokens;
-    dbg(
-      `[Headroom|BG] applyHistory platform=${adapter.platformId} historyRounds=${historyRounds.length} totalTokens=${historyOnlyTotal} isActive=${await isTabActive(tabId)}${m.provisional ? " PROVISIONAL" : ""}`,
-    );
-    await setLocalDialogue(key, record);
-    void evictLocalCacheIfNeeded();
-    if (tabId != null) tabDialogueTitle.set(tabId, m.dialogueTitle);
-    if (await isTabActive(tabId)) {
+    // 2. Local-first reconciliation. This preserves cache-only rounds and the
+    //    old record when Upstash is slow/unavailable, instead of overwriting
+    //    the cache with a possibly-truncated history-only snapshot.
+    const localRecord = await getLocalDialogue(key);
+    const provisionalRecord = reconcileDialogue({
+      platformId: adapter.platformId,
+      dialogueId,
+      contextLimit,
+      base: localRecord,
+      historyRounds,
+      monotonicOrder: adapter.monotonicOrder,
+      now: Date.now(),
+    });
+    const provisionalChanged =
+      localRecord === null ||
+      dialogueRecordContentEqual(provisionalRecord, localRecord) === false;
+    if (provisionalChanged) {
+      await setLocalDialogue(key, provisionalRecord);
+      void evictLocalCacheIfNeeded();
+    }
+    if (tabId !== undefined) {
+      tabDialogueTitle.set(tabId, m.dialogueTitle);
+    }
+    const active = await isTabActive(tabId);
+    if (active) {
       await broadcast(
-        buildState(adapter, contextLimit, record, dialogueId, m.dialogueTitle),
+        buildState(
+          adapter,
+          contextLimit,
+          provisionalRecord,
+          dialogueId,
+          m.dialogueTitle,
+        ),
       );
     }
+    dbg(
+      `[Headroom|BG] applyHistory platform=${adapter.platformId} historyRounds=${historyRounds.length} totalTokens=${provisionalRecord.totalTokens} roundCount=${provisionalRecord.roundCount} isActive=${active}${m.provisional ? " PROVISIONAL" : ""}`,
+    );
 
-    // 2a. Provisional: streaming update — stop after the local broadcast.
-    //     Cloud write is deferred to the final settled ship (non-provisional)
-    //     that fires after DOM quiescence (2s, content-script side). One
-    //     GET+SET pair per round — exactly the design baseline — regardless
-    //     of answer length. Other platforms never set provisional, so the
-    //     guard is a no-op for them.
+    // Provisional updates are local-only; the final settled ship writes cloud.
     if (m.provisional) return;
 
-    // 3. Read the cloud record asynchronously (null when unconfigured).
+    // 3. Cloud is the cross-device merge point. Never overwrite it after a
+    //    failed read — that would turn a transient network error into data loss.
     let cloudRecord: DialogueRecord | null = null;
+    let cloudReadFailed = false;
     try {
       cloudRecord = await getDialogue(settings.upstash, key);
     } catch (e) {
-      // Don't let a transient cloud read block the local update — proceed with
-      // history-only; the next open will retry the union.
+      cloudReadFailed = true;
       console.warn("[Headroom] cloud read failed for", key, e);
     }
-
-    // 4. Union merge (spec 003 core): if the cloud has rounds not in history,
-    //    merge them in and re-broadcast. Drop the local n — unionRounds
-    //    reassigns display positions for the merged set.
-    if (cloudRecord?.rounds?.length) {
-      const mergedRounds = unionRounds(
-        cloudRecord.rounds,
-        historyRounds.map((r) => ({ ...r, n: 0 })),
-      );
-      record = buildRecord(mergedRounds);
-      // buildRecord re-sums only the RETAINED rounds — restore the true
-      // lifetime total: the cloud record's running sum (which survived its own
-      // trimming), adjusted for history's re-estimates and brand-new rounds.
-      // Without this, >MAX_RETAINED_ROUNDS unions silently drop the oldest
-      // rounds' totals (spec 003 trim-but-keep-totals).
-      record.totalTokens = mergeLifetimeTotal(
-        cloudRecord.totalTokens,
-        cloudRecord.rounds,
-        historyRounds,
-        adapter.monotonicOrder,
-      );
-      // Only re-broadcast if the merged result actually differs from the
-      // history-only snapshot already shown.
-      if (record.totalTokens !== historyOnlyTotal) {
-        dbg(
-          `[Headroom|BG] applyHistory cloud merge: total changed ${historyOnlyTotal} → ${record.totalTokens}, re-broadcasting`,
-        );
-        await setLocalDialogue(key, record);
-        if (tabId != null) tabDialogueTitle.set(tabId, m.dialogueTitle);
-        if (await isTabActive(tabId)) {
-          await broadcast(
-            buildState(
-              adapter,
-              contextLimit,
-              record,
-              dialogueId,
-              m.dialogueTitle,
-            ),
-          );
-        }
-      }
+    if (cloudReadFailed) {
+      dbg("[Headroom|BG] cloud read failed — keeping local fallback", key);
+      return;
     }
 
-    // 5. Sync later: best-effort cloud write. Not guarded by active-tab — a
-    //    backgrounded tab's rounds must still reach the cloud. Failure warns
-    //    and leaves the next open to reconcile; it never blocks the UI.
+    const finalRecord = reconcileDialogue({
+      platformId: adapter.platformId,
+      dialogueId,
+      contextLimit,
+      base: cloudRecord ?? localRecord,
+      historyRounds,
+      monotonicOrder: adapter.monotonicOrder,
+      now: Date.now(),
+    });
+    const finalChanged =
+      dialogueRecordContentEqual(finalRecord, provisionalRecord) === false;
+    if (finalChanged) {
+      await setLocalDialogue(key, finalRecord);
+      if (tabId !== undefined) {
+        tabDialogueTitle.set(tabId, m.dialogueTitle);
+      }
+      if (active) {
+        await broadcast(
+          buildState(
+            adapter,
+            contextLimit,
+            finalRecord,
+            dialogueId,
+            m.dialogueTitle,
+          ),
+        );
+      }
+      dbg(
+        `[Headroom|BG] applyHistory cloud merge: total ${provisionalRecord.totalTokens} → ${finalRecord.totalTokens}, rounds ${provisionalRecord.roundCount} → ${finalRecord.roundCount}`,
+      );
+    }
+
+    // 4. Best-effort cloud sync. A backgrounded tab's rounds must still reach
+    //    the cloud; failure leaves the next open to reconcile.
     try {
-      await setDialogue(settings.upstash, key, record);
+      await setDialogue(settings.upstash, key, finalRecord);
     } catch (e) {
       console.warn("[Headroom] cloud sync failed for", key, e);
     }
