@@ -42,11 +42,13 @@ const HUB_MODELS = [
   },
   {
     id: "Qwen/Qwen3.6-27B",
-    label: "Qwen / 通义千问 — Qwen3.6-27B tokenizer (EXACT BPE — 3.8-Max open weights share the vocab, vocab 248,320)",
+    label:
+      "Qwen / 通义千问 — Qwen3.6-27B tokenizer (EXACT BPE — 3.8-Max open weights share the vocab, vocab 248,320)",
   },
   {
     id: "google/gemma-4-12B-it-qat-q4_0-unquantized",
-    label: "Gemini proxy — Gemma 4 tokenizer (SentencePiece-style, vocab 262,144)",
+    label:
+      "Gemini proxy — Gemma 4 tokenizer (SentencePiece-style, vocab 262,144)",
   },
   {
     id: "ByteDance-Seed/Seed-OSS-36B-Instruct",

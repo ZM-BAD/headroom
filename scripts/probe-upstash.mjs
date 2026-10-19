@@ -33,7 +33,8 @@ async function cmd(args) {
     headers: { Authorization: `Bearer ${TOKEN}` },
     body: JSON.stringify(args),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${JSON.stringify(args)}`);
+  if (!res.ok)
+    throw new Error(`HTTP ${res.status} for ${JSON.stringify(args)}`);
   const data = await res.json();
   return data.result ?? null;
 }
@@ -49,7 +50,9 @@ async function step(name, fn) {
 
 try {
   if (!URL || !TOKEN) {
-    console.error("Missing UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN in .env");
+    console.error(
+      "Missing UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN in .env",
+    );
     process.exit(2);
   }
 
@@ -61,7 +64,18 @@ try {
       contextLimit: 1_048_576,
       totalTokens: 57,
       roundCount: 1,
-      rounds: [{ messageId: "test-msg", order: 1, n: 1, promptTokens: 10, toolTokens: 15, answerTokens: 32, total: 57, createdAt: 1 }],
+      rounds: [
+        {
+          messageId: "test-msg",
+          order: 1,
+          n: 1,
+          promptTokens: 10,
+          toolTokens: 15,
+          answerTokens: 32,
+          total: 57,
+          createdAt: 1,
+        },
+      ],
       updatedAt: 1,
     };
     await cmd(["SET", CONV_KEY, JSON.stringify(rec)]);
@@ -74,7 +88,10 @@ try {
     assert(rec.totalTokens === 57, `totalTokens mismatch: ${raw}`);
     assert(rec.roundCount === 1, `roundCount mismatch: ${raw}`);
     assert(rec.platformId === "testplatform", `platform mismatch: ${raw}`);
-    assert(Array.isArray(rec.rounds) && rec.rounds.length === 1, "rounds mismatch");
+    assert(
+      Array.isArray(rec.rounds) && rec.rounds.length === 1,
+      "rounds mismatch",
+    );
     // spec 005: toolTokens must survive the cloud round-trip (gauge reads it
     // cross-device after the union merge).
     const round = rec.rounds[0];
@@ -100,10 +117,7 @@ try {
     const json = JSON.stringify(cloud);
     // Credential keys must not appear as JSON fields in the cloud settings
     // payload. Use the key-colon form to avoid matching \"tokenCoefficients\".
-    assert(
-      !/"token"\s*:/.test(json),
-      "token leaked into cloud settings JSON",
-    );
+    assert(!/"token"\s*:/.test(json), "token leaked into cloud settings JSON");
     assert(
       !/"upstash"\s*:/.test(json),
       "upstash block leaked into cloud settings JSON",

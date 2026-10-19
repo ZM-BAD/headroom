@@ -86,9 +86,11 @@ Upstash 免费层（[定价](https://upstash.com/pricing/redis)）包含 256 MB 
 
 ```bash
 npm install
+brew install gitleaks  # pre-commit 密钥扫描所需
 npm run dev            # 开发模式 (Chrome 默认)
 npm run dev:firefox    # Firefox 开发模式
 npm run build          # 生产构建
+npm run check          # CI 与 pre-commit 共用的质量门
 ```
 
 详见 [AGENTS.md](./AGENTS.md) 获取完整开发指南和架构详情。

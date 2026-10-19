@@ -6,7 +6,8 @@
   "version": "0.1.0",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=24",
+    "npm": ">=11"
   },
   "scripts": {
     "dev": "wxt",
@@ -27,31 +28,41 @@
     "typecheck": "tsc --noEmit",
     "check:i18n": "node scripts/check-i18n-keys.mjs",
     "check:permissions": "node scripts/check-host-permissions.mjs",
+    "format": "prettier --write --ignore-path .gitignore .",
+    "format:check": "prettier --check --ignore-path .gitignore .",
+    "audit": "npm audit --registry=https://registry.npmjs.org --audit-level=high",
+    "check:secrets": "gitleaks git --redact --verbose --no-banner .",
+    "check:secrets:staged": "gitleaks git --pre-commit --redact --staged --verbose",
+    "check:quality": "npm run lint && npm run format:check && npm run check:i18n && npm run check:permissions && npm run typecheck",
+    "check:test": "npm run test:coverage",
+    "check:build": "npm run build && npm run build:firefox && npm run build:edge",
+    "check": "npm run check:quality && npm run check:test && npm run check:build",
     "postinstall": "wxt prepare",
     "prepare": "husky"
   },
   "devDependencies": {
-    "@commitlint/cli": "^21.2.0",
-    "@commitlint/config-conventional": "^21.2.0",
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
     "@eslint/js": "^10.0.1",
-    "@vitest/coverage-v8": "^4.1.10",
-    "eslint": "^10.6.0",
+    "@vitest/coverage-v8": "^4.1.12",
+    "eslint": "^10.13.0",
     "husky": "^9.1.7",
-    "lint-staged": "^17.0.8",
-    "prettier": "^3.9.4",
-    "sharp": "^0.35.3",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.10",
+    "sharp": "^0.35.5",
     "typescript": "^6.0.2",
-    "typescript-eslint": "^8.63.0",
-    "vitest": "^4.1.10",
-    "wxt": "^0.21.0"
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^4.1.12",
+    "wxt": "^0.21.4"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
       "eslint --fix --max-warnings 0",
       "prettier --write"
     ],
-    "*.{json,md,html,css}": [
+    "*.{json,md,html,css,yml,yaml,mjs,js}": [
       "prettier --write"
     ]
-  }
+  },
+  "packageManager": "npm@11.20.0"
 }

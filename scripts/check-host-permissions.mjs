@@ -72,9 +72,7 @@ if (extra.length) {
   // extra entries are wasteful but not blocking — warn only, don't fail
 }
 if (exit === 0) {
-  console.log(
-    `✅ host_permissions: ${hosts.size} adapter hosts, all covered`,
-  );
+  console.log(`✅ host_permissions: ${hosts.size} adapter hosts, all covered`);
 }
 
 process.exit(exit);

@@ -86,9 +86,11 @@ We welcome bug reports, feature requests, and code contributions!
 
 ```bash
 npm install
+brew install gitleaks  # Required for the pre-commit secret scan
 npm run dev            # Dev mode with HMR (Chrome default)
 npm run dev:firefox    # Dev mode for Firefox
 npm run build          # Production build
+npm run check          # Shared CI + pre-commit quality gate
 ```
 
 See [AGENTS.md](./AGENTS.md) for full development guidelines and architecture details.

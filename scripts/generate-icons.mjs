@@ -35,10 +35,7 @@ for (const { svg, suffix, label } of SOURCES) {
 
   for (const size of SIZES) {
     const outPath = resolve(OUT_DIR, `${size}${suffix}.png`);
-    await sharp(svgBuffer)
-      .resize(size, size)
-      .png()
-      .toFile(outPath);
+    await sharp(svgBuffer).resize(size, size).png().toFile(outPath);
     console.log(`  ${label} ${size}x${size} → ${outPath}`);
   }
 }

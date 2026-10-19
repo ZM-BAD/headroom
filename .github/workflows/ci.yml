@@ -7,17 +7,26 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - run: npm ci
@@ -31,20 +40,10 @@ jobs:
             npx commitlint --last
           fi
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Check i18n keys (en ↔ zh_CN)
-        run: npm run check:i18n
-
-      - name: Check host permissions
-        run: npm run check:permissions
-
-      - name: Type check
-        run: npm run typecheck
-
-      - name: Test with coverage
-        run: npm run test:coverage
+      # Single source of truth for local + CI gates. `.husky/pre-commit`
+      # invokes the exact same `npm run check` command.
+      - name: Shared quality gate
+        run: npm run check
 
       - name: Coverage summary
         run: |
@@ -67,12 +66,3 @@ jobs:
           files: ./coverage/lcov.info
           flags: unittests
           fail_ci_if_error: false
-
-      - name: Build (Chrome)
-        run: npm run build
-
-      - name: Build (Firefox)
-        run: npm run build:firefox
-
-      - name: Build (Edge)
-        run: npm run build:edge

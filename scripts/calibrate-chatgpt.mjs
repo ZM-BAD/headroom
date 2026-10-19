@@ -12,9 +12,12 @@ import { runCalibration } from "./calibration-lib.mjs";
 
 const enc = get_encoding("o200k_base");
 try {
-  await runCalibration("ChatGPT — tiktoken o200k_base (exact, local)", (text) => {
-    return enc.encode(text).length;
-  });
+  await runCalibration(
+    "ChatGPT — tiktoken o200k_base (exact, local)",
+    (text) => {
+      return enc.encode(text).length;
+    },
+  );
 } finally {
   enc.free();
 }

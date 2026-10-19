@@ -1,0 +1,7 @@
+title = "Headroom gitleaks configuration"
+
+# Keep the upstream rule set. Add narrowly-scoped allowlist entries only when
+# a real false positive appears (for example a documented placeholder token in
+# a test fixture), never to silence a real credential.
+[extend]
+useDefault = true

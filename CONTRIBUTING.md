@@ -75,6 +75,9 @@ cd headroom
 # Install dependencies
 npm install
 
+# Install gitleaks (required by the pre-commit hook)
+brew install gitleaks
+
 # Prepare WXT types
 npx wxt prepare
 
@@ -87,7 +90,17 @@ npm run build
 
 ### Code Quality Checks
 
-**Required after every change (in order):**
+**Shared local/CI gate:**
+
+```bash
+npm run check       # lint + format + i18n + permissions + typecheck + coverage + 3 browser builds
+```
+
+The pre-commit hook runs `lint-staged`, a staged-diff gitleaks scan, and
+exactly the same `npm run check` command. CI runs the same gate plus a
+full-history gitleaks scan and `npm audit`.
+
+For a faster targeted loop during development:
 
 ```bash
 npm run typecheck   # TypeScript type check (tsc --noEmit)

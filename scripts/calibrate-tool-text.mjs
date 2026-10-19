@@ -58,20 +58,52 @@ const KIMI_PAT = [
 const kimi = new Tiktoken(readFileSync(KIMI_VOCAB, "utf8"), {}, KIMI_PAT);
 const chatgpt = get_encoding("o200k_base");
 const qwenTok = await AutoTokenizer.from_pretrained("Qwen/Qwen3.6-27B");
-const doubaoTok = await AutoTokenizer.from_pretrained("ByteDance-Seed/Seed-OSS-36B-Instruct");
+const doubaoTok = await AutoTokenizer.from_pretrained(
+  "ByteDance-Seed/Seed-OSS-36B-Instruct",
+);
 
 const RUNS = [
-  { platform: "Kimi", coeff: COEFFS.Kimi, corpus: readCorpus("kimi"), encode: (t) => kimi.encode(t).length },
-  { platform: "Qwen", coeff: COEFFS.Qwen, corpus: readCorpus("qwen"), encode: (t) => qwenTok.encode(t, { add_special_tokens: false }).length },
-  { platform: "Qianwen", coeff: COEFFS.Qianwen, corpus: readCorpus("qianwen"), encode: (t) => qwenTok.encode(t, { add_special_tokens: false }).length },
-  { platform: "Doubao", coeff: COEFFS.Doubao, corpus: readCorpus("doubao"), encode: (t) => doubaoTok.encode(t, { add_special_tokens: false }).length },
-  { platform: "ChatGPT", coeff: COEFFS.ChatGPT, corpus: ['search("@网页搜索 2026年8月14日今天有什么重要新闻?")', 'search("帮我查一下 React 19 的最新发布信息")'], encode: (t) => chatgpt.encode(t).length },
+  {
+    platform: "Kimi",
+    coeff: COEFFS.Kimi,
+    corpus: readCorpus("kimi"),
+    encode: (t) => kimi.encode(t).length,
+  },
+  {
+    platform: "Qwen",
+    coeff: COEFFS.Qwen,
+    corpus: readCorpus("qwen"),
+    encode: (t) => qwenTok.encode(t, { add_special_tokens: false }).length,
+  },
+  {
+    platform: "Qianwen",
+    coeff: COEFFS.Qianwen,
+    corpus: readCorpus("qianwen"),
+    encode: (t) => qwenTok.encode(t, { add_special_tokens: false }).length,
+  },
+  {
+    platform: "Doubao",
+    coeff: COEFFS.Doubao,
+    corpus: readCorpus("doubao"),
+    encode: (t) => doubaoTok.encode(t, { add_special_tokens: false }).length,
+  },
+  {
+    platform: "ChatGPT",
+    coeff: COEFFS.ChatGPT,
+    corpus: [
+      'search("@网页搜索 2026年8月14日今天有什么重要新闻?")',
+      'search("帮我查一下 React 19 的最新发布信息")',
+    ],
+    encode: (t) => chatgpt.encode(t).length,
+  },
 ];
 
 let globalWorst = 0;
 let globalWorstInfo = "";
 for (const { platform, coeff, corpus, encode } of RUNS) {
-  console.log(`\n==== ${platform} — tool text with digit-run engine + shipped coefficients (${corpus.length} samples) ====`);
+  console.log(
+    `\n==== ${platform} — tool text with digit-run engine + shipped coefficients (${corpus.length} samples) ====`,
+  );
   let worst = 0;
   let worstText = "";
   let totalActual = 0;
@@ -82,12 +114,22 @@ for (const { platform, coeff, corpus, encode } of RUNS) {
     const err = ((est - actual) / actual) * 100;
     totalActual += actual;
     totalEst += est;
-    if (Math.abs(err) > worst) { worst = Math.abs(err); worstText = t.slice(0, 34); }
-    console.log(`  actual ${String(actual).padStart(5)}  est ${String(Math.round(est)).padStart(5)}  err ${err >= 0 ? "+" : ""}${err.toFixed(1)}%${Math.abs(err) > 15 ? "  ⚠" : ""}  | ${t.slice(0, 34)}`);
+    if (Math.abs(err) > worst) {
+      worst = Math.abs(err);
+      worstText = t.slice(0, 34);
+    }
+    console.log(
+      `  actual ${String(actual).padStart(5)}  est ${String(Math.round(est)).padStart(5)}  err ${err >= 0 ? "+" : ""}${err.toFixed(1)}%${Math.abs(err) > 15 ? "  ⚠" : ""}  | ${t.slice(0, 34)}`,
+    );
   }
   const totalErr = ((totalEst - totalActual) / totalActual) * 100;
-  console.log(`  worst ${worst.toFixed(1)}% (${worstText}...) | aggregate ${totalErr >= 0 ? "+" : ""}${totalErr.toFixed(1)}% ${worst <= 15 ? "WITHIN ±15%" : "OVER ±15%"}`);
-  if (worst > globalWorst) { globalWorst = worst; globalWorstInfo = `${platform} (${worstText})`; }
+  console.log(
+    `  worst ${worst.toFixed(1)}% (${worstText}...) | aggregate ${totalErr >= 0 ? "+" : ""}${totalErr.toFixed(1)}% ${worst <= 15 ? "WITHIN ±15%" : "OVER ±15%"}`,
+  );
+  if (worst > globalWorst) {
+    globalWorst = worst;
+    globalWorstInfo = `${platform} (${worstText})`;
+  }
 }
 
 kimi.free();

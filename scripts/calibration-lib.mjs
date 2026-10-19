@@ -302,7 +302,7 @@ export const VALIDATION = [
   },
   {
     group: "en-code",
-    text: "Here is the fix. The handler must guard against a cold service worker start:\n\n```typescript\nbrowser.runtime.onMessage.addListener((msg, sender) => {\n  if (msg.type !== \"STATE_UPDATE\") return;\n  void refreshGauge(msg.payload);\n});\n```\n\nModule-level globals are wiped whenever MV3 suspends the worker, so every listener needs to re-read state from storage instead of trusting an in-memory cache.",
+    text: 'Here is the fix. The handler must guard against a cold service worker start:\n\n```typescript\nbrowser.runtime.onMessage.addListener((msg, sender) => {\n  if (msg.type !== "STATE_UPDATE") return;\n  void refreshGauge(msg.payload);\n});\n```\n\nModule-level globals are wiped whenever MV3 suspends the worker, so every listener needs to re-read state from storage instead of trusting an in-memory cache.',
   },
   {
     group: "ru+en",

@@ -1,32 +1,18 @@
-# Mirror the CI pipeline exactly so "passes locally ⇒ passes in CI".
-# Order matches .github/workflows/ci.yml; each step fails fast on the first
-# error.
-
-# lint-staged runs FIRST: it auto-fixes staged files, so the full-project lint
-# below checks the post-fix state — identical to what CI sees (CI doesn't fix,
-# but the committed code is already fixed).
+# Local and CI must run the same core gate: both invoke `npm run check`.
+# The only intentional difference is scope: this hook scans the staged diff,
+# while CI scans the full git history.
 
 # 0. Per-file auto-fix on staged files (format + lint), --max-warnings 0.
+# Run this first so the full-project gate sees the post-fix state.
 npx lint-staged
 
-# 1. Lint (full project, same as CI) — catches errors in non-staged files.
-npm run lint
+# 1. Secret scan on the staged diff. Requires `gitleaks` on PATH.
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "❌ gitleaks is required for commits. Install it with: brew install gitleaks" >&2
+  exit 1
+fi
+npm run check:secrets:staged
 
-# 2. i18n key integrity — en ↔ zh_CN must have identical key sets.
-npm run check:i18n
-
-# 3. Adapter host-permissions audit — every adapter host must be in
-#    wxt.config.ts host_permissions, or webRequest silently breaks.
-npm run check:permissions
-
-# 4. Type check (full project).
-npm run typecheck
-
-# 5. Unit tests.
-npm run test:run
-
-# 6. Build (Chrome + Firefox + Edge). esbuild does NOT type-check, so a green
-#    typecheck doesn't imply a green build — this step catches that gap.
-npm run build
-npm run build:firefox
-npm run build:edge
+# 2. Shared gate with CI: lint + format check + i18n + host permissions +
+#    typecheck + tests with coverage + all three production builds.
+npm run check
