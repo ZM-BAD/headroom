@@ -5,7 +5,7 @@
 If you discover a security vulnerability in Headroom, please report it privately
 rather than opening a public issue.
 
-**Contact:** Use [GitHub's private vulnerability reporting](https://github.com/badlogic/headroom/security/advisories/new)
+**Contact:** Use [GitHub's private vulnerability reporting](https://github.com/ZM-BAD/headroom/security/advisories/new)
 to report security issues confidentially. Only the maintainer can see your report.
 
 Please include:

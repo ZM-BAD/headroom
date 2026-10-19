@@ -1,6 +1,6 @@
 # Privacy Policy
 
-> **Last updated:** 2026-08-20
+> **Last updated:** 2026-10-20
 >
 > This policy is version-controlled alongside the source code. The live URL
 > submitted to each store points at this file on the `main` branch.
@@ -18,20 +18,21 @@ author.
 
 To compute your context-window usage, the extension reads:
 
-| What                                                | How                                                                                                                                        | Why                                                                                                      |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| Your **prompt text** for each message you send      | `webRequest` observes the outgoing request to the AI platform's API; the adapter extracts the prompt field                                 | Needed to count the tokens you're submitting                                                             |
-| The **AI's reply text**                             | A content script reads the rendered reply from the page DOM once a round settles                                                           | Needed to count the tokens in the reply                                                                  |
-| Search / tool result text                           | Read from the platform's history API or the page DOM (search snippets, opened pages, tool calls, Gemini site names)                        | Needed to count tokens consumed by web searches and tool calls (Search/Tool column)                      |
-| A **conversation/session id**                       | From the same request body or the page URL                                                                                                 | Needed to group rounds into one conversation tally                                                       |
-| The **full conversation history** (all past rounds) | When you open a conversation, the extension calls the platform's own history API (using your existing login session) to fetch prior rounds | Needed to estimate tokens for rounds sent from other devices (e.g. chatted on mobile or another machine) |
+| What                                                | How                                                                                                                                                                                                                                                                                         | Why                                                                                                                                                              |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Your **prompt and AI reply text**                   | The content script calls the platform's own conversation-history API with your existing session, or reads the rendered conversation from the DOM on Gemini (which has no parseable history API)                                                                                             | Needed to estimate token counts for each round                                                                                                                   |
+| Search / tool result text                           | Read from the platform's history API or the page DOM (search snippets, opened pages, tool calls, Gemini site names)                                                                                                                                                                         | Needed to count tokens consumed by web searches and tool calls (Search/Tool column)                                                                              |
+| A **conversation/session id**                       | From the page URL or the platform's history response                                                                                                                                                                                                                                        | Needed to group rounds into one conversation tally                                                                                                               |
+| The **full conversation history** (all past rounds) | When you open a conversation, the extension calls the platform's own history API (using your existing login session) to fetch prior rounds                                                                                                                                                  | Needed to estimate tokens for rounds sent from other devices (e.g. chatted on mobile or another machine)                                                         |
+| Platform **session/auth material**                  | DeepSeek and Kimi expose a bearer token in page `localStorage`; ChatGPT exposes an access token through `/api/auth/session`; Qianwen exposes a device id in a non-HttpOnly `b-user-id` cookie. These values are read in memory only so the content script can call that same platform's API | The platform's history/list endpoints reject cookie-only requests on some platforms. This material is never stored, logged, sent to Headroom, or sent to Upstash |
 
-**Scope:** reading is limited to the seven supported AI-chat domains listed in
-`host_permissions` (`chat.deepseek.com`, `chatgpt.com`, `gemini.google.com`,
-`www.kimi.com`, `chat.qwen.ai`, `www.qianwen.com` + its API hosts
-`chat2.qianwen.com` / `chat2-api.qianwen.com`, `www.doubao.com`). Headroom does
-**not** read, and has no access to, any other website, your other tabs, your
-browsing history, or any data outside those seven domains.
+**Scope:** reading is limited to the seven supported AI-chat platforms across
+the nine URL patterns declared in `host_permissions` (`chat.deepseek.com`,
+`chatgpt.com`, `gemini.google.com`, `www.kimi.com`, `chat.qwen.ai`,
+`www.qianwen.com` plus its API hosts `chat2.qianwen.com` /
+`chat2-api.qianwen.com`, and `www.doubao.com`). Headroom does **not** read, and
+has no access to, any other website, your other tabs, your browsing history, or
+any data outside those platform hosts.
 
 ## What Headroom stores, and where
 
@@ -52,8 +53,8 @@ Headroom uses a **two-tier** model. **You control the cloud tier.**
   creates a temporary local-only round so the gauge updates immediately. This
   temporary round is never synced to Upstash and is replaced by the next real
   history fetch (when you continue or send the next prompt). No prompt or answer
-  text is persisted — only the estimated token counts of that in-progress round,
-  held in memory until the real round lands.
+  text is persisted — only the estimated token counts of that in-progress round
+  are written to the local numeric record until the real round lands.
 
 ### 2. Upstash Redis KV — **your own**, optional (BYOK)
 
@@ -86,23 +87,26 @@ not transmitted anywhere else.
 - ❌ **No third-party tracking or advertising.** No Google Analytics, no Sentry,
   no ad SDKs.
 - ❌ **No selling or sharing data.** Nothing leaves the two destinations above.
-- ❌ **No reading of sites outside the seven supported AI-chat domains.**
-- ❌ **No access to your passwords, payment info, or identity.** The extension
-  never touches form fields, auth tokens, or cookies on any site.
+- ❌ **No reading of sites outside the supported AI-chat platform hosts.**
+- ❌ **No access to passwords, payment information, or identity data.** Headroom
+  does not read form fields or page content outside the supported hosts. It does
+  read platform session/auth material transiently to call that platform's own
+  API, as described above; it never stores or forwards that material to
+  Headroom, Upstash, or any other third party.
 
 ## Permissions, and why each is needed
 
-| Permission                               | Why                                                                                                                                                                                                                                               |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `storage`                                | Persist settings + per-conversation token records locally so the gauge re-opens instantly and works offline                                                                                                                                       |
-| `webRequest`                             | Observe outgoing chat-send requests (to extract prompt text + conversation id for token counting) and conversation-delete requests (to remove the corresponding token records). No request body content is stored or transmitted to third parties |
-| `host_permissions` (7 AI-chat platforms) | The send/delete APIs live on these hosts; the content script runs on these pages to read reply text from the DOM                                                                                                                                  |
-| `sidePanel` / `sidebarAction`            | Display the context-window gauge in the browser's native side panel so the user can see their usage at a glance. Token counting runs in the background independently — the side panel is the visual readout, not the counting mechanism           |
-| `action`                                 | Open the side panel on toolbar click; switch the toolbar icon between active and grayed-out states per tab                                                                                                                                        |
-| `tabs`                                   | Detect which platform the user is on (by tab URL) so the extension can switch the icon state, enable/disable the side panel per tab, and route monitoring to the correct platform adapter                                                         |
-| `alarms`                                 | Schedule a periodic background cleanup that removes stale conversation records no longer present on the AI platform (runs every 60 minutes, well within platform rate limits)                                                                     |
+| Permission                                       | Why                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `storage`                                        | Persist settings + per-conversation token records locally so the gauge re-opens instantly and works offline                                                                                                                                                                            |
+| `webRequest`                                     | Detect when a streaming completion finishes or fails, detect stop-generation requests, and intercept conversation-delete requests. Only the delete request body is read, transiently, to extract the conversation id; conversation text is read through the history API/DOM path above |
+| `host_permissions` (7 platforms, 9 URL patterns) | The history/send/delete APIs live on these hosts, and the content script runs on the page hosts to read conversation data                                                                                                                                                              |
+| `sidePanel` / `sidebarAction`                    | Display the context-window gauge in the browser's native side panel so the user can see their usage at a glance. Token counting runs in the background independently — the side panel is the visual readout, not the counting mechanism                                                |
+| `action`                                         | Open the side panel on toolbar click; switch the toolbar icon between active and grayed-out states per tab                                                                                                                                                                             |
+| `tabs`                                           | Detect which platform the user is on (by tab URL) so the extension can switch the icon state, enable/disable the side panel per tab, and route monitoring to the correct platform adapter                                                                                              |
+| `alarms`                                         | Schedule a periodic background cleanup that removes stale conversation records no longer present on the AI platform (runs every 60 minutes, well within platform rate limits)                                                                                                          |
 
-No `cookies`, no `<all_urls>`, no `history`, no `nativeMessaging`.
+No `cookies` permission, no `<all_urls>`, no `history`, no `nativeMessaging`. The Qianwen adapter reads the non-HttpOnly `b-user-id` device cookie through page JavaScript as described above; Headroom does not request the browser-wide `cookies` permission.
 
 ## Conversation deletion sync
 
@@ -133,10 +137,11 @@ The only external services Headroom contacts are:
 
 1. **The AI chat platform you're already using** — Headroom observes the chat
    requests your browser already makes, and additionally fetches a
-   conversation's history from the platform's own API (using your existing
-   login session) when you open it, to estimate tokens for rounds sent from
-   other devices. These are read-only calls to a service you're already logged
-   into; Headroom sends no data to the platform.
+   conversation's history and conversation-list metadata from the platform's
+   own API (using your existing login session) to estimate tokens for rounds
+   sent from other devices and to reconcile deleted conversations. These
+   requests only retrieve your own data; Headroom does not upload conversation
+   content to any third party.
 2. **Upstash** — only if you configure it, only with your credentials, only to
    read/write your own conversation metadata.
 
