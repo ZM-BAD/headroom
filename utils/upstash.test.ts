@@ -5,6 +5,8 @@ import {
   kvSet,
   kvScan,
   selectZombieKeys,
+  isSafeZombieDelete,
+  MAX_ZOMBIE_DELETE_FRACTION,
   getDialogue,
   setDialogue,
   delDialogue,
@@ -297,5 +299,27 @@ describe("selectZombieKeys", () => {
 
   it("returns [] for an empty cloud", () => {
     expect(selectZombieKeys([], new Set(["a"]), "deepseek")).toEqual([]);
+  });
+});
+
+describe("isSafeZombieDelete", () => {
+  it("allows no-op cleanup", () => {
+    expect(isSafeZombieDelete(0, 0)).toBe(true);
+    expect(isSafeZombieDelete(10, 0)).toBe(true);
+  });
+
+  it("allows a small deletion ratio", () => {
+    expect(isSafeZombieDelete(10, 1)).toBe(true);
+    expect(isSafeZombieDelete(10, 3)).toBe(true);
+  });
+
+  it("blocks a mass deletion caused by a partial live list", () => {
+    expect(isSafeZombieDelete(10, 4)).toBe(false);
+    expect(isSafeZombieDelete(100, 31)).toBe(false);
+    expect(isSafeZombieDelete(100, 100)).toBe(false);
+  });
+
+  it("uses an explicit 30% cap", () => {
+    expect(MAX_ZOMBIE_DELETE_FRACTION).toBe(0.3);
   });
 });

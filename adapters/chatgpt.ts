@@ -113,12 +113,13 @@ export const chatgptAdapter: PlatformAdapter = {
   // cleanup (spec 003).
   async fetchConversationList() {
     const token = await readChatGptToken();
-    if (!token) return [];
+    if (token === null) return { ids: [], complete: false };
+    const ids: string[] = [];
+    let complete = false;
     try {
-      const ids: string[] = [];
       let offset = 0;
       const limit = 28;
-      while (true) {
+      for (let page = 0; page < 100; page++) {
         const res = await fetch(
           `https://chatgpt.com/backend-api/conversations?offset=${offset}&limit=${limit}&order=updated&is_archived=false&is_starred=false`,
           {
@@ -126,21 +127,33 @@ export const chatgptAdapter: PlatformAdapter = {
             headers: { authorization: `Bearer ${token}` },
           },
         );
-        if (!res.ok) break;
+        if (res.ok === false) return { ids, complete: false };
         const json = (await res.json()) as {
           items?: Array<{ id?: string }>;
           total?: number;
         };
-        for (const item of json.items ?? []) {
+        if (Array.isArray(json.items) === false) {
+          return { ids, complete: false };
+        }
+        for (const item of json.items) {
           if (typeof item.id === "string") ids.push(item.id);
         }
         offset += limit;
-        if (offset >= (json.total ?? 0)) break;
+        if (typeof json.total === "number" && offset >= json.total) {
+          complete = true;
+          break;
+        }
+        if (
+          typeof json.total !== "number" ||
+          Number.isFinite(json.total) === false
+        ) {
+          return { ids, complete: false };
+        }
         await new Promise((r) => setTimeout(r, 300));
       }
-      return ids;
+      return { ids: [...new Set(ids)], complete };
     } catch {
-      return [];
+      return { ids: [], complete: false };
     }
   },
   answerSelector: '[data-message-author-role="assistant"] .markdown',

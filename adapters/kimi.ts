@@ -122,11 +122,11 @@ export const kimiAdapter: PlatformAdapter = {
   // Token-based pagination. Used by zombie cleanup (spec 003).
   async fetchConversationList() {
     const token = readKimiToken();
-    if (!token) return [];
+    if (token === null) return { ids: [], complete: false };
+    const ids: string[] = [];
     try {
-      const ids: string[] = [];
       let pageToken = "";
-      while (true) {
+      for (let page = 0; page < 100; page++) {
         const res = await fetch(
           "https://www.kimi.com/apiv2/kimi.chat.v1.ChatService/ListChats",
           {
@@ -139,21 +139,26 @@ export const kimiAdapter: PlatformAdapter = {
             body: JSON.stringify(pageToken ? { page_token: pageToken } : {}),
           },
         );
-        if (!res.ok) break;
+        if (res.ok === false) return { ids, complete: false };
         const json = (await res.json()) as {
           chats?: Array<{ id?: string }>;
           nextPageToken?: string;
         };
-        for (const c of json.chats ?? []) {
+        if (Array.isArray(json.chats) === false) {
+          return { ids, complete: false };
+        }
+        for (const c of json.chats) {
           if (typeof c.id === "string") ids.push(c.id);
         }
         pageToken = json.nextPageToken ?? "";
-        if (!pageToken) break;
+        if (pageToken === "") {
+          return { ids: [...new Set(ids)], complete: true };
+        }
         await new Promise((r) => setTimeout(r, 300));
       }
-      return ids;
+      return { ids, complete: false };
     } catch {
-      return [];
+      return { ids: [], complete: false };
     }
   },
   answerSelector: '.chat-content-item-assistant [class*="markdown"]',

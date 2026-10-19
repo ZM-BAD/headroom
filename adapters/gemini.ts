@@ -156,9 +156,11 @@ export const geminiAdapter: PlatformAdapter = {
         const id = a.getAttribute("href")?.match(/^\/app\/([a-f0-9]+)$/)?.[1];
         if (id) ids.push(id);
       }
-      return ids;
+      // The sidebar is virtualized and only mounts a small recent window.
+      // Never treat this DOM snapshot as a complete live conversation list.
+      return { ids: [...new Set(ids)], complete: false };
     } catch {
-      return [];
+      return { ids: [], complete: false };
     }
   },
   needsDomPollDetection: true, // webRequest onCompleted doesn't fire for StreamGenerate

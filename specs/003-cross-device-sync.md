@@ -204,7 +204,7 @@ Single `DialogueRecord`: 50 rounds ≈ 4 KB, full 200 rounds ≈ 16 KB (`RoundRe
 
 Fields **newly added** by 003 on the adapter contract (primitives still defined by 001, here only marking 003 usage):
 
-- **`fetchConversationList?() → string[]`**: pull conversation id list (for zombie cleanup).
+- **`fetchConversationList?() → { ids: string[]; complete: boolean }`**: pull conversation ids plus a completeness flag. Cleanup is allowed only when `complete=true`; partial pages, failed later pages, and virtualized DOM snapshots are non-authoritative.
 - **`deleteUrl` / `parseDelete` / `deleteHost?` / `deleteMethod?`**: delete-interception primitives (001 already implements local delete linkage; 003 adds Upstash DEL on top, see delete scenario).
 
 Platforms without `fetchHistory` → 003 reconciliation skips, degrades to pure incremental mode (that platform does not overwrite cross-device).
@@ -303,7 +303,7 @@ Any batch trigger (periodic / home) ──→ runZombieCleanup(platform)
 | DeepSeek / ChatGPT / Kimi / Qwen / Tongyi Qianwen / Doubao | API pull                       | High                                                                                      |
 | Gemini                                                     | DOM sidebar scrape             | Low (virtualization truncation; only conversations not visible in sidebar can be cleaned) |
 
-**Gemini special handling**: DOM-scraped liveList is incomplete → may misjudge "conversations not visible in sidebar" as zombies. Mitigation: Gemini periodic cleanup is best-effort only; if Gemini users find over-cleaning, next open of that conversation auto-recovers from cloud (union merge preserves cloud-only rounds).
+**Gemini special handling**: the DOM sidebar is virtualized and therefore always returns `complete=false`; Gemini zombie cleanup is intentionally disabled rather than risking deletion of conversations outside the mounted window. The same rule applies to any adapter that cannot prove the list is complete.
 
 #### Storage
 

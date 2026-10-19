@@ -273,15 +273,27 @@ export const deepseekAdapter: PlatformAdapter = {
         credentials: "include",
         headers: token ? dsApiHeaders(token) : {},
       });
-      if (!res.ok) return [];
-      const json = await res.json();
-      const sessions: Array<{ id?: string }> =
-        json?.data?.biz_data?.chat_sessions ?? [];
-      return sessions
+      if (res.ok === false) return { ids: [], complete: false };
+      const json = (await res.json()) as {
+        data?: {
+          biz_data?: {
+            chat_sessions?: Array<{ id?: string }>;
+            has_more?: boolean;
+            hasMore?: boolean;
+          };
+        };
+      };
+      const biz = json?.data?.biz_data;
+      const sessions = biz?.chat_sessions ?? [];
+      const ids = sessions
         .map((s) => s.id)
         .filter((id): id is string => typeof id === "string");
+      // This internal endpoint does not document pagination. Only trust it as
+      // complete when the payload explicitly says there is no next page.
+      const hasMore = biz?.has_more ?? biz?.hasMore;
+      return { ids, complete: hasMore === false };
     } catch {
-      return [];
+      return { ids: [], complete: false };
     }
   },
   answerSelector: ".ds-assistant-message-main-content",

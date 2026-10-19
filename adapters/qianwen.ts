@@ -121,12 +121,12 @@ export const qianwenAdapter: PlatformAdapter = {
   // zombie cleanup (spec 003).
   async fetchConversationList() {
     const ut = readQianwenUt();
-    if (!ut) return [];
+    if (ut === null) return { ids: [], complete: false };
+    const ids: string[] = [];
     try {
-      const ids: string[] = [];
       let nextToken = "";
       const qs = `biz_id=ai_qwen&chat_client=h5&device=pc&fr=pc&pr=qwen&ut=${encodeURIComponent(ut)}&la=zh-CN&tz=Asia%2FShanghai&wv=2.13.5&ve=2.13.5`;
-      while (true) {
+      for (let page = 0; page < 100; page++) {
         const res = await fetch(
           `https://chat2-api.qianwen.com/api/v2/session/page/list?${qs}`,
           {
@@ -144,22 +144,27 @@ export const qianwenAdapter: PlatformAdapter = {
             }),
           },
         );
-        if (!res.ok) break;
+        if (res.ok === false) return { ids, complete: false };
         const json = (await res.json()) as {
           success?: boolean;
           data?: Array<{ id?: string }>;
           next_token?: string;
         };
-        for (const s of json.data ?? []) {
+        if (json.success === false || Array.isArray(json.data) === false) {
+          return { ids, complete: false };
+        }
+        for (const s of json.data) {
           if (typeof s.id === "string") ids.push(s.id);
         }
-        nextToken = (json as { next_token?: string }).next_token ?? "";
-        if (!nextToken) break;
+        nextToken = json.next_token ?? "";
+        if (nextToken === "") {
+          return { ids: [...new Set(ids)], complete: true };
+        }
         await new Promise((r) => setTimeout(r, 300));
       }
-      return ids;
+      return { ids, complete: false };
     } catch {
-      return [];
+      return { ids: [], complete: false };
     }
   },
   answerSelector: "[class*='message-select-wrapper-answer'] .qk-markdown",

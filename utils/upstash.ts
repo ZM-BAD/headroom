@@ -132,6 +132,24 @@ export function selectZombieKeys(
   );
 }
 
+/**
+ * Safety valve for destructive zombie cleanup. Even with `complete=true`
+ * adapters can regress, so never delete a large fraction of the user's cloud
+ * records in one run. A single deleted conversation out of a small set remains
+ * allowed; once the ratio exceeds 30%, cleanup aborts and the next run/user
+ * action can investigate.
+ */
+export const MAX_ZOMBIE_DELETE_FRACTION = 0.3;
+
+export function isSafeZombieDelete(
+  cloudKeyCount: number,
+  zombieCount: number,
+): boolean {
+  if (zombieCount <= 0) return true;
+  if (cloudKeyCount <= 0) return false;
+  return zombieCount / cloudKeyCount <= MAX_ZOMBIE_DELETE_FRACTION;
+}
+
 export async function getDialogue(
   creds: UpstashCreds,
   key: string,

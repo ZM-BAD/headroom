@@ -96,30 +96,32 @@ export const qwenAdapter: PlatformAdapter = {
   // GET /api/v2/chats/?page=1&exclude_project=true → {data:[{id,title}]}.
   // Cookie-based auth. Page-based pagination; stops when data is empty.
   async fetchConversationList() {
+    const ids: string[] = [];
     try {
-      const ids: string[] = [];
-      let page = 1;
-      while (true) {
+      for (let page = 1; page <= 100; page++) {
         const res = await fetch(
           `https://chat.qwen.ai/api/v2/chats/?page=${page}&exclude_project=true`,
           { credentials: "include" },
         );
-        if (!res.ok) break;
+        if (res.ok === false) return { ids, complete: false };
         const json = (await res.json()) as {
           success?: boolean;
           data?: Array<{ id?: string }>;
         };
-        const data = json.data ?? [];
-        for (const c of data) {
+        if (Array.isArray(json.data) === false) {
+          return { ids, complete: false };
+        }
+        if (json.data.length === 0) {
+          return { ids: [...new Set(ids)], complete: true };
+        }
+        for (const c of json.data) {
           if (typeof c.id === "string") ids.push(c.id);
         }
-        if (data.length === 0) break;
-        page++;
         await new Promise((r) => setTimeout(r, 300));
       }
-      return ids;
+      return { ids, complete: false };
     } catch {
-      return [];
+      return { ids: [], complete: false };
     }
   },
   answerSelector: ".qwen-chat-message-assistant .qwen-markdown",

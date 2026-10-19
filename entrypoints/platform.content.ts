@@ -201,13 +201,16 @@ export default defineContentScript({
         lastFetchConvListTs = now;
       }
       try {
-        const ids = await adapter.fetchConversationList();
-        if (ids.length === 0) return;
+        const result = await adapter.fetchConversationList();
+        // Empty snapshots are never useful for cleanup, and a partial snapshot
+        // must never be sent as if it were authoritative.
+        if (result.ids.length === 0) return;
         send({
           type: "CONVERSATION_LIST",
           platformId: adapter.platformId,
           url: location.href,
-          ids,
+          ids: result.ids,
+          complete: result.complete,
         } satisfies ConversationListMessage);
       } catch (e) {
         console.warn("[Headroom] fetchConversationList failed:", e);

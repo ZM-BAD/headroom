@@ -78,6 +78,11 @@ export interface ConversationListMessage {
   platformId: string;
   url: string;
   ids: string[];
+  /**
+   * True only when the adapter guarantees `ids` is the complete live list.
+   * Background cleanup must refuse to delete anything from a partial list.
+   */
+  complete: boolean;
 }
 
 /**

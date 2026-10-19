@@ -44,6 +44,14 @@ export interface HistoryRound {
   createdAt?: number;
 }
 
+/** A conversation-list snapshot plus whether it is safe to use for deletion. */
+export interface ConversationListResult {
+  /** Live conversation ids visible in this snapshot. */
+  ids: string[];
+  /** True only when `ids` is a complete, non-truncated list. */
+  complete: boolean;
+}
+
 export interface PlatformAdapter {
   platformId: string;
   displayName: string;
@@ -152,13 +160,19 @@ export interface PlatformAdapter {
    */
   fetchHistory?(dialogueId: string): Promise<HistoryRound[]>;
   /**
-   * Fetch the list of ALL conversation ids for this platform (the home-page
+   * Fetch the list of conversation ids for this platform (the home-page
    * sidebar). Used by zombie cleanup (spec 003): ids still in Upstash but no
    * longer on the platform (deleted elsewhere, e.g. mobile) get cloud-DELed.
+   *
+   * `complete` MUST be true only when the adapter is certain the returned ids
+   * are the full live list. A partial page, a failed later page, or a
+   * DOM/virtualized list must return complete=false — cleanup is destructive
+   * and must never infer deletion from an incomplete snapshot.
+   *
    * Runs in the CONTENT SCRIPT (same-origin). Absent ⇒ zombie cleanup is
-   * skipped for this platform. Must never throw — return [] on failure.
+   * skipped for this platform. Must never throw.
    */
-  fetchConversationList?(): Promise<string[]>;
+  fetchConversationList?(): Promise<ConversationListResult>;
   /**
    * When true, the content script's 1.5s poll watches for new DOM elements
    * matching answerSelector as a fallback completion detector. Needed by

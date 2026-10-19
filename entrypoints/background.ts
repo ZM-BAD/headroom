@@ -34,6 +34,7 @@ import {
   kvScan,
   kvDel,
   selectZombieKeys,
+  isSafeZombieDelete,
 } from "../utils/upstash";
 import { getSettings, type Settings } from "../utils/settings";
 import { adapterForUrl, isSupportedPlatformUrl } from "../utils/match-host";
@@ -656,7 +657,11 @@ export default defineBackground(() => {
         case "CONVERSATION_LIST":
           // Home page: diff the live conversation list against cloud keys and
           // DEL orphans (spec 003 zombie cleanup). Fire-and-forget.
-          void cleanupZombies(message.platformId, message.ids);
+          void cleanupZombies(
+            message.platformId,
+            message.ids,
+            message.complete,
+          );
           return;
         case "STOP_ROUND_DATA":
           await handleStopRoundData(message, sender?.tab?.id);
@@ -965,17 +970,40 @@ export default defineBackground(() => {
   async function cleanupZombies(
     platformId: string,
     liveIds: string[],
+    complete: boolean,
   ): Promise<void> {
+    if (complete === false) {
+      // A partial page, failed later page, or virtualized DOM snapshot must
+      // never drive destructive cloud deletion.
+      console.warn(
+        "[Headroom] zombie cleanup skipped: incomplete conversation list",
+        platformId,
+        "| visible ids:",
+        liveIds.length,
+      );
+      return;
+    }
     const { upstash: creds } = await getSettings();
-    if (!creds.url || !creds.token) return; // no cloud → nothing to clean
+    if (creds.url === "" || creds.token === "") return; // nothing to clean
     const state = await getCleanupState();
-    if (!shouldRunCleanup(state, platformId, Date.now())) {
+    if (shouldRunCleanup(state, platformId, Date.now()) === false) {
       dbg("[Headroom] zombie cleanup throttled, skipping", platformId);
       return;
     }
     try {
       const cloudKeys = await kvScan(creds, `headroom:conv:${platformId}:*`);
       const zombies = selectZombieKeys(cloudKeys, new Set(liveIds), platformId);
+      if (isSafeZombieDelete(cloudKeys.length, zombies.length) === false) {
+        console.warn(
+          "[Headroom] zombie cleanup skipped: deletion ratio exceeds safety cap",
+          platformId,
+          "| cloud keys:",
+          cloudKeys.length,
+          "| zombies:",
+          zombies.length,
+        );
+        return;
+      }
       dbg(
         "[Headroom] zombie cleanup for",
         platformId,
@@ -988,9 +1016,9 @@ export default defineBackground(() => {
       );
       await Promise.all(zombies.map((k) => kvDel(creds, k).catch(() => {})));
       // Stamp successful run for throttle.
-      const state = await getCleanupState();
+      const latestState = await getCleanupState();
       await setCleanupState(
-        cleanupStateAfterRun(state, platformId, Date.now()),
+        cleanupStateAfterRun(latestState, platformId, Date.now()),
       );
     } catch (e) {
       console.warn("[Headroom] zombie cleanup failed for", platformId, e);

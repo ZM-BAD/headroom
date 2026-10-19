@@ -180,12 +180,12 @@ export const doubaoAdapter: PlatformAdapter = {
           }),
         },
       );
-      if (!res.ok) {
+      if (res.ok === false) {
         console.warn(
           "[Headroom] doubao fetchConversationList HTTP",
           res.status,
         );
-        return [];
+        return { ids: [], complete: false };
       }
       const json = await res.json();
       if (json.status_code && json.status_code !== 0) {
@@ -194,19 +194,22 @@ export const doubaoAdapter: PlatformAdapter = {
           json.status_code,
           json.status_desc,
         );
-        return [];
+        return { ids: [], complete: false };
       }
       const cells: Array<{
         id?: string;
         conversation?: { conversation_id?: string };
       }> =
         json?.downlink_body?.pull_recent_conv_chain_downlink_body?.cells ?? [];
-      return cells
+      const ids = cells
         .map((c) => c.conversation?.conversation_id ?? c.id)
         .filter((id): id is string => typeof id === "string");
+      // This endpoint is explicitly a "recent conversations" page limited to
+      // 20 rows. It is useful for diagnostics, never for destructive cleanup.
+      return { ids, complete: false };
     } catch (e) {
       console.warn("[Headroom] doubao fetchConversationList error:", e);
-      return [];
+      return { ids: [], complete: false };
     }
   },
   // IM chain is eventually consistent: the bot message lands 0–1s+ after the
