@@ -1,0 +1,28 @@
+# Codecov configuration
+# Keep patch/project status aligned with the Vitest coverage scope: pure
+# utils/adapters logic is unit-tested; entrypoints need browser APIs and are
+# verified by the live acceptance checklist / future Playwright suite.
+
+comment:
+  layout: "reach, diff, flags, files"
+  behavior: default
+  require_changes: false
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 2%
+    patch:
+      default:
+        target: auto
+        threshold: 2%
+
+ignore:
+  - "entrypoints/**"
+  - "scripts/**"
+  - "public/**"
+  - "specs/**"
+  - "**/*.test.ts"
+  - "**/*.config.*"

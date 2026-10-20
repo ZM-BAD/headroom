@@ -24,6 +24,9 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["utils/**/*.ts", "adapters/**/*.ts"],
+      // Type-only modules compile to no runtime code; counting them as 0%
+      // coverage only distorts the signal.
+      exclude: ["utils/messages.ts", "utils/platform-adapter.ts"],
       reporter: ["text", "lcov", "json-summary"],
       reportsDirectory: "./coverage",
     },
