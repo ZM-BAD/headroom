@@ -841,21 +841,10 @@ export default defineBackground(() => {
       monotonicOrder: adapter.monotonicOrder,
       now: Date.now(),
     });
-    const provisionalChanged =
-      localRecord === null ||
-      dialogueRecordContentEqual(provisionalRecord, localRecord) === false;
-    if (provisionalChanged) {
-      await setLocalDialogue(key, provisionalRecord);
-      void evictLocalCacheIfNeeded();
-    } else if (localRecord !== null) {
-      // The visible content did not change, but this conversation was just
-      // opened. Refresh the LRU timestamp so frequently-used old chats are not
-      // evicted ahead of less-recently-opened ones.
-      await setLocalDialogue(key, {
-        ...localRecord,
-        updatedAt: Date.now(),
-      });
-    }
+    // Always write the provisional record: this updates the conversation
+    // content and refreshes its LRU timestamp in one operation.
+    await setLocalDialogue(key, provisionalRecord);
+    void evictLocalCacheIfNeeded();
     if (tabId !== undefined) {
       tabDialogueTitle.set(tabId, m.dialogueTitle);
     }

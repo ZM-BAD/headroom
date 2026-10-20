@@ -130,6 +130,42 @@ export function unionRounds(
     .slice(-MAX_RETAINED_ROUNDS);
 }
 
+interface HistoryMergeClassification {
+  replacements: Array<{ history: RoundRecord; stored: RoundRecord }>;
+  newRounds: RoundRecord[];
+}
+
+/** Shared trimmed-window classification for lifetime totals and counts. */
+function classifyHistoryRounds(
+  baseRounds: RoundRecord[],
+  historyRounds: RoundRecord[],
+  trimmedCounted: boolean,
+  monotonicOrder: boolean,
+): HistoryMergeClassification {
+  const byId = new Map(baseRounds.map((r) => [r.messageId, r]));
+  let maxOrder = -Infinity;
+  for (const r of baseRounds) maxOrder = Math.max(maxOrder, r.order);
+  const seen = new Set<string>();
+  const replacements: HistoryMergeClassification["replacements"] = [];
+  const newRounds: RoundRecord[] = [];
+  for (let i = historyRounds.length - 1; i >= 0; i--) {
+    const h = historyRounds[i];
+    if (h === undefined || seen.has(h.messageId)) continue;
+    seen.add(h.messageId);
+    const stored = byId.get(h.messageId);
+    if (stored !== undefined) {
+      replacements.push({ history: h, stored });
+    } else if (
+      trimmedCounted === false ||
+      h.order > maxOrder ||
+      (monotonicOrder && h.order === maxOrder)
+    ) {
+      newRounds.push(h);
+    }
+  }
+  return { replacements, newRounds };
+}
+
 /**
  * The TRUE lifetime total after a cloud+history union (spec 003). The merged
  * rounds array is trimmed to MAX_RETAINED_ROUNDS (oldest dropped), so summing
@@ -172,32 +208,19 @@ export function mergeLifetimeTotal(
   historyRounds: RoundRecord[],
   monotonicOrder = true,
 ): number {
-  const byId = new Map(cloudRounds.map((r) => [r.messageId, r]));
-  let maxOrder = -Infinity;
   let windowSum = 0;
-  for (const r of cloudRounds) {
-    maxOrder = Math.max(maxOrder, r.order);
-    windowSum += r.total;
-  }
-  const trimmedCounted = cloudTotal > windowSum;
-  const seen = new Set<string>();
+  for (const r of cloudRounds) windowSum += r.total;
+  const { replacements, newRounds } = classifyHistoryRounds(
+    cloudRounds,
+    historyRounds,
+    cloudTotal > windowSum,
+    monotonicOrder,
+  );
   let total = cloudTotal;
-  for (let i = historyRounds.length - 1; i >= 0; i--) {
-    const h = historyRounds[i];
-    if (!h || seen.has(h.messageId)) continue;
-    seen.add(h.messageId);
-    const c = byId.get(h.messageId);
-    if (c) {
-      total += h.total - c.total; // history wins on the same messageId
-    } else if (
-      !trimmedCounted || // no trimming was ever counted → absent = new (repairs old records)
-      h.order > maxOrder || // beyond the retained window — new by any reading
-      (monotonicOrder && h.order === maxOrder) // tie at max: trimmed rounds have the LOWEST orders
-    ) {
-      total += h.total; // genuinely new round
-    }
-    // else: a trimmed round — its total already lives in cloudTotal.
+  for (const { history, stored } of replacements) {
+    total += history.total - stored.total;
   }
+  for (const round of newRounds) total += round.total;
   return total;
 }
 
@@ -303,26 +326,13 @@ export function mergeLifetimeRoundCount(
   historyRounds: RoundRecord[],
   monotonicOrder = true,
 ): number {
-  const baseIds = new Set(baseRounds.map((r) => r.messageId));
-  const trimmedCounted = baseRoundCount > baseRounds.length;
-  let maxOrder = -Infinity;
-  for (const r of baseRounds) maxOrder = Math.max(maxOrder, r.order);
-  const seen = new Set<string>();
-  let count = Math.max(baseRoundCount, baseRounds.length);
-  for (let i = historyRounds.length - 1; i >= 0; i--) {
-    const h = historyRounds[i];
-    if (h === undefined || seen.has(h.messageId)) continue;
-    seen.add(h.messageId);
-    if (baseIds.has(h.messageId)) continue;
-    if (
-      trimmedCounted === false ||
-      h.order > maxOrder ||
-      (monotonicOrder && h.order === maxOrder)
-    ) {
-      count++;
-    }
-  }
-  return count;
+  const { newRounds } = classifyHistoryRounds(
+    baseRounds,
+    historyRounds,
+    baseRoundCount > baseRounds.length,
+    monotonicOrder,
+  );
+  return Math.max(baseRoundCount, baseRounds.length) + newRounds.length;
 }
 
 export interface ReconcileDialogueInput {
