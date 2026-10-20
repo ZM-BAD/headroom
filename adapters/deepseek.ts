@@ -291,6 +291,11 @@ export const deepseekAdapter: PlatformAdapter = {
       // This internal endpoint does not document pagination. Only trust it as
       // complete when the payload explicitly says there is no next page.
       const hasMore = biz?.has_more ?? biz?.hasMore;
+      if (hasMore === undefined) {
+        console.warn(
+          "[Headroom] deepseek conversation list has no pagination marker; cleanup disabled",
+        );
+      }
       return { ids, complete: hasMore === false };
     } catch {
       return { ids: [], complete: false };

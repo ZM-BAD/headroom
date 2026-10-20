@@ -299,12 +299,14 @@ Any batch trigger (periodic / home) ──→ runZombieCleanup(platform)
 
 #### Platform Coverage
 
-| Platform                                                   | `fetchConversationList` method | Cleanup reliability                                                                       |
-| ---------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------- |
-| DeepSeek / ChatGPT / Kimi / Qwen / Tongyi Qianwen / Doubao | API pull                       | High                                                                                      |
-| Gemini                                                     | DOM sidebar scrape             | Low (virtualization truncation; only conversations not visible in sidebar can be cleaned) |
+| Platform                               | `fetchConversationList` method    | Cleanup reliability                                                                                                          |
+| -------------------------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| ChatGPT / Kimi / Qwen / Tongyi Qianwen | Full pagination API               | High once every page completes; any failed later page returns `complete=false`                                               |
+| DeepSeek                               | `chat_session/fetch_page` API     | Conservative: cleanup only when the payload explicitly reports `has_more=false`; live pagination-marker verification pending |
+| Doubao                                 | `recent_conv` API (hard limit 20) | Disabled: endpoint is incomplete by definition                                                                               |
+| Gemini                                 | DOM sidebar scrape                | Disabled: virtualized sidebar can never prove completeness                                                                   |
 
-**Gemini special handling**: the DOM sidebar is virtualized and therefore always returns `complete=false`; Gemini zombie cleanup is intentionally disabled rather than risking deletion of conversations outside the mounted window. The same rule applies to any adapter that cannot prove the list is complete.
+**Completeness rule**: cleanup is destructive, so only a literal `complete=true` may authorize a DEL. Malformed/missing flags fail closed. Adapters that cannot prove a full list (DeepSeek without an explicit no-more marker, Doubao's recent-20 endpoint, Gemini's virtualized DOM) never authorize cleanup.
 
 #### Storage
 

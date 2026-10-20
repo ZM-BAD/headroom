@@ -38,6 +38,7 @@ import {
 } from "../utils/upstash";
 import { getSettings, type Settings } from "../utils/settings";
 import { adapterForUrl, isSupportedPlatformUrl } from "../utils/match-host";
+import { isAuthoritativeConversationList } from "../utils/conversation-list";
 
 /**
  * Background engine — the 001 LOCAL layer, generic over platform adapters.
@@ -846,6 +847,14 @@ export default defineBackground(() => {
     if (provisionalChanged) {
       await setLocalDialogue(key, provisionalRecord);
       void evictLocalCacheIfNeeded();
+    } else if (localRecord !== null) {
+      // The visible content did not change, but this conversation was just
+      // opened. Refresh the LRU timestamp so frequently-used old chats are not
+      // evicted ahead of less-recently-opened ones.
+      await setLocalDialogue(key, {
+        ...localRecord,
+        updatedAt: Date.now(),
+      });
     }
     if (tabId !== undefined) {
       tabDialogueTitle.set(tabId, m.dialogueTitle);
@@ -900,7 +909,10 @@ export default defineBackground(() => {
       if (tabId !== undefined) {
         tabDialogueTitle.set(tabId, m.dialogueTitle);
       }
-      if (active) {
+      // The cloud read can take seconds. Re-check whether this tab is still
+      // active so a late merge does not overwrite another tab's panel state.
+      const stillActive = await isTabActive(tabId);
+      if (stillActive) {
         await broadcast(
           buildState(
             adapter,
@@ -965,7 +977,7 @@ export default defineBackground(() => {
     liveIds: string[],
     complete: boolean,
   ): Promise<void> {
-    if (complete === false) {
+    if (isAuthoritativeConversationList(complete) === false) {
       // A partial page, failed later page, or virtualized DOM snapshot must
       // never drive destructive cloud deletion.
       console.warn(

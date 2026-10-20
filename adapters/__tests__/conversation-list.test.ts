@@ -138,3 +138,31 @@ describe("fetchConversationList — complete snapshots", () => {
     });
   });
 });
+
+describe("fetchConversationList — conservative DeepSeek completeness", () => {
+  it("keeps cleanup disabled when the pagination marker is absent", async () => {
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "userToken" ? JSON.stringify({ value: "token" }) : null,
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      response({
+        data: {
+          biz_data: {
+            chat_sessions: [{ id: "chat-1" }],
+          },
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(deepseekAdapter.fetchConversationList?.()).resolves.toEqual({
+      ids: ["chat-1"],
+      complete: false,
+    });
+    expect(warn).toHaveBeenCalledWith(
+      "[Headroom] deepseek conversation list has no pagination marker; cleanup disabled",
+    );
+  });
+});
