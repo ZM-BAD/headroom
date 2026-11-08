@@ -87,7 +87,7 @@
     "message": "Token usage by round"
   },
   "roundToolLegend": {
-    "message": "- means no extra search/tool content this round; DeepSeek/ChatGPT search content never persists into later rounds."
+    "message": "- means no countable search/tool content this round. DeepSeek does not expose search text; whether ChatGPT search results persist into later rounds is unverified."
   },
   "roundHeaderN": {
     "message": "Round"

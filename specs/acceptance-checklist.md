@@ -218,14 +218,14 @@ Automation (typecheck / lint / unit test / build) cannot replace this checklist 
 
 ## 005 Tool & Web-Search Tokens (Live)
 
-> Payload shapes were captured live 2026-08-14 (Playwright, this repo's standard method). The unit tests cover the parsers; these items verify the extension end-to-end in the real browser.
+> Payload shapes were captured live 2026-08-14 (Playwright, this repo's standard method); ChatGPT's 2026-10+ dual-shape was captured live 2026-11-08. The unit tests cover the parsers; these items verify the extension end-to-end in the real browser.
 
 ### Round Breakdown
 
 - [ ] **005-01** Send a web-search question on **Kimi** → the round's new Tool column shows `⌘N > 0`; total = prompt + tool + answer
 - [ ] **005-02** Same on **Qwen** (web_search phase) and **Doubao** (search block) → Tool column populated
 - [ ] **005-03** Same on **通义 Qianwen** (bar/iframe sources) → Tool column populated
-- [ ] **005-04** **ChatGPT** with @网页搜索 → small `⌘N` (the `search("…")` call only — results are server-side)
+- [ ] **005-04** **ChatGPT OLD shape** (≤2026-08 cohort) with @网页搜索 → small `⌘N` (the `search("…")` invocation only; result text was not exposed by that shape)
 - [ ] **005-05** **DeepSeek** with 联网搜索 → Tool column `—` (search text not in history API — documented spec 005 limitation); prompt/answer estimates CORRECT on both A/B payload shapes (fragments[] 2026-06 + content 2026-08 — see spec 005 structure fix)
 - [ ] **005-06** **Gemini** with grounding → Tool column shows site-name-only `⌘N` (deduped, names only)
 - [ ] **005-07** A normal (no-search) round on any platform → Tool column `—`
@@ -235,6 +235,12 @@ Automation (typecheck / lint / unit test / build) cannot replace this checklist 
 
 - [ ] **005-09** Gauge total includes tool tokens; Upstash record stores `toolTokens` per round
 - [ ] **005-10** Reopen / SPA-switch a searched conversation → tool tokens re-estimated identically (stable messageId merge)
+- [ ] **005-11** **ChatGPT NEW shape** (2026-10+ cohort, live-verified 2026-11-08) search / multi-step round → `⌘N > 0` from result title+snippet; the answer node's aggregate `search_result_groups` is NOT double-counted
+- [ ] **005-12** Start a ChatGPT search and **stop during browsing/generation** → if an answer node exists after history settles, exactly one round for that turn (no marker-anchored zombie / no prompt double count); if no answer node ever lands, no round is emitted (anti-zombie policy; the prompt is counted once the answer lands)
+- [ ] **005-16** ChatGPT image / multimodal answer (no text) → round still appears (prompt counted, answer 0)
+- [ ] **005-13** ChatGPT no-tool round → Tool column `-`
+- [ ] **005-14** ChatGPT NEW-shape conversation opened in **Edge** → same tool values as Chrome (no Edge-specific code path)
+- [ ] **005-15** ChatGPT old-shape conversation (if available) still renders its `⌘N` after the dual-shape change
 
 ---
 

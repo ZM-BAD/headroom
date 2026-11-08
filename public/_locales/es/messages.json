@@ -87,7 +87,7 @@
     "message": "Tokens por ronda"
   },
   "roundToolLegend": {
-    "message": "- significa que no hay contenido adicional de búsqueda/herramientas en esta ronda; la búsqueda de DeepSeek/ChatGPT nunca entra en el contexto."
+    "message": "- significa que no hay contenido de búsqueda/herramientas medible en esta ronda; DeepSeek no expone el texto de búsqueda y no se ha verificado si los resultados de búsqueda de ChatGPT persisten en rondas posteriores."
   },
   "roundHeaderN": {
     "message": "Ronda"

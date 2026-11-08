@@ -35,9 +35,10 @@ export interface HistoryRound {
    * search-result snippets/titles, opened pages, and the tool-invocation text
    * the model generated (function name + args). Estimated into `toolTokens`
    * by the caller like promptText/answerText. Absent/empty = no tools (spec
-   * 005). Platforms whose history API does not persist search text (DeepSeek,
-   * ChatGPT results) leave it unset — the invocation-only text ChatGPT exposes
-   * still rides here.
+   * 005). Platforms whose history API does not persist tool text (DeepSeek)
+   * leave it unset. ChatGPT is dual-shape: the NEW (2026-10+) `role:"tool"`
+   * nodes expose result title+snippet, the OLD code nodes expose only the
+   * `search("…")` invocation — both ride here.
    */
   toolText?: string;
   /** Wall-clock epoch ms when this round was created on the platform. Optional — DOM-only platforms may omit (defaults to 0). */
