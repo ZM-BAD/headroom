@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-09
+
 ### Fixed
 
 - ChatGPT Search/Tool column showed `-` for every round — the adapter only recognized the OLD `content_type:"code"` + `recipient:"web"` shape. It now also counts NEW-shape (2026-10+) `role:"tool"` result text (`metadata.search_result_groups[].entries[].title + snippet`), follows `current_node` so abandoned regenerate branches are not counted, decodes literal `\uXXXX` in result text, and anchors non-text (image/multimodal) answers. The first measured conversation gains ~4.3K tool tokens across two search rounds (previously 0).
