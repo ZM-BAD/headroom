@@ -87,7 +87,7 @@
     "message": "Token per ronde"
   },
   "roundToolLegend": {
-    "message": "- berarti tidak ada konten pencarian/alat tambahan pada ronde ini; pencarian DeepSeek/ChatGPT tidak pernah masuk ke konteks."
+    "message": "- berarti tidak ada konten pencarian/alat yang dapat dihitung pada ronde ini; DeepSeek tidak menampilkan teks pencarian, dan apakah hasil pencarian ChatGPT bertahan ke ronde berikutnya belum diverifikasi."
   },
   "roundHeaderN": {
     "message": "Ronde"

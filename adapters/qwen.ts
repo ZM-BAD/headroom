@@ -1,5 +1,6 @@
 import type { HistoryRound, PlatformAdapter } from "../utils/platform-adapter";
 import type { TokenCoefficients } from "../utils/estimate";
+import { joinToolResultText } from "../utils/tool-result-text";
 
 /** Measured against Qwen3.6-27B's tokenizer — web default Qwen3.8-Max's open weights ship the byte-identical vocab.json + merges.txt (md5-verified 2026-08-20), so the fitted coefficients carry over (spec 004 §4.3; scripts/calibrate-hf.mjs). */
 const QWEN_COEFFICIENTS: TokenCoefficients = {
@@ -301,10 +302,7 @@ function joinQwenWebSearchText(phases: QwenContentPhase[] | undefined): string {
   for (const p of phases) {
     if (p?.phase !== "web_search") continue;
     for (const info of p.extra?.web_search_info ?? []) {
-      const title = typeof info?.title === "string" ? info.title.trim() : "";
-      const snippet =
-        typeof info?.snippet === "string" ? info.snippet.trim() : "";
-      const block = [title, snippet].filter(Boolean).join("\n");
+      const block = joinToolResultText(info?.title, info?.snippet);
       if (block) parts.push(block);
     }
   }

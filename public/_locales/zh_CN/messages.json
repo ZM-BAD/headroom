@@ -87,7 +87,7 @@
     "message": "每轮 token 用量"
   },
   "roundToolLegend": {
-    "message": "- 表示本轮无搜索/工具内容；DeepSeek/ChatGPT 搜索内容不进入后续轮次。"
+    "message": "- 表示本轮没有可计数的搜索/工具内容；DeepSeek 不暴露搜索文本，ChatGPT 搜索结果是否进入后续轮次尚未证实。"
   },
   "roundHeaderN": {
     "message": "轮次"

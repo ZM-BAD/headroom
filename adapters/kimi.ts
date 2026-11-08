@@ -1,5 +1,6 @@
 import type { HistoryRound, PlatformAdapter } from "../utils/platform-adapter";
 import type { TokenCoefficients } from "../utils/estimate";
+import { joinToolResultText } from "../utils/tool-result-text";
 
 /**
  * Measured against Kimi's open tiktoken vocab — exact (spec 004 §4.3;
@@ -351,10 +352,7 @@ function joinKimiToolBlocks(blocks: KimiBlock[] | undefined): string {
     for (const c of tool.contents ?? []) {
       const base = c?.searchResult?.base;
       if (!base) continue;
-      const title = typeof base.title === "string" ? base.title.trim() : "";
-      const snippet =
-        typeof base.snippet === "string" ? base.snippet.trim() : "";
-      const block = [title, snippet].filter(Boolean).join("\n");
+      const block = joinToolResultText(base.title, base.snippet);
       if (block) parts.push(block);
     }
   }

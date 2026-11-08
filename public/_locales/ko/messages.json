@@ -87,7 +87,7 @@
     "message": "라운드별 토큰 사용량"
   },
   "roundToolLegend": {
-    "message": "- 는 이번 라운드에 추가 검색/도구 콘텐츠가 없음을 뜻합니다; DeepSeek/ChatGPT 검색은 컨텍스트에 들어가지 않음."
+    "message": "- 는 이번 라운드에 집계 가능한 검색/도구 내용이 없음을 뜻합니다; DeepSeek은 검색 텍스트를 노출하지 않으며, ChatGPT 검색 결과가 이후 라운드에 유지되는지는 검증되지 않았습니다."
   },
   "roundHeaderN": {
     "message": "라운드"

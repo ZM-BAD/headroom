@@ -826,4 +826,724 @@ describe("parseChatGptHistory", () => {
     expect(parseChatGptHistory(null)).toEqual([]);
     expect(parseChatGptHistory(undefined)).toEqual([]);
   });
+
+  it("extracts NEW-shape tool result title+snippet along the answer path (spec 005, live 2026-11-08)", () => {
+    // Real 2026-10+ chain: user → web.run marker (empty parts) → role:"tool"
+    // node with metadata.search_result_groups → second marker/tool node →
+    // thoughts → reasoning_recap → answer. The answer node repeats the turn's
+    // aggregate groups — it must NOT be counted. Thoughts/reasoning_recap are
+    // private reasoning and must NOT be counted.
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["搜索一下 X"] },
+          },
+          children: ["m1"],
+        },
+        m1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "web.run",
+            content: { content_type: "text", parts: [""] },
+            metadata: { tool_icons: ["globe"] },
+            create_time: 100,
+          },
+          children: ["t1"],
+        },
+        t1: {
+          message: {
+            author: { role: "tool" },
+            recipient: "all",
+            content: { content_type: "text", parts: [""] },
+            metadata: {
+              search_result_groups: [
+                {
+                  type: "search_result_group",
+                  domain: "a.com",
+                  entries: [
+                    { type: "search_result", title: "T1", snippet: "S1" },
+                    { type: "search_result", title: "T2", snippet: "" },
+                    { type: "search_result", title: "", snippet: "" },
+                  ],
+                },
+                {
+                  type: "search_result_group",
+                  domain: "b.com",
+                  entries: [
+                    { type: "search_result", title: "T3", snippet: "S3" },
+                  ],
+                },
+              ],
+            },
+            create_time: 101,
+          },
+          children: ["m2"],
+        },
+        m2: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "web.run",
+            content: { content_type: "text", parts: [""] },
+            create_time: 102,
+          },
+          children: ["t2"],
+        },
+        t2: {
+          message: {
+            author: { role: "tool" },
+            recipient: "all",
+            content: { content_type: "text", parts: [""] },
+            metadata: {
+              search_result_groups: [
+                { entries: [{ title: "T4", snippet: "S4" }] },
+              ],
+            },
+            create_time: 103,
+          },
+          children: ["th"],
+        },
+        th: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: {
+              content_type: "thoughts",
+              thoughts: [
+                { summary: "s", content: "SECRET_THOUGHT", chunks: [] },
+              ],
+            },
+            create_time: 104,
+          },
+          children: ["rc"],
+        },
+        rc: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "reasoning_recap", content: "思考了 4s" },
+            create_time: 105,
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["ANSWER"] },
+            metadata: {
+              search_result_groups: [
+                {
+                  entries: [
+                    { title: "T1", snippet: "S1" },
+                    { title: "AGG_ONLY", snippet: "AS" },
+                  ],
+                },
+              ],
+            },
+            create_time: 106,
+          },
+          children: [],
+        },
+      },
+    };
+    const round = parseChatGptHistory(resp)[0]!;
+    expect(round.messageId).toBe("a1");
+    expect(round.answerText).toBe("ANSWER");
+    expect(round.toolText).toBe("T1\nS1\nT2\nT3\nS3\nT4\nS4");
+    expect(round.toolText).not.toContain("AGG_ONLY");
+    expect(round.toolText).not.toContain("SECRET_THOUGHT");
+    expect(round.toolText).not.toContain("思考了");
+  });
+
+  it("ignores the answer node's aggregate search_result_groups (no double count)", () => {
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["q"] },
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["A"] },
+            metadata: {
+              search_result_groups: [
+                { entries: [{ title: "AGG", snippet: "ONLY" }] },
+              ],
+            },
+            create_time: 1,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)[0]!.toolText).toBeUndefined();
+  });
+
+  it("scopes NEW-shape tool results to the turn (no leak from the next turn)", () => {
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["first"] },
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["A1"] },
+            create_time: 1,
+          },
+          children: ["u2"],
+        },
+        u2: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["second"] },
+          },
+          children: ["t2"],
+        },
+        t2: {
+          message: {
+            author: { role: "tool" },
+            recipient: "all",
+            content: { content_type: "text", parts: [""] },
+            metadata: {
+              search_result_groups: [
+                { entries: [{ title: "T2", snippet: "S2" }] },
+              ],
+            },
+            create_time: 2,
+          },
+          children: ["a2"],
+        },
+        a2: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["A2"] },
+            create_time: 3,
+          },
+          children: [],
+        },
+      },
+    };
+    const rounds = parseChatGptHistory(resp);
+    expect(rounds).toHaveLength(2);
+    expect(rounds[0]!.toolText).toBeUndefined();
+    expect(rounds[1]!.toolText).toBe("T2\nS2");
+  });
+
+  it("counts generic tool-node output parts when no search_result_groups exist (connector best effort)", () => {
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["q"] },
+          },
+          children: ["t1"],
+        },
+        t1: {
+          message: {
+            author: { role: "tool" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["connector result"] },
+            create_time: 1,
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["A"] },
+            create_time: 2,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)[0]!.toolText).toBe("connector result");
+  });
+
+  it("counts an assistant tool-call marker with invocation text (connector/future shape)", () => {
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["q"] },
+          },
+          children: ["m1"],
+        },
+        m1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "connector.foo",
+            content: {
+              content_type: "text",
+              parts: ['call_tool({"q":"x"})'],
+            },
+            create_time: 1,
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["A"] },
+            create_time: 2,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)[0]!.toolText).toBe('call_tool({"q":"x"})');
+  });
+
+  it("emits no round when a NEW-shape turn stopped before any answer node (markers are not anchors)", () => {
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["q"] },
+          },
+          children: ["m1"],
+        },
+        m1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "web.run",
+            content: { content_type: "text", parts: [""] },
+            create_time: 1,
+          },
+          children: ["t1"],
+        },
+        t1: {
+          message: {
+            author: { role: "tool" },
+            recipient: "all",
+            content: { content_type: "text", parts: [""] },
+            metadata: {
+              search_result_groups: [
+                { entries: [{ title: "T", snippet: "S" }] },
+              ],
+            },
+            create_time: 2,
+          },
+          children: ["th"],
+        },
+        th: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "thoughts", thoughts: [] },
+            create_time: 3,
+          },
+          children: ["rc"],
+        },
+        rc: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "reasoning_recap", content: "思考了" },
+            create_time: 4,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)).toEqual([]);
+  });
+
+  it("anchors on a real answer text node with empty parts, then replaces in place when text lands", () => {
+    const make = (parts: string[]) => ({
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["q"] },
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts },
+            create_time: 1,
+          },
+          children: [],
+        },
+      },
+    });
+    const pending = parseChatGptHistory(make([]));
+    expect(pending).toHaveLength(1);
+    expect(pending[0]!.messageId).toBe("a1");
+    expect(pending[0]!.answerText).toBe("");
+
+    const settled = parseChatGptHistory(make(["A"]));
+    expect(settled[0]!.messageId).toBe("a1");
+    expect(settled[0]!.answerText).toBe("A");
+  });
+
+  it("counts tool results only from the chosen answer branch (regenerate branch isolation)", () => {
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["q"] },
+          },
+          children: ["t_b1", "t_b2"],
+        },
+        t_b1: {
+          message: {
+            author: { role: "tool" },
+            recipient: "all",
+            content: { content_type: "text", parts: [""] },
+            metadata: {
+              search_result_groups: [
+                { entries: [{ title: "B1", snippet: "S1" }] },
+              ],
+            },
+            create_time: 1,
+          },
+          children: ["a1"],
+        },
+        t_b2: {
+          message: {
+            author: { role: "tool" },
+            recipient: "all",
+            content: { content_type: "text", parts: [""] },
+            metadata: {
+              search_result_groups: [
+                { entries: [{ title: "B2", snippet: "S2" }] },
+              ],
+            },
+            create_time: 2,
+          },
+          children: ["a2"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["A1"] },
+            create_time: 3,
+          },
+          children: [],
+        },
+        a2: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["A2"] },
+            create_time: 4,
+          },
+          children: [],
+        },
+      },
+    };
+    const round = parseChatGptHistory(resp)[0]!;
+    expect(round.answerText).toBe("A1");
+    expect(round.toolText).toBe("B1\nS1");
+    expect(round.toolText).not.toContain("B2");
+  });
+
+  it("ignores malformed search_result_groups without throwing", () => {
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["q"] },
+          },
+          children: ["t1"],
+        },
+        t1: {
+          message: {
+            author: { role: "tool" },
+            recipient: "all",
+            content: { content_type: "text", parts: [""] },
+            metadata: {
+              search_result_groups: [
+                {
+                  entries: [
+                    null,
+                    { title: 42, snippet: {} },
+                    { title: "T", snippet: 7 },
+                  ],
+                },
+              ],
+            },
+            create_time: 1,
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["A"] },
+            create_time: 2,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(() => parseChatGptHistory(resp)).not.toThrow();
+    expect(parseChatGptHistory(resp)[0]!.toolText).toBe("T");
+  });
+
+  it("does NOT prompt-dedupe tool RESULT text (only invocation text is deduped)", () => {
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["T"] },
+          },
+          children: ["t1"],
+        },
+        t1: {
+          message: {
+            author: { role: "tool" },
+            recipient: "all",
+            content: { content_type: "text", parts: [""] },
+            metadata: {
+              search_result_groups: [
+                { entries: [{ title: "T", snippet: "" }] },
+              ],
+            },
+            create_time: 1,
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["A"] },
+            create_time: 2,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)[0]!.toolText).toBe("T");
+  });
+
+  it("anchors a non-text (multimodal) answer so the prompt is still counted", () => {
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["draw a cat"] },
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: {
+              content_type: "multimodal_text",
+              parts: [{ asset_pointer: "file-service://img" }],
+            },
+            create_time: 1,
+          },
+          children: [],
+        },
+      },
+    };
+    const rounds = parseChatGptHistory(resp);
+    expect(rounds).toHaveLength(1);
+    expect(rounds[0]!.messageId).toBe("a1");
+    expect(rounds[0]!.answerText).toBe("");
+  });
+
+  it("follows conversation.current_node when choosing the answer branch", () => {
+    const resp = {
+      current_node: "a2",
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["q"] },
+          },
+          children: ["t_b1", "t_b2"],
+        },
+        t_b1: {
+          message: {
+            author: { role: "tool" },
+            recipient: "all",
+            content: { content_type: "text", parts: [""] },
+            metadata: {
+              search_result_groups: [
+                { entries: [{ title: "B1", snippet: "S1" }] },
+              ],
+            },
+            create_time: 1,
+          },
+          parent: "u1",
+          children: ["a1"],
+        },
+        t_b2: {
+          message: {
+            author: { role: "tool" },
+            recipient: "all",
+            content: { content_type: "text", parts: [""] },
+            metadata: {
+              search_result_groups: [
+                { entries: [{ title: "B2", snippet: "S2" }] },
+              ],
+            },
+            create_time: 2,
+          },
+          parent: "u1",
+          children: ["a2"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["A1"] },
+            create_time: 3,
+          },
+          parent: "t_b1",
+          children: [],
+        },
+        a2: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["A2"] },
+            create_time: 4,
+          },
+          parent: "t_b2",
+          children: [],
+        },
+      },
+    };
+    const round = parseChatGptHistory(resp)[0]!;
+    expect(round.messageId).toBe("a2");
+    expect(round.answerText).toBe("A2");
+    expect(round.toolText).toBe("B2\nS2");
+  });
+
+  it("decodes literal \\uXXXX escapes in NEW-shape result title/snippet", () => {
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["q"] },
+          },
+          children: ["t1"],
+        },
+        t1: {
+          message: {
+            author: { role: "tool" },
+            recipient: "all",
+            content: { content_type: "text", parts: [""] },
+            metadata: {
+              search_result_groups: [
+                {
+                  entries: [
+                    {
+                      title: "\\u4eca\\u5929",
+                      snippet: "\\u5929\\u6c14",
+                    },
+                  ],
+                },
+              ],
+            },
+            create_time: 1,
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["A"] },
+            create_time: 2,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)[0]!.toolText).toBe("今天\n天气");
+  });
+
+  it("decodes literal \\uXXXX escapes in generic tool-envelope text", () => {
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["q"] },
+          },
+          children: ["t1"],
+        },
+        t1: {
+          message: {
+            author: { role: "tool" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["\\u4eca\\u5929"] },
+            create_time: 1,
+          },
+          children: ["a1"],
+        },
+        a1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "all",
+            content: { content_type: "text", parts: ["A"] },
+            create_time: 2,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)[0]!.toolText).toBe("今天");
+  });
+
+  it("emits no round for an OLD-shape stopped turn whose only assistant is a web-search call", () => {
+    const resp = {
+      mapping: {
+        u1: {
+          message: {
+            author: { role: "user" },
+            content: { content_type: "text", parts: ["q"] },
+          },
+          children: ["w1"],
+        },
+        w1: {
+          message: {
+            author: { role: "assistant" },
+            recipient: "web",
+            content: { content_type: "code", text: 'search("q")' },
+            create_time: 1,
+          },
+          children: [],
+        },
+      },
+    };
+    expect(parseChatGptHistory(resp)).toEqual([]);
+  });
 });

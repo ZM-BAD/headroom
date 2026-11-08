@@ -87,7 +87,7 @@
     "message": "Tokens par tour"
   },
   "roundToolLegend": {
-    "message": "- signifie qu'il n'y a aucun contenu de recherche/outil supplémentaire pour ce tour ; la recherche DeepSeek/ChatGPT n'entre jamais dans le contexte."
+    "message": "- signifie qu'il n'y a aucun contenu de recherche/outil mesurable dans ce tour ; DeepSeek n'expose pas le texte de recherche, et la persistance des résultats de recherche ChatGPT dans les tours suivants n'est pas vérifiée."
   },
   "roundHeaderN": {
     "message": "Tour"

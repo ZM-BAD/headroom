@@ -87,7 +87,7 @@
     "message": "ラウンド別トークン数"
   },
   "roundToolLegend": {
-    "message": "- はこのラウンドに追加の検索/ツールコンテンツがないことを表します；DeepSeek/ChatGPT の検索はコンテキストに入らない。"
+    "message": "- はこのラウンドにカウント可能な検索/ツール内容がないことを表します；DeepSeek は検索テキストを公開せず、ChatGPT の検索結果が後のラウンドに残るかは未検証です。"
   },
   "roundHeaderN": {
     "message": "ラウンド"
