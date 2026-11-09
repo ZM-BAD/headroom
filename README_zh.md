@@ -9,7 +9,7 @@
   <a href="https://chromewebstore.google.com/detail/headroom/ededcdndmfhljdjppngbhgmaoogcihjc"><img src="https://img.shields.io/chrome-web-store/v/ededcdndmfhljdjppngbhgmaoogcihjc?label=%20&style=flat-square" alt="Chrome Web Store"></a>
   &nbsp;&nbsp;&nbsp;
   <a href="https://microsoftedge.microsoft.com/addons/detail/headroom/hlnpmnlemmiohohhobkbdljomdmhhcnl"><img src="https://raw.githubusercontent.com/alrra/browser-logos/main/src/edge/edge.svg" width="48" alt="Edge"></a>
-  <a href="https://microsoftedge.microsoft.com/addons/detail/headroom/hlnpmnlemmiohohhobkbdljomdmhhcnl"><img src="https://img.shields.io/badge/%20-v0.1.0-ea7233?style=flat-square" alt="Edge Add-ons"></a>
+  <a href="https://microsoftedge.microsoft.com/addons/detail/headroom/hlnpmnlemmiohohhobkbdljomdmhhcnl"><img src="https://img.shields.io/badge/%20-v0.1.1-ea7233?style=flat-square" alt="Edge Add-ons"></a>
   &nbsp;&nbsp;&nbsp;
   <a href="https://addons.mozilla.org/firefox/addon/headroom/"><img src="https://raw.githubusercontent.com/alrra/browser-logos/main/src/firefox/firefox.svg" width="48" alt="Firefox"></a>
   <a href="https://addons.mozilla.org/firefox/addon/headroom/"><img src="https://img.shields.io/amo/v/headroom?label=%20&style=flat-square" alt="Firefox Add-ons"></a>
